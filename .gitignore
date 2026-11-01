@@ -1,0 +1,65 @@
+# secrets - never commit
+.env
+
+# generated artefacts
+raw_items.json
+candidates.json
+raw_run_log.json
+history.db
+*.log
+page_*.png
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.ipynb_checkpoints/
+
+# os
+Thumbs.db
+.DS_Store
+
+# ---------------------------------------------------------------------------
+# Unrelated work that happens to live in this folder (video/showcase and
+# PDF-crop experiments from other tasks). Kept on disk, excluded from git so
+# the repository contains only the research agent.
+# ---------------------------------------------------------------------------
+*.mp4
+*.wav
+*.jpg
+chat_crops/
+storyboard/
+cut_check/
+rendered_cards/
+render_temp/
+timeline_samples/
+video_inspect/
+video_timeline.json
+video_showcase_summary.md
+shots_summary.txt
+main.ipynb
+
+build_showcase_video.py
+fast_render_showcase.py
+render_clean_showcase.py
+test_blur_overlay.py
+generate_privacy_overlays.py
+analyze_all_crops.py
+analyze_boxes.py
+draw_grids.py
+extract_crops_detail.py
+extract_inspection_frames.py
+find_pii_boxes.py
+inspect_pii_crops.py
+check_modal_position.py
+check_browser_tabs.py
+fetch_recent_tabular.py
+review_agent.py
+check_links.py
+
+*_preview.png
+exec_page_*.png
+rendered_v2_page_*.png
+badge_preview.png
+hud_test.jpg
+progress/review/pdf-pages/

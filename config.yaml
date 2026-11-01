@@ -1,0 +1,104 @@
+schedule: "Saturday 08:00"
+lookback_days: 7
+max_top_picks: 10
+
+# Recipients from project requirements (Well7 team)
+recipients:
+  - yasminemehrez890@gmail.com
+  - lailabashmal@gmail.com
+  - sbashmal@awqef.sa
+  - mohammed.abdo@awqef.sa
+  - umairafzal92786@gmail.com
+
+# Core search terms tuned for enterprise & Well7 priorities
+keywords:
+  - "synthetic data"
+  - "tabular data synthesis"
+  - "differential privacy synthetic"
+  - "synthetic time-series"
+  - "privacy-preserving synthetic data"
+  - "CTGAN"
+  - "PrivBayes"
+  - "synthetic document generation"
+  - "data augmentation LLM"
+  - "synthetic training data"
+  - "synthetic dataset"
+  - "data synthesizer"
+
+# Data ingestion sources (Phase 1)
+sources:
+  arxiv:
+    categories:
+      - "cs.LG"
+      - "cs.CR"
+      - "cs.AI"
+      - "stat.ML"
+    queries:
+      - '"synthetic data"'
+      - '"tabular synthesis"'
+      - '"differential privacy" AND synthetic'
+    max_results: 25
+
+  google_news:
+    queries:
+      - '"synthetic data" when:7d'
+      - '"synthetic dataset" when:7d'
+    hl: "en-US"
+    gl: "US"
+    ceid: "US:en"
+    max_results: 20
+
+  reddit:
+    subreddits:
+      - "MachineLearning"
+      - "LocalLLaMA"
+      - "datascience"
+    max_per_sub: 25
+    retry_attempts: 4
+
+  hacker_news:
+    tags:
+      - "synthetic data"
+      - "tabular synthesis"
+      - "synthetic dataset"
+      - "data augmentation"
+    max_results: 15
+
+  github:
+    queries:
+      - "synthetic-data"
+      - "tabular-synthesis"
+      - "differential-privacy"
+      - "data-augmentation"
+    max_results: 15
+
+  # Research / vendor / industry blogs, read with feedparser
+  blogs:
+    max_per_feed: 15
+    feeds:
+      - name: "OpenAI"
+        url: "https://openai.com/news/rss.xml"
+      - name: "Google DeepMind"
+        url: "https://deepmind.google/blog/rss.xml"
+      - name: "Google Research"
+        url: "https://research.google/blog/rss/"
+      - name: "Google AI (Keyword)"
+        url: "https://blog.google/technology/ai/rss/"
+      - name: "Hugging Face"
+        url: "https://huggingface.co/blog/feed.xml"
+      - name: "Microsoft Research"
+        url: "https://www.microsoft.com/en-us/research/feed/"
+      - name: "AWS Machine Learning"
+        url: "https://aws.amazon.com/blogs/machine-learning/feed/"
+      - name: "BAIR Berkeley"
+        url: "https://bair.berkeley.edu/blog/feed.xml"
+      - name: "The Gradient"
+        url: "https://thegradient.pub/rss/"
+      - name: "Together AI"
+        url: "https://www.together.ai/blog/rss.xml"
+      - name: "TechCrunch AI"
+        url: "https://techcrunch.com/category/artificial-intelligence/feed/"
+      - name: "KDnuggets"
+        url: "https://www.kdnuggets.com/feed"
+      - name: "Center for Data Innovation"
+        url: "https://datainnovation.org/feed/"
