@@ -10,15 +10,22 @@ requires-python = ">=3.13"
 dependencies = [
     "feedparser>=6.0.14",
     "httpx>=0.28.1",
-    "jupyterlab>=4.6.4",
-    "pandas>=2.3.3",
     "pydantic>=2.14.1",
-    "pymupdf>=2.0",
     "pyyaml>=6.0.3",
     "reportlab>=5.1.0",
+    "trafilatura>=2.3.1",
+]
+
+# Everything else was exploration (notebooks, SDV experiments, PDF rasterising).
+# Kept in the default dev group so `uv sync` leaves the venv unchanged, but
+# excluded from requirements.txt, which is what the scheduled job installs.
+[dependency-groups]
+dev = [
+    "jupyterlab>=4.6.4",
+    "pandas>=2.3.3",
+    "pymupdf>=2.0",
     "scikit-learn>=1.9.1",
     "sdv>=2.0.0",
-    "trafilatura>=2.3.1",
 ]
 
 [project.scripts]

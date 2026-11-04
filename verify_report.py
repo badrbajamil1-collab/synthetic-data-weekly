@@ -86,6 +86,16 @@ print("Counts")
 log = json.loads((BASE / "run_log.json").read_text(encoding="utf-8"))
 check("run log records counts", log["items_found"] > 0 and "links_dead" in log, str(log))
 check("no dead links recorded", log["links_dead"] == 0, str(log["links_dead"]))
+check(
+    "found is the raw count, not the deduped one",
+    log["items_found"] >= log["items_after_dedupe"] > 0,
+    f"found={log['items_found']} after_dedupe={log['items_after_dedupe']}",
+)
+check(
+    "source errors were actually checked",
+    isinstance(log.get("source_errors"), list) and log.get("source_errors") == [],
+    str(log.get("source_errors")),
+)
 
 print("PDF")
 pdf = BASE / f"Synthetic_Data_Weekly_{data['week_end']}.pdf"

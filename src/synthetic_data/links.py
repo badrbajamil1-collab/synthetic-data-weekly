@@ -64,7 +64,9 @@ def normalize_url(url: str) -> str:
         return ""
 
     parts = urllib.parse.urlsplit(url.strip())
-    scheme = (parts.scheme or "https").lower()
+    raw_scheme = (parts.scheme or "").lower()
+    # http and https are the same document; missing scheme means https.
+    scheme = "https" if raw_scheme in ("", "http", "https") else raw_scheme
     host = (parts.hostname or "").lower()
 
     if host.startswith("www."):
@@ -85,10 +87,10 @@ def normalize_url(url: str) -> str:
     normalized = urllib.parse.urlunsplit(
         (scheme, host, path, urllib.parse.urlencode(query), "")
     )
-    match = _ARXIV_VERSION.search(normalized)
-    if match:
-        normalized = match.group(1)
-    return normalized
+    # Fold arXiv version suffixes, keeping scheme and host: v1 and v2 of a
+    # paper are the same document. `.sub` rather than rebuilding from the
+    # capture group, which used to drop the scheme.
+    return _ARXIV_VERSION.sub(r"\1", normalized)
 
 
 def resolve_google_news(url: str, timeout: float = 30.0) -> str:

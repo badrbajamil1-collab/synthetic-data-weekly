@@ -17,6 +17,7 @@ from pathlib import Path
 
 import yaml
 
+from synthetic_data import memory
 from synthetic_data.links import check_link
 from synthetic_data.render import render_all_links, render_html, render_markdown, subject_line
 from synthetic_data.render_pdf import render_pdf
@@ -50,12 +51,17 @@ def verify_links(report: dict) -> tuple:
     return report, results, dead
 
 
-def source_errors() -> list:
-    """Read the collector warnings recorded for this run, if any."""
+def load_run_log() -> dict:
+    """The collector's own run log, if this report was built after a collect."""
     path = Path("raw_run_log.json")
     if not path.exists():
-        return []
-    return json.loads(path.read_text(encoding="utf-8")).get("errors", [])
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def source_errors() -> list:
+    """Read the collector failures recorded for this run, if any."""
+    return load_run_log().get("errors", [])
 
 
 def main(argv=None) -> int:
@@ -92,12 +98,23 @@ def main(argv=None) -> int:
     render_pdf(report, str(pdf_path))
     print(f"Wrote {pdf_path}")
 
+    # These URLs are now published. Record them so next week's run drops them
+    # before ranking ever sees them (spec rule: no link in two different weeks).
+    published = render_all_links(report)
+    newly_recorded = memory.mark_sent(
+        [(link["url"], link["label"], "") for link in published]
+    )
+    print(f"Recorded {newly_recorded} new URL(s) in history.db")
+
     raw = json.loads(Path("raw_items.json").read_text(encoding="utf-8"))
+    collected = load_run_log()
     candidates = Path("candidates.json")
     counts = {
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "items_found": len(raw),
-        "items_after_dedupe": len(raw),
+        "items_found": collected.get("found", len(raw)),
+        "items_after_dedupe": collected.get("kept", len(raw)),
+        "duplicates_removed": collected.get("duplicates"),
+        "already_sent": collected.get("already_sent"),
         "candidates_read": len(json.loads(candidates.read_text(encoding="utf-8")))
         if candidates.exists()
         else None,
@@ -106,6 +123,7 @@ def main(argv=None) -> int:
         "worth_a_look": len(report.get("worth_a_look", [])),
         "links_checked": len(results),
         "links_dead": len(dead),
+        "urls_recorded": newly_recorded,
         "source_errors": source_errors(),
     }
     (out_dir / "run_log.json").write_text(json.dumps(counts, indent=2), encoding="utf-8")

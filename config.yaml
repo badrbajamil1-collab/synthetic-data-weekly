@@ -28,11 +28,9 @@ keywords:
 # Data ingestion sources (Phase 1)
 sources:
   arxiv:
-    categories:
-      - "cs.LG"
-      - "cs.CR"
-      - "cs.AI"
-      - "stat.ML"
+    # No category filter: arXiv's `all:` search already spans cs.LG / cs.CR /
+    # cs.AI / stat.ML, and adding cat: queries would multiply results by four.
+    # A `categories` key used to sit here and was read by nobody.
     queries:
       - '"synthetic data"'
       - '"tabular synthesis"'

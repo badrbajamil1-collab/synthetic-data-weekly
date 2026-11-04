@@ -5,12 +5,14 @@ No LLM, no ranking, no email yet - this is the deliverable
 """
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 import yaml
 
-from synthetic_data import collectors
+from synthetic_data import collectors, memory
+from synthetic_data.links import normalize_url
 from synthetic_data.models import Item
 
 SOURCE_ORDER = ["arxiv", "news", "blog", "reddit", "hn", "github"]
@@ -25,6 +27,44 @@ SOURCE_LABELS = {
 }
 
 CollectorJob = Callable[[List[str]], List[Item]]
+
+
+@dataclass
+class CollectResult:
+    """Everything one collection run produced, including what it threw away.
+
+    The counts exist so the run log can report found / duplicate / already-sent
+    honestly instead of inferring them from the survivors.
+    """
+
+    items: List[Item] = field(default_factory=list)
+    errors: List[str] = field(default_factory=list)
+    counts: Dict[str, int] = field(default_factory=dict)
+    warnings: Dict[str, List[str]] = field(default_factory=dict)
+    found: int = 0
+    duplicates: int = 0
+    already_sent: int = 0
+
+
+def dedupe_items(items: List[Item]) -> Tuple[List[Item], int]:
+    """Collapse URL variants (tracking params, arXiv versions) into one item.
+
+    Returns the survivors newest-first plus how many were dropped. The kept
+    copy is the newest, because that is usually the canonical or updated one.
+    """
+    seen = set()
+    unique: List[Item] = []
+    dropped = 0
+
+    for item in sorted(items, key=lambda i: i.published, reverse=True):
+        key = normalize_url(item.url) or item.url
+        if key in seen:
+            dropped += 1
+            continue
+        seen.add(key)
+        unique.append(item)
+
+    return unique, dropped
 
 
 def load_config(path: str = "config.yaml") -> dict:
@@ -120,7 +160,8 @@ def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
 def collect_all(
     config: dict,
     only: Optional[List[str]] = None,
-) -> Tuple[List[Item], List[str], Dict[str, int], Dict[str, List[str]]]:
+    use_history: bool = True,
+) -> CollectResult:
     items: List[Item] = []
     errors: List[str] = []          # fatal: the whole source returned nothing
     warnings: Dict[str, List[str]] = {}  # partial: some feeds/queries failed
@@ -140,24 +181,30 @@ def collect_all(
         if source_warnings:
             warnings[name] = source_warnings
 
-    # Exact-URL dedupe across sources (tracking-param normalisation is Phase 2).
-    seen = set()
-    unique: List[Item] = []
-    for item in sorted(items, key=lambda i: i.published, reverse=True):
-        if item.url in seen:
-            continue
-        seen.add(item.url)
-        unique.append(item)
+    found_count = len(items)
+    unique, duplicates = dedupe_items(items)
 
-    return unique, errors, counts, warnings
+    already_sent = 0
+    if use_history:
+        kept = memory.filter_seen_urls(unique)
+        already_sent = len(unique) - len(kept)
+        unique = kept
+
+    return CollectResult(
+        items=unique,
+        errors=errors,
+        counts=counts,
+        warnings=warnings,
+        found=found_count,
+        duplicates=duplicates,
+        already_sent=already_sent,
+    )
 
 
-def print_summary(
-    counts: Dict[str, int],
-    items: List[Item],
-    errors: List[str],
-    warnings: Dict[str, List[str]],
-) -> None:
+def print_summary(result: CollectResult) -> None:
+    counts, errors, warnings = result.counts, result.errors, result.warnings
+    items = result.items
+
     failed = {err.split(":", 1)[0] for err in errors}
     print("\n=== RAW ITEM COUNT PER SOURCE ===")
     for name in SOURCE_ORDER:
@@ -165,7 +212,11 @@ def print_summary(
             continue
         status = "FAIL" if name in failed else ("warn" if name in warnings else "ok")
         print(f"  {SOURCE_LABELS.get(name, name):<26} {counts[name]:>4}  [{status}]")
-    print(f"  {'TOTAL (after dedupe)':<26} {len(items):>4}")
+    print(f"  {'TOTAL (raw)':<26} {result.found:>4}")
+    print(f"  {'duplicates removed':<26} {result.duplicates:>4}")
+    if result.already_sent:
+        print(f"  {'already sent (history)':<26} {result.already_sent:>4}")
+    print(f"  {'KEPT':<26} {len(items):>4}")
 
     if errors:
         print("\n=== SOURCE FAILURES (run continues) ===")
