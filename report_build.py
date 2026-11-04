@@ -5,6 +5,7 @@ report. Failures are dropped and logged, not silently kept.
 
 Usage:
     python report_build.py progress/week-2026-11-01/source.yaml
+    python report_build.py            # newest progress/week-*/source.yaml
 
 Writes into progress/week-<week_end>/ so weeks never overwrite each other.
 """
@@ -64,9 +65,17 @@ def source_errors() -> list:
     return load_run_log().get("errors", [])
 
 
+def newest_report() -> str:
+    """Default input: the newest week under progress/, same rule as verify_report."""
+    found = sorted(Path("progress").glob("week-*/source.yaml"))
+    if not found:
+        raise SystemExit("no report found under progress/week-*/source.yaml")
+    return str(found[-1])
+
+
 def main(argv=None) -> int:
     argv = argv or sys.argv[1:]
-    path = argv[0] if argv else "reports/2026-11-01.yaml"
+    path = argv[0] if argv else newest_report()
     report = load_report(path)
 
     print(f"Subject: {subject_line(report)}")

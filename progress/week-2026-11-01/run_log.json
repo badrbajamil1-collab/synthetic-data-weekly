@@ -1,9 +1,9 @@
 {
-  "run_at": "2026-11-01T13:27:45+00:00",
-  "items_found": 218,
-  "items_after_dedupe": 218,
+  "run_at": "2026-11-04T11:58:16+00:00",
+  "items_found": 223,
+  "items_after_dedupe": 222,
   "duplicates_removed": 0,
-  "already_sent": 0,
+  "already_sent": 1,
   "candidates_read": 20,
   "top_picks": 8,
   "tools": 4,
