@@ -1,59 +1,76 @@
-"""Fetch and extract the full text of report candidates (Phase 3 input).
+"""Fetch and extract the full text of the ranked shortlist (Phase 3 input).
 
-Resolves Google News redirects, normalises URLs, and stores the real text so
-summaries can only be written from what the page actually says.
+Reads ranked.json (written by rank_items.py), resolves Google News redirects and
+stores the real page text so summaries can only be written from what the page
+actually says.
+
+This used to carry a hard-coded PICKS list of twenty titles from week one. That
+list is gone: the shortlist now comes from the ranking step.
 """
 
 import concurrent.futures
 import json
 import re
+import sys
+from pathlib import Path
 
 import httpx
 import trafilatura
+import yaml
 
 from synthetic_data.links import UA, normalize_url, resolve_google_news
 
-PICKS = [
-    "Statistical Analysis of Synthetic Data with Verification: A Linear Regression Framework",
-    "Sequential versus fully conditional specification for tree-based synthesis of health data",
-    "A goodness of fit approach to select the optimal visit sequence for nonparametric data synthesis",
-    "Synthetic Child-Adult Interactions Are Not Developmentally Plausible",
-    "Rivian Buys Synthetic Data Startup To Boost Its Autonomy Ambitions - InsideEVs",
-    "Drift metrics predict how synthetic clinical text fails on real patient notes - Bioengineer.org",
-    "From synthetic enterprise data evaluations to real Microsoft Copilot AI confidence - Microsoft",
-    "Real Enough? Synthetic Users, Synthetic Data, and the Limits of Simulation - https://microsoft.design/",
-    "Synthetic Brain Scans Bridged Between Sites Sharpen Brain Age Prediction - Bioengineer.org",
-    "microsoft/DPSDA (stars: 120)",
-    "opendp/tumult-analytics (stars: 17)",
-    "oeg-upm/TINTOlib (stars: 19)",
-    "Synthetic survey respondents from real census data, with a calibration score",
-    "AI deception detectors stumble when synthetic training meets real-world stress - Bioengineer.org",
-    "AI-Generated Control Arms in Hematology Trials: Promise, Challenges, and Clinical Validity - Oncodaily",
-    "AI Generates Physically Consistent Synthetic Rock Strength Data for Engineers - Bioengineer.org",
-    "Synthetic Data Generation Market to Reach US$5.27 Billion by 2033 at 31.1% CAGR - openPR.com",
-    "Tonic.ai and Carahsoft Partner to Bring AI-Native Synthetic Data to the Public Sector - The Manila Times",
-    "What Training Dataset Transparency Mandates Hide - Tech Policy Press",
-    "Genie 4: A new generation of world simulation",
-]
+RANKED = "ranked.json"
+OUT = "candidates.json"
 
 
-def find_item(title, data):
-    if title in data:
-        return data[title]
-    key = title.split(" - ")[0].strip().lower()
-    for name, item in data.items():
-        if name.lower().startswith(key[:60]):
-            return item
-    return None
+def load_shortlist(path=RANKED, config_path="config.yaml"):
+    """Return the ranked, non-duplicate, scored rows, capped at max_top_picks."""
+    file = Path(path)
+    if not file.exists():
+        raise SystemExit(f"FAIL  {path} not found - run `uv run python rank_items.py` first")
+
+    rows = json.loads(file.read_text(encoding="utf-8"))
+    if not isinstance(rows, list):
+        raise SystemExit(f"FAIL  {path} is not a list of ranked items")
+
+    scored = [
+        row for row in rows
+        if row.get("score_status") == "scored" and not row.get("duplicate_of")
+    ]
+
+    config = {}
+    config_file = Path(config_path)
+    if config_file.exists():
+        config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
+
+    minimum = int((config.get("ranking") or {}).get("min_scored_to_proceed", 5))
+    if len(scored) < minimum:
+        # A stale candidates.json would be read by report_build.py as if it were
+        # this week's, so remove it rather than leave a trap behind.
+        stale = Path(OUT)
+        if stale.exists():
+            stale.unlink()
+            print(f"removed stale {OUT}")
+        raise SystemExit(
+            f"FAIL  only {len(scored)} scored items (need {minimum}). "
+            "Re-run rank_items.py; nothing was fetched."
+        )
+
+    top_n = int(config.get("max_top_picks", 10))
+    return scored[:top_n]
 
 
-def fetch(title, item):
-    resolved = resolve_google_news(item["url"])
-    record = {
-        "title": item["title"],
-        "source": item["source"],
-        "published": item["published"],
-        "feed_url": item["url"],
+def fetch(record):
+    resolved = resolve_google_news(record["url"])
+    out = {
+        "title": record.get("title", ""),
+        "source": record.get("source", ""),
+        "published": record.get("published", ""),
+        "score": record.get("score"),
+        "well7_fit": record.get("well7_fit"),
+        "reason": record.get("reason", ""),
+        "feed_url": record.get("url", ""),
         "url": resolved,
         "normalized": normalize_url(resolved),
         "status": None,
@@ -62,41 +79,40 @@ def fetch(title, item):
     }
     try:
         response = httpx.get(resolved, headers=UA, timeout=35.0, follow_redirects=True)
-        record["status"] = response.status_code
+        out["status"] = response.status_code
         text = trafilatura.extract(response.text, include_comments=False) or ""
-        record["chars"] = len(text)
-        record["text"] = re.sub(r"\n{3,}", "\n\n", text)[:8000]
+        out["chars"] = len(text)
+        out["text"] = re.sub(r"\n{3,}", "\n\n", text)[:8000]
     except Exception as exc:  # noqa: BLE001
-        record["status"] = f"ERR {type(exc).__name__}"
-    return title, record
+        out["status"] = f"ERR {type(exc).__name__}"
+    return out
 
 
 def main():
-    raw = []
-    for item in json.load(open("raw_items.json", encoding="utf-8")):
-        raw.append(item)
-    data = {item["title"]: item for item in raw}
+    shortlist = load_shortlist()
+    print(f"Fetching full text for {len(shortlist)} ranked items")
 
-    targets = []
-    for title in PICKS:
-        item = find_item(title, data)
-        if item is None:
-            print(f"MISS  {title}")
-            continue
-        targets.append((title, item))
-
-    out = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
-        for title, record in pool.map(lambda pair: fetch(*pair), targets):
-            out[title] = record
+        records = list(pool.map(fetch, shortlist))
 
-    for title, record in out.items():
-        print(f"{str(record['status']):>4} chars={record['chars']:>5}  {title[:70]}")
+    print("\n=== SHORTLIST ===")
+    for position, record in enumerate(records, start=1):
+        print(
+            f"{position:>2}. [{record['score']}/10] {str(record['status']):>4} "
+            f"chars={record['chars']:>5}  {record['title'][:66]}"
+        )
         if record["url"] != record["feed_url"]:
             print(f"      -> {record['url'][:110]}")
 
-    json.dump(out, open("candidates.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
-    print("\nwrote candidates.json")
+    Path(OUT).write_text(
+        json.dumps(
+            {record["url"]: record for record in records},
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    print(f"\nwrote {OUT}")
 
 
 if __name__ == "__main__":

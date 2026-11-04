@@ -6,6 +6,8 @@ raw_items.json
 candidates.json
 raw_run_log.json
 history.db
+ranked.json
+score_cache.json
 *.log
 
 # python

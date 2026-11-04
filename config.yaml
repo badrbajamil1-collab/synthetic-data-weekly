@@ -2,6 +2,32 @@ schedule: "Saturday 08:00"
 lookback_days: 7
 max_top_picks: 10
 
+# Phase 2 — ranking. The model is scored 1-10 for relevance and 1-10 for Well7
+# fit; `max_top_picks` above is the shortlist size, so there is only one owner
+# of that number.
+#
+# The API key is NOT here. It lives in .env as OPENROUTER_API_KEY only.
+ranking:
+  model: "nvidia/nemotron-3-ultra-550b-a55b:free"
+  base_url: "https://openrouter.ai/api/v1"
+  # 15 items/call is verified: ~3k chars of input, ~660 completion tokens.
+  # The startup guard aborts if batch_size * 45 + 200 exceeds max_tokens.
+  batch_size: 15
+  concurrency: 3
+  max_tokens: 2000
+  reasoning_effort: "low"
+  temperature: 0.0
+  timeout_seconds: 180
+  max_attempts: 4
+  # Above this share of unscored items the run still writes output but warns.
+  max_unscored_ratio: 0.10
+  # fetch_candidates.py refuses to build a shortlist below this.
+  min_scored_to_proceed: 5
+  # Title-token Jaccard at or above this is the same story (brief: "group items
+  # with similar titles; keep the original source").
+  duplicate_similarity: 0.80
+  cache: true
+
 # Recipients from project requirements (Well7 team)
 recipients:
   - yasminemehrez890@gmail.com

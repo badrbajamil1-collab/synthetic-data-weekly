@@ -64,7 +64,8 @@ The weekly pipeline, in order:
 
 ```powershell
 uv run python main.py
-uv run python fetch_candidates.py        # full text of the shortlist → candidates.json
+uv run python rank_items.py              # LLM scores 1-10 → ranked.json
+uv run python fetch_candidates.py        # top 10 from ranked.json → candidates.json
 #   → a human writes progress/week-<week_end>/source.yaml  ← the manual step
 uv run python report_build.py progress/week-2026-11-01/source.yaml
 uv run python verify_report.py
@@ -73,12 +74,17 @@ uv run python verify_report.py
 | Script | What it does | Writes |
 |---|---|---|
 | `main.py` | Collects, normalises, dedupes, drops already-published URLs | `raw_items.json`, `raw_run_log.json` |
-| `fetch_candidates.py` | Resolves redirects, extracts full article text | `candidates.json` |
+| `rank_items.py` | Scores each item 1–10 for relevance and 1–10 for Well7 fit, with a reason; collapses same-story coverage | `ranked.json`, `score_cache.json`, merges into `raw_run_log.json` |
+| `fetch_candidates.py` | Takes the top 10 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
 | `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
 | `verify_report.py` | Checks the rendered report against the brief | exit code only |
-| `selftest.py` | Offline unit tests for parsing, dates, dedupe, history | exit code only |
+| `selftest.py` | Offline unit tests for parsing, dates, dedupe, history, ranking | exit code only |
 | `feed_health.py` | Checks all 13 blog feeds are alive | stdout |
 | `validate_phase1.py` | Validates window and dedupe in an existing `raw_items.json` | stdout + exit code |
+
+`rank_items.py` needs `OPENROUTER_API_KEY` in `.env`. A rerun costs nothing: scores
+are cached by URL + model + rubric version in `score_cache.json`, and a cached rerun
+produces a byte-identical `ranked.json`.
 
 ## Configuration
 
@@ -88,23 +94,28 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 |---|---|
 | `schedule` | Intended cadence. Documentation only — nothing reads it yet. |
 | `lookback_days` | How far back an item may be published. Default 7. Read by every collector. |
-| `max_top_picks` | Intended cap on picks. Documentation only — the 5–10 bound is hard-coded in `verify_report.py`. |
+| `max_top_picks` | Shortlist size. Read by `fetch_candidates.py` and `rank_items.py`. |
+| `ranking.*` | Model, batch size, concurrency, thresholds and cache toggle for Phase 2. |
 | `recipients` | Who the report goes to once email exists. Nothing reads it yet. |
 | `keywords` | The Phase 0 vocabulary, for reference. Collectors search each source's own `queries` / `tags` / `subreddits`. |
 | `sources.*` | Per-source queries, subreddits, feeds and result caps. |
 
-The honest reading of that table: only `lookback_days` and `sources.*` change
-behaviour today. The other four keys are intent recorded in config.
+The honest reading of that table: `lookback_days`, `sources.*`, `ranking.*` and
+`max_top_picks` change behaviour today. `schedule`, `recipients` and `keywords` are
+intent recorded in config.
 
-Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in;
-`.env` is git-ignored and does not currently exist, which is why nothing has ever
-been emailed.
+Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in.
+`.env` is git-ignored and holds only `OPENROUTER_API_KEY`; the SMTP keys in it are
+empty placeholders, which is why nothing has ever been emailed.
 
 ## Outputs
 
 ```
 raw_items.json                     every surviving item this run
-raw_run_log.json                   found / duplicates / already_sent / kept / errors
+raw_run_log.json                   found / duplicates / already_sent / kept / errors,
+                                   plus a merged `ranking` block
+ranked.json                        every item with score, well7_fit, reason, status
+score_cache.json                   scores keyed by URL + model + rubric version
 candidates.json                    full text of the shortlist
 history.db                         URLs already published, so no link repeats
 progress/week-<week_end>/
@@ -121,14 +132,13 @@ render. Delete it to replay a week from scratch.
 
 ## What it does not do yet
 
-- **No scoring or ranking.** No LLM client is wired; the picks in `source.yaml` are
-  chosen by hand.
-- **No automatic summaries.** Full text is fetched, but the prose is written by a
-  human from `candidates.json`.
+- **No automatic summaries.** Full text is fetched, but the prose in `source.yaml`
+  is written by a human from `candidates.json`.
 - **No email.** There are no SMTP credentials, so nothing has been sent.
 - **No schedule.** The Saturday 08:00 cadence is a config string, not a running job.
-- **`fetch_candidates.py` has a hard-coded shortlist** (`PICKS`) from the first week.
-  That is the next thing to replace with a ranked input.
+- **The ranker cannot judge substance.** It rewards any text that matches the
+  rubric's vocabulary, so a zero-star repo can outrank a real paper. See
+  `docs/one-page-note.md` for the comparison against the manual report.
 
 ## Gotchas
 

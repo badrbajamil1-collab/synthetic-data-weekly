@@ -1,0 +1,1338 @@
+{
+ "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+ "rubric": "2026-11-04.1",
+ "scores": {
+  "af5c1c712af25b3c09a0c1b5552939cdac61df6bc8862e89ed88412de35f8817": {
+   "score": 5,
+   "well7_fit": 7,
+   "reason": "FHIR plugin using synthetic EHR data; healthcare application",
+   "score_status": "scored"
+  },
+  "52b8c9505293166010205b8c3233fc8a816a2f4a3507eaa894b039a1faa8a2c6": {
+   "score": 5,
+   "well7_fit": 7,
+   "reason": "Pharmacogenomic CDS using synthetic data; regulated healthcare",
+   "score_status": "scored"
+  },
+  "1b7bbf7ffb25612c05f7532d9c1eac2405dd10384f08f66ca2d0021aa931d6cf": {
+   "score": 4,
+   "well7_fit": 6,
+   "reason": "Supply chain decision support with synthetic data; pharma logistics",
+   "score_status": "scored"
+  },
+  "99e957c54e862589102b6a87c1ee5117c8bcf9f953e4091907f84c771946b558": {
+   "score": 9,
+   "well7_fit": 10,
+   "reason": "Federated learning vs DP simulation across hospitals; core research",
+   "score_status": "scored"
+  },
+  "ce503f20cfdd343ece7e58f063ec4a575783c8fced7676b6305782f013f085d2": {
+   "score": 3,
+   "well7_fit": 3,
+   "reason": "Generic pilot prototype with synthetic test data only",
+   "score_status": "scored"
+  },
+  "38c4470307a951e06a9bb7cd279b6bf6216878ac6e770bf4d18f76ef8831ffa3": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Cybersecurity tool using synthetic data incidentally, not about synthesis methods",
+   "score_status": "scored"
+  },
+  "75c59153d862835ce3d3dd6f1e55a1eda3c22244f34c1760ad3b0dbb8daac1c6": {
+   "score": 4,
+   "well7_fit": 5,
+   "reason": "Data quality hub prototype using synthetic data, thin on generation methods",
+   "score_status": "scored"
+  },
+  "1e04f395e4233c5b3d83acfddf8efbab84329cb1c7ab6474730ec3488f32d71f": {
+   "score": 5,
+   "well7_fit": 4,
+   "reason": "Physical AI platform mentions synthetic data but focuses on robotics/simulation",
+   "score_status": "scored"
+  },
+  "3b639fcaf9f4b16ecd1c1ffddc412d5505ac2b672877cf707734e659f5e20bb4": {
+   "score": 6,
+   "well7_fit": 8,
+   "reason": "Healthcare privacy demo using synthetic data for regulated industry use case",
+   "score_status": "scored"
+  },
+  "e9cf0342550e4c1c922dbb203e24756d50ff763ddafd11701fc8fbb4b47ba767": {
+   "score": 7,
+   "well7_fit": 9,
+   "reason": "Banking data platform with synthetic FDIC data, strong regulated industry fit",
+   "score_status": "scored"
+  },
+  "9e0d8cfb83fa4535abc997e2b053736fb78aaba46c98623b0194d4b0d95e6fd6": {
+   "score": 6,
+   "well7_fit": 7,
+   "reason": "Synthetic data governance prototype for health, relevant to regulated sectors",
+   "score_status": "scored"
+  },
+  "c10c62b46e1f685947716368ab88f4bb73be3bc65accbef206cda086122f7a50": {
+   "score": 3,
+   "well7_fit": 4,
+   "reason": "HR synthetic data repo with no description, cannot assess technical depth",
+   "score_status": "scored"
+  },
+  "34c88c48bab98cecff345faafddbb74bde4191ca2de53b0b40db0d3747627e13": {
+   "score": 3,
+   "well7_fit": 3,
+   "reason": "Engineering vibration analysis using synthetic data, not synthesis research",
+   "score_status": "scored"
+  },
+  "2bd0127d2ef685380dc8a904ae5c688cbf723882c5f4ddb860cbcac66d6c4ddf": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Gaussian splatting augmentation for 3D vision, not tabular/time-series",
+   "score_status": "scored"
+  },
+  "18ea4af3b26d2886bcc9a8e5ce84eb02b87099a5d84a4b89b916b5658e3cf3bf": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "CCTV synthetic video data for occupancy, computer vision not tabular",
+   "score_status": "scored"
+  },
+  "5c706c991712ce801c7bbe209bdbe15a5b41665be3e144d1151dfd9810343e39": {
+   "score": 5,
+   "well7_fit": 6,
+   "reason": "Property energy platform with synthetic data, relevant to regulated energy sector",
+   "score_status": "scored"
+  },
+  "64f65344fdfb2dccf97ab4c3c4de2fb7f3b36a895c3437dae373ef3249e23e64": {
+   "score": 6,
+   "well7_fit": 8,
+   "reason": "Australian accounting engines with synthetic data, strong regulated industry fit",
+   "score_status": "scored"
+  },
+  "71ce4c101cf847231ccdb912fa599e1ca8550528e57cf7d335d04b4adbae9310": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Standard Fashion MNIST tutorial, no synthetic data generation content",
+   "score_status": "scored"
+  },
+  "37195686b7cde631545fed8073d7d942039d1231d804c6ef26a21f04836ba48d": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "NLP punctuation study with augmentation, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "1c6b611fcc7e5f4e784bb185f481181af341a7e6cbbbbe8d0da700c090986ef6": {
+   "score": 3,
+   "well7_fit": 3,
+   "reason": "NVIDIA DALI data loading library, not synthetic data generation specific",
+   "score_status": "scored"
+  },
+  "0b2895b6c81c74dabfdec36e35e85141ff7ab9c91a39da33187cd518720974dc": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Image augmentation library, not tabular synthetic data",
+   "score_status": "scored"
+  },
+  "465f92b72b69e4812e63cd8f0af16d3a8662623a5c2970b466de07d887436891": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Self-hosted LLM for coding, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "c43651ebfdfe7227b00827eb705c9d7f7171b0bd8fedc31834c863b3c9ed84f4": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM inference benchmarking, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "bfc71ea13498bc25389df41e4096bcc7d4d27b8680809e2d5978fc8cf26f73d6": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Conference paper quality complaint, unrelated content",
+   "score_status": "scored"
+  },
+  "8a6843dc259ef49e8b8f0291cbf1344cbdfbb9a9b95d0f46de9b6d5f8203c046": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Model weight editing experiment, not synthetic data",
+   "score_status": "scored"
+  },
+  "6ffd8d821991d9b6455a7239b9632bffd4f2651a9e1eaf0de85ad83159bd0833": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Speculative decoding optimization, unrelated to synthesis",
+   "score_status": "scored"
+  },
+  "76b448f5bb64069296b1be29fbf326c95f6becb69de7f5361b1eba87643f96df": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Image classification hackathon, not synthetic data",
+   "score_status": "scored"
+  },
+  "cdd2340a4d94a41a7d953da1fc5901833d44c99ed9762acccd7e570b9898a0a2": {
+   "score": 3,
+   "well7_fit": 2,
+   "reason": "Image augmentation framework, not tabular/time-series",
+   "score_status": "scored"
+  },
+  "a7c7f13fc41e02628c61bb7f9dcfb49b982bf8d8cbc187a14d3e2ab15090c7fe": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Agent foundation model release, not synthetic data",
+   "score_status": "scored"
+  },
+  "85f7a11a7de56e5c14755377a10fb19e794092a3846f1fd80d8c8fecd1bb66fa": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Scientific LLM for chemistry, not synthetic data",
+   "score_status": "scored"
+  },
+  "4dae7450cdf1862cad00bbf1b0daadaeab09f03aeb86ffb9c8a3f5d44a0f6838": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Medical image copy-paste augmentation, not tabular",
+   "score_status": "scored"
+  },
+  "31cb4fd99ed07a488642bbd3bd7e526a7637863cef7890f9eed62c45edc0a199": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Indonesian NLP text augmentation, not tabular synthesis",
+   "score_status": "scored"
+  },
+  "61657c03aea428aec2e1e7c0227e3dfd990fe9a95e1207c9bfae954efc352161": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "New model announcement, no synthetic data content",
+   "score_status": "scored"
+  },
+  "140a5b197d532cebaa4a1314bda8f263b5ffaf67fad4cd67b455a0b96b8f3f80": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Duplicate Revolut self-hosting story, unrelated",
+   "score_status": "scored"
+  },
+  "35282d71883be7987bb97ffc453b6219ca6e4f5b52920abac2ae5d95f3a0654e": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Robotics data efficiency claim, not synthetic data tool",
+   "score_status": "scored"
+  },
+  "e85b9ac1361cc50cf1b74863a4925c6ad577bd396008a8ad73826bea20915cc9": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Visa logistics for conference, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "a2f89bcb65b8737c1e179fe8609b1cf859a0e136646a77f275d4a3c7b95793d5": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Language discussion, no synthetic data content",
+   "score_status": "scored"
+  },
+  "00d001faf6c463f16b26dacea4e151e41ae33864ac2e197506d7aacf84125825": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Image generation UI tool, not tabular/time-series synthesis",
+   "score_status": "scored"
+  },
+  "78deffa648e38267659c28b2696de0bdbc5617d668a022e724a134e0007499bd": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Computer vision augmentation, not tabular synthetic data",
+   "score_status": "scored"
+  },
+  "db992270e6e06720c2eec5bbcee73d1b519981daaf422f624bb4ba68bba6d6d1": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Small LLM evaluation, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "ef614dd950574430ab96572b2805e96adcaeb15d49f68d59dcc36f632bd9a7c2": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "GPU hardware pricing, unrelated",
+   "score_status": "scored"
+  },
+  "2adaf61b660a8366ba6a37bf81537035152df8185309ce3003ef7c1e7461db43": {
+   "score": 5,
+   "well7_fit": 3,
+   "reason": "Paper aggregator includes synthetic generation but speech-focused",
+   "score_status": "scored"
+  },
+  "73dc572b21424bfefa476c990da616e73c4cbee3cd61bed41bbd8d92d486d246": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Compiler parsing discussion, unrelated",
+   "score_status": "scored"
+  },
+  "8a55921a08ee53de029c650b197f07f4b1cb9a14c39385af36b64a15320aa303": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Fruit classification with image augmentation, not tabular",
+   "score_status": "scored"
+  },
+  "575568e27561bbe212a7d1d35fada06ad3366e62f7cba4bdaf107cae996a756e": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Scientific LLM model announcement, not synthetic data",
+   "score_status": "scored"
+  },
+  "04f4316632c154847b34ee77e2b7fdbad99d17df7dca052310b23a95587e4a40": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "C++ standard discussion, unrelated",
+   "score_status": "scored"
+  },
+  "6078bc63c1f72fe0db3b48dc75cf223ac50c33b469485c8684a86dca0f4347b2": {
+   "score": 9,
+   "well7_fit": 9,
+   "reason": "OpenDP core library for differential privacy algorithms",
+   "score_status": "scored"
+  },
+  "61a5de0a1a990c26b37ff680e248458980dd747090afc2ee3ec3dae9a0c5bd41": {
+   "score": 3,
+   "well7_fit": 3,
+   "reason": "DP repo but no description or stars to verify substance",
+   "score_status": "scored"
+  },
+  "6e0abe02081bd1877494c2f6bd82ef0b4b45be258303e6fe9dcf7d420bf5d37b": {
+   "score": 8,
+   "well7_fit": 8,
+   "reason": "Membership inference attacks on DP synthetic clinical records",
+   "score_status": "scored"
+  },
+  "ad5927f8b9fe42f670e986a0c20e8d418b45d4ac6d540a477fd06795f4851db9": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "LLM inference engines survey, not synthetic data",
+   "score_status": "scored"
+  },
+  "52a4471178035b45296691fcafb75fea700c4fd068e586b53b74d45580d4f3ec": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Image classification CNN study, no synthetic data",
+   "score_status": "scored"
+  },
+  "31ecec63f891fe4c6b1ef729ccc07b432a861826b259f211f791a6ee3366c327": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "YOLO quality control with manual data, not synthetic",
+   "score_status": "scored"
+  },
+  "19759e53737e25ec3cdbebce0636ef73ef512115c684cd27f429c3dc20974045": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "CIFAR-10 CNN reference, no synthetic data",
+   "score_status": "scored"
+  },
+  "55bff29cd03238c237e2c1b06fdc98967b5f11ca8d82fde9427668a1e0851132": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM quantization discussion, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "52fb166f55f89e7a892aab9a587d1fa9a5930e9da637a2412de6d0983346f052": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI model identity verification, not synthetic data",
+   "score_status": "scored"
+  },
+  "4850b09ef54d62e6320c4a1ee5f7bd39c921a6d3d6063cb341f216108008829e": {
+   "score": 5,
+   "well7_fit": 6,
+   "reason": "Privacy-first engine with local differential privacy",
+   "score_status": "scored"
+  },
+  "cf47b84fab102325ba590f872080252039e5c22c7172ed48c314b497911964de": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Data center power infrastructure, unrelated",
+   "score_status": "scored"
+  },
+  "20d21ae53538609f94be0d803bb34bbc06c3a930e9863bde26fbd782a94f98f7": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Gemma inference optimization, not synthetic data",
+   "score_status": "scored"
+  },
+  "47164c25d0ed3741b33886e5d93f2d6a5ed9cf5af350ce33f05b80bc5fe3b3cc": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Model weight interpretation, mentions synthetic data tangentially",
+   "score_status": "scored"
+  },
+  "02ab05bc7241054520c9c9fcf5cb1e0eb809b2fa3bbf8bafd4de8025b604f472": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "VC fundraising news, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "0e7eaa0a1275d9a3483cf845d9f5b28a4f02610816655940018cb51241561195": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Palantir revenue analysis, unrelated",
+   "score_status": "scored"
+  },
+  "454d2d8674c4fcb2b7c0bd8ad397fbf439839324515d3db1cb9f5892976a3e22": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Self-hosted LLM cost cutting, not synthetic data",
+   "score_status": "scored"
+  },
+  "a9789e49a81b2c31967c312add35ca797b3be022e9faf0cd896d0a8d99b7924b": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM inference engine, not synthetic data",
+   "score_status": "scored"
+  },
+  "070e156f9b8dca9ce266411c3938cb44ea759daa3c779dd0ffd9c8a17429739c": {
+   "score": 9,
+   "well7_fit": 9,
+   "reason": "Synthetic telecom tickets with federated LoRA and DP",
+   "score_status": "scored"
+  },
+  "d0a8c95fa6f5b5b922f3b59c1774bea413069c1c865053227231de3b61b2ab00": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "GPU hardware prototype, unrelated",
+   "score_status": "scored"
+  },
+  "d7b3e5893466af605cff054808b720d82f0cf5784c25ec310dfb2714b5345187": {
+   "score": 7,
+   "well7_fit": 5,
+   "reason": "HN comment on OpenAI using Codex chats for synthetic data generation",
+   "score_status": "scored"
+  },
+  "7ef5cad54e69bf0a3176bf3ac2f218fe00109d86c57bd0711afac1f50ea3c01f": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Inference startup valuation news, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "faa7a16a7e4dbefb329de0ed2936994846f4c8a4b378bdcfe20e9253f45eed12": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Hardware discussion for running local LLMs, no synthetic data content",
+   "score_status": "scored"
+  },
+  "edae66a1f0e109ce775beaa688ecaecdc0c0228530d87d4b015c0a3c1b027daf": {
+   "score": 5,
+   "well7_fit": 4,
+   "reason": "Serverless inference tool mentions synthetic data workloads briefly",
+   "score_status": "scored"
+  },
+  "328e1e7444f4cc36a89aa2fcc537e999a981f617d458a1ea99756024bef1a60b": {
+   "score": 7,
+   "well7_fit": 8,
+   "reason": "Differential privacy learning lab with classification accuracy study",
+   "score_status": "scored"
+  },
+  "a3e2b3affa3cb7ea4bc192fdc1949e426a6e1e32b3bc55a8c9d02ef1c4901069": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Weight-space programming for translation, not synthetic data",
+   "score_status": "scored"
+  },
+  "d8d1bdebcd6c0c5616277c18186316a3259724256106682d463fcc26e060da8a": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Netflix recommendation feature, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "cf5413999fc6dc88bb8ac2e2f7996de7f96f7fec6d5451a88eafadb6d3d328c2": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Molecular discovery automation, no synthetic data focus",
+   "score_status": "scored"
+  },
+  "d70a6476b063a31ccd2cd1e21860771c7130f641403aa038d343755ea6d013f5": {
+   "score": 6,
+   "well7_fit": 4,
+   "reason": "HN comment on recursive synthetic data training pipelines",
+   "score_status": "scored"
+  },
+  "3335b697f449d1ec38af22abe969bceaea8423f9b3d39f0b8aa73384502e897f": {
+   "score": 8,
+   "well7_fit": 9,
+   "reason": "Federated learning with DP, gradient inversion, membership inference testing",
+   "score_status": "scored"
+  },
+  "cf4584a276d5af663e96b666cc4d080918672e5a042070718383c0c176d07bf7": {
+   "score": 8,
+   "well7_fit": 9,
+   "reason": "Artifact for verifying differential privacy with Gaussian distributions",
+   "score_status": "scored"
+  },
+  "a425ac0c2932f9ab2b237eb59a9aad7027fd18e28fb2b562615e4465ed9bfc09": {
+   "score": 9,
+   "well7_fit": 7,
+   "reason": "AAAI 2026 code for DP synthetic text generation for in-context learning",
+   "score_status": "scored"
+  },
+  "8049c00e7e7a4172f6fa69936abd3cd54a7681344fd5c948fa618527a09e96e7": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Backup tool for media server stack, unrelated",
+   "score_status": "scored"
+  },
+  "2fda54c7484afe402ff159147efc4cb7629d10284b6ff0bb7d7247c0712156f3": {
+   "score": 7,
+   "well7_fit": 6,
+   "reason": "Federated learning protocol with smart contracts on Ethereum",
+   "score_status": "scored"
+  },
+  "b37b821ee4ac15cf1a552ca2ffc07bf701c158b5db2752db734a8b425335d72c": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Discussion on weight editing claims, not synthetic data",
+   "score_status": "scored"
+  },
+  "7a531afe1c9faae713b91798cac2bdf76b4c42561ce3fd8edf578124931ba845": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM weight interpretation, not synthetic data",
+   "score_status": "scored"
+  },
+  "778b96e6e3f5c52fdf50d04fa2522ba989246d8ca68980160cd9468a1f7305b4": {
+   "score": 7,
+   "well7_fit": 8,
+   "reason": "Academic thesis on LDP for educational data privacy",
+   "score_status": "scored"
+  },
+  "4b0d9d876c0c52f28766b458c275a3b7c713559193615de0077b002e3e5153d3": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Password manager, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "46b0de046e17285a8fd5901d5785bb762b09f3bf08be7cd8dc641ed3de56ebec": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM state tracking benchmark, not synthetic data",
+   "score_status": "scored"
+  },
+  "41418e17908bc3c0992586c8dcf43c0c38d3f857acaeb828b85eab4d7600de23": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Hacker mindset essay, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "161acd0d36e043d4a925898c8d2adfbb64428e9020a7f49f6d7876c69dc3c02b": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Inference serverless platform, not synthetic data",
+   "score_status": "scored"
+  },
+  "5a7cc4fe052c7684e7e2f34f8b9d167332f643d7fe2a6085ac5cd19fdf89cf26": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Anthropic compute economics, unrelated",
+   "score_status": "scored"
+  },
+  "63dea3488ce732e2ee1897e5252c581d2a15f047ca56cc9f52c98c60d2db9bce": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Drug discovery cheminformatics, not data synthesis",
+   "score_status": "scored"
+  },
+  "29efdc5cb5256f79296da55c52148cba1adc8c527d5722fcc377871ced75ec21": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Data integration tool, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "447085f2646c3e379e3f2268b88e247dec605a7b6902ae17f075e02e5f525fce": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Token exchange for agents, unrelated",
+   "score_status": "scored"
+  },
+  "ae9fd1d05af5b254917147f93c6ae0beef1a07484a1fae80ec1e673265c17ed2": {
+   "score": 2,
+   "well7_fit": 3,
+   "reason": "AI news engine with privacy, not synthetic data",
+   "score_status": "scored"
+  },
+  "e0e2f626a8f6528631019c9f766abae10d34025a27be973e5f9d1d9c43080c06": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Semantic layer for agents, not synthetic data",
+   "score_status": "scored"
+  },
+  "d38b5d4d60fd0b28e67de0e1523b7b9786775ec275ba994832d693a0235f7c10": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Voice AI latency optimization, unrelated",
+   "score_status": "scored"
+  },
+  "45089f7b5e4719bd818ecd4b13a7072239a16570ed5d58f9df85c04d25665ee7": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Robot demonstration synthesis, not tabular data",
+   "score_status": "scored"
+  },
+  "f81b0ce9bdf772cc616fd889601989bed6c499f8e241dfe9749c9ef745aad9ee": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Presentation design tool, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "693ee272a1d04d62d0bff04aa5793802b85fbd7c71cc598dff7c9a5bbcba1cab": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM inference hosting, not synthetic data",
+   "score_status": "scored"
+  },
+  "9b26deb6fd9f03808bd5a3c11d1f470ed3ff3fd20b533e2687433c889139e66c": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "School AI policy, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "28f6737a7df38da346320768e58ad358ccde9b9cead599541d3118da03eb0b53": {
+   "score": 8,
+   "well7_fit": 8,
+   "reason": "Curated tabular foundation model research library",
+   "score_status": "scored"
+  },
+  "7450ac5fb2269532deb7fd993dca5735fd2dd0cc601080bdcbbbb70d31a3aa8b": {
+   "score": 3,
+   "well7_fit": 2,
+   "reason": "HN commentary on synthetic data, not substantive",
+   "score_status": "scored"
+  },
+  "b1b7b54efb536250e66a5754af6c5cd3698eed6170f8727bedd726b759d23c31": {
+   "score": 5,
+   "well7_fit": 6,
+   "reason": "Counterfactual fairness with local DP, thin repo",
+   "score_status": "scored"
+  },
+  "17fe7de0a923b9d67e88b5d151b7b43d8a8deaaca50c15fbd5746270b76bca0c": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "App Store age ratings, unrelated",
+   "score_status": "scored"
+  },
+  "9bfa2173691a38b690bf65fc0d6b6009c014045c3511cd214f1eeb564db919d9": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Scikit-LLM text summarization, not synthesis",
+   "score_status": "scored"
+  },
+  "1657958293cc197e550921267c9b81610558ba6eb22b6bf2189a4073df3b5589": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Event announcement, unrelated",
+   "score_status": "scored"
+  },
+  "d43fcb53610d4f1092a407d17d3e1ce6fef8d2d8d864abf3f06c6d75116a58a5": {
+   "score": 7,
+   "well7_fit": 5,
+   "reason": "Synthetic voters in campaign research article",
+   "score_status": "scored"
+  },
+  "35fab3f3259e95bb0c6f1c9d6a2206b7d507cda23050b32862ab41c3a5f1cbde": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Event reminder, unrelated",
+   "score_status": "scored"
+  },
+  "1238182d410bb0bb63812b981724dabf64906525719256d6f63f5c6f320995fa": {
+   "score": 8,
+   "well7_fit": 7,
+   "reason": "SDAIA study highlights synthetic data opportunities",
+   "score_status": "scored"
+  },
+  "b3a5d96ccf0e50d07d0d6240b320896a7ac88fe52bd2a6ccac18e687e13ca5d9": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM inference frameworks, not synthetic data",
+   "score_status": "scored"
+  },
+  "c3efea6f612d57d4c26ec780b4c758540425cea0769a9b2928beb5bebb37d334": {
+   "score": 5,
+   "well7_fit": 6,
+   "reason": "DP for geo-location databases, early research",
+   "score_status": "scored"
+  },
+  "9449b75a38b3006e35a0271e775d8cac3ec3a99b25001044c5ef29b8081f0df8": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Engineering workflows, not synthetic data",
+   "score_status": "scored"
+  },
+  "327a80fa2e9ed898e7abaf1d2ad5a5278d03bd733ed52abecd1fedcb332bb298": {
+   "score": 9,
+   "well7_fit": 8,
+   "reason": "Pure DP query release via Laplace smoothing",
+   "score_status": "scored"
+  },
+  "44d685fd07e64752461aea9e051c6be92fde493add25c9b31cc3a1f31b50eba4": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "GPU hardware rumor, no synthetic data content",
+   "score_status": "scored"
+  },
+  "3230467ea32cb54d96681932d7087145a11ae8bce848861e8c52585f44f28924": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Video character replacement, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "40f9cdf48d962e4b7ebd105e701824a1c79206c21aa62d33c15b493c3d1524ba": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Directional statistics theory, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "ed2cc37570719276bf10e159f1bcdb58ab2fc2a5e886072b09272377f587db8e": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Enterprise security with OpenAI, no synthetic data",
+   "score_status": "scored"
+  },
+  "74719b7132e3d46960374cece3220be41371338214bc89dc7ebfb22973c8b2c4": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Real estate AI case study, not synthetic data",
+   "score_status": "scored"
+  },
+  "9468ff00f65021b05f0a0483721bbb5d5b683e26b64e47efea5466c757e09ef4": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Consumer Apple Watch features, unrelated",
+   "score_status": "scored"
+  },
+  "c02a1d21955b75cbbb838e077a064bbc8e649f30ca3569c9c5fdf6b122ee583a": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Linguistics theory paper, no synthetic data relevance",
+   "score_status": "scored"
+  },
+  "56f29374a8196f43ee3c9bca4eb36d6cdd6661582707ea85b08fe76caffbfec1": {
+   "score": 3,
+   "well7_fit": 2,
+   "reason": "Embodied AI simulation platform, thin news blurb",
+   "score_status": "scored"
+  },
+  "d8105641b13d452eb18c7b785a9213d92efb5ab92b3549f95cc1376083cbfbab": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Consumer AI storytelling app, not research",
+   "score_status": "scored"
+  },
+  "1a9fd5fd986d31213858611c5c04f2c24760a8c175022dc4c054f8bc049200fd": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Apple business strategy speculation",
+   "score_status": "scored"
+  },
+  "e350cb564c12b63c58f4a22aab2fd85a52f14b57107bbb9ca441c0a319a0fcf9": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Personal AI agent usage anecdote",
+   "score_status": "scored"
+  },
+  "2cfb55d09a37efd4eb2924c06c644d01b0f3fa25974dced8f3661deed53349b7": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "OpenAI executive hire announcement",
+   "score_status": "scored"
+  },
+  "79a651c4c730c5e95cbcd986994e0bcf7dcee2dfb7e014567f5e4a26195084c6": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Security benchmark update, not synthetic data",
+   "score_status": "scored"
+  },
+  "b89d7fa02d3675c213001b996919f99af56112f059772edc74c6d230334ba422": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Model integration contracts, unclear relevance",
+   "score_status": "scored"
+  },
+  "77198f35bfb7db0620be202cce17a070fd47bdc888da6bd8c413b353ba25980e": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "HN speculation mentioning synthetic data in passing",
+   "score_status": "scored"
+  },
+  "fb5796de9ef0be976faa8a4b1e6dbd5aa317b73ee23124475ed78448d7d49e9b": {
+   "score": 9,
+   "well7_fit": 9,
+   "reason": "Novel algebra of component priors for prior-data fitted networks like TabPFN, directly advances tabular synthetic data generation",
+   "score_status": "scored"
+  },
+  "75ec494a60cd4ea7d65ea3c6d83194c86cfd1d4863fe020704c633a1b301d05e": {
+   "score": 5,
+   "well7_fit": 2,
+   "reason": "Sim2Real LiDAR detection using synthetic data, but domain is 3D vision not tabular/time-series",
+   "score_status": "scored"
+  },
+  "e2fccc2df853052ef5057c7ebac4e950dc1b9098735e9711b35031ebfd1dbefd": {
+   "score": 5,
+   "well7_fit": 2,
+   "reason": "Sim2Real roadside LiDAR with synthetic data realism scoring, irrelevant to tabular synthesis",
+   "score_status": "scored"
+  },
+  "12648ff46a6f798e92e19ecc1ee8877efb39a78ca9eeebd400eea6a2b491e915": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Speculative HN comment on weight manipulation for synthetic continual learning, no technical substance",
+   "score_status": "scored"
+  },
+  "d94e2155edff510ed775224f65fee910df66e92c8f481a0dd14970d6fe6f4bb1": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Quantum neural network feature map, completely unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "38147c8b5f7926132fa9ec87c29ff2b555160b74c44152294874c4fbc0a55020": {
+   "score": 7,
+   "well7_fit": 3,
+   "reason": "Isekai3D platform for synthetic 3D gameplay visual data, substantive but wrong modality",
+   "score_status": "scored"
+  },
+  "180b9070e7f2fd9a6e383f2a4f0b0377610bf4f2ee783d70f58816c2b1a122cd": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Hacker News job posting, no synthetic data content",
+   "score_status": "scored"
+  },
+  "029426152365e1216844c5df61726d11701a325e3e2c730e4f42558634c0a691": {
+   "score": 3,
+   "well7_fit": 2,
+   "reason": "Brief mention of synthetic traffic for DB testing, thin and not privacy-focused",
+   "score_status": "scored"
+  },
+  "253cf204571c78aaa0237eb611709a8a5e585176d266bda29dceb359739dbd23": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "OpenAI security sprint announcement, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "8d64f808d6123940d85f0c33321ba06c4c70d9747d46bee30f598d526778dcaf": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "OpenAI bug bounty program update, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "6931654f300386a546947fbd02d62066335e8cd07e3a0c95b0b244984fab7f9e": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Generic AI news carousel, no synthetic data content",
+   "score_status": "scored"
+  },
+  "a3101028993de0c7052ca99f27e65de476883abec04b942cb32f6b2efef962f2": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Web crawling for RAG knowledge bases, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "eaec0420d367e27a924fd453a6a0f32b175b106284fd6a955a2161a40ef3653c": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "HDR video reconstruction from events, not synthetic data",
+   "score_status": "scored"
+  },
+  "c6290c77c854cc35bb58ab98276fe7c877340daae40bd7dd6beee4a2d140cc85": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Knowledge distillation for agentic assistants, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "bbd719ddc96a60c6b33b170f0028e19da5b1e28f3bc50849a13ffca6ecca7fb2": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Multi-agent engineering assistant with embeddings, no synthetic data relevance",
+   "score_status": "scored"
+  },
+  "200d4e914347bef8b4affc30da4dcca028a2787bd2385ba5e130e8df88ed3ebc": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "DevOps incident triage, no synthetic data content",
+   "score_status": "scored"
+  },
+  "407c3516248e75009cd51dfadb584c20c85109a98b5d559509003776e23eaa05": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "LLM security behavior study, not synthetic data",
+   "score_status": "scored"
+  },
+  "8e043e35aa45392fd865951c711b6421628d651263c497a872ebd84ca792c28f": {
+   "score": 4,
+   "well7_fit": 3,
+   "reason": "Theoretical discrete diffusion framework, thin synthetic data link",
+   "score_status": "scored"
+  },
+  "17ec795b26a6bdfcfe4ebbcf7480f18cca2301ff50f6ac87fa22850ecf28b9d6": {
+   "score": 5,
+   "well7_fit": 4,
+   "reason": "Microsoft Copilot synthetic data evaluation, likely thin coverage",
+   "score_status": "scored"
+  },
+  "d8cb13fb8415b143b5888dc261647f27d913f96d8fdc1b7dafa007accb5dfb47": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Reddit discussion on coding interviews, unrelated",
+   "score_status": "scored"
+  },
+  "c7920959f6f9ecf10cdfc2731ac4f00afe2832acef5b1742eb959b0047f0229a": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Git scaling at OpenAI, no synthetic data relevance",
+   "score_status": "scored"
+  },
+  "d7f3d2148b5f2ba416e8c22e8ed934e8ac4905feaf725df9128fd10366103dc2": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Grid infrastructure program, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "aaadaaac1e54f97b545d6b7a3a0de31fb1bc11b9c162c9cef79612dbe12b5982": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Quantum computing for cancer prediction, not synthetic data",
+   "score_status": "scored"
+  },
+  "8ab0ee72752ed292f88331b61714ef925d9f960786a820cf5f0d866708b55484": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI certification listicle, no synthetic data content",
+   "score_status": "scored"
+  },
+  "5fa1023efbb13f480dd6e3d3ec3deb180df9212eb100e969f96ecdb8e2bb4308": {
+   "score": 6,
+   "well7_fit": 3,
+   "reason": "Zero-shot voice cloning for ASR data augmentation, audio not tabular",
+   "score_status": "scored"
+  },
+  "9acbc18cd9e732e1d10c94d1f44dd4d15b6a4ed6c73f98b75936feb729ee5265": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI benchmark for daily tasks, no synthetic data focus",
+   "score_status": "scored"
+  },
+  "158213cd545b833659e433ad6dc0e2760edbfa182622eb7f41594bd592a1c1f8": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Model calibration auditing, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "dca26f958275231c61dd89880fde766d07c30c4a44622e7da46ed9000b51105b": {
+   "score": 9,
+   "well7_fit": 10,
+   "reason": "Realistic 223-table fictional dataset, ideal tabular synthetic data",
+   "score_status": "scored"
+  },
+  "d12f7b3249f2a54c275c5ece13f89a025c37625a29a6a83f6933b0c25921207c": {
+   "score": 5,
+   "well7_fit": 6,
+   "reason": "LLM agent for EHR preprocessing, healthcare data relevance",
+   "score_status": "scored"
+  },
+  "673ca9d1895851344eb374e6f87a93817d0589bdf005ac0ff953fdd38737f2fd": {
+   "score": 7,
+   "well7_fit": 4,
+   "reason": "Synthetic medical image evaluation, safety-aware but image-based",
+   "score_status": "scored"
+  },
+  "dd915deb1a10ec940c6dcd29d3c3f58c98df121c64b849972e50281c1e050f75": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Geophysics research, no synthetic data relevance",
+   "score_status": "scored"
+  },
+  "d636e4d1fe5f4582d2e4ba4cc492ba06a353036b37dcf46de4d1c322c15f259a": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI code review tool, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "f652e84cfb0834acb65d9b45a4c282fb83d06e61ba7b7201fa3470a2040e99e9": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "OpenAI personnel announcement, no synthetic data content",
+   "score_status": "scored"
+  },
+  "726eafc40af46c224a10f9710f8eea3bb5654c24552d38ffb77b8474fae13da3": {
+   "score": 8,
+   "well7_fit": 4,
+   "reason": "Conditional generative model for synthetic medical MRI",
+   "score_status": "scored"
+  },
+  "f4cc3e20dc776cd44fd414191116437449a515f1a8efbb1ebf3d65ff41b7bc1c": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Detector physics, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "fd590a2c088c433d2f182ffa705c07115b1fa6b9e9233030dc90db0b486d60ce": {
+   "score": 7,
+   "well7_fit": 3,
+   "reason": "Evaluation framework for synthetic microscopy images",
+   "score_status": "scored"
+  },
+  "79347e7923310ae42dcbdfdcf18d497c2b953a968f38c3700a56e6b9277e7e71": {
+   "score": 3,
+   "well7_fit": 2,
+   "reason": "World model action testing, tangential to synthesis",
+   "score_status": "scored"
+  },
+  "e08659441817dece6920f33909457454d330acf10698992a765302af6b1e9680": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Humanoid robotics grasping, no synthetic data",
+   "score_status": "scored"
+  },
+  "2c1b2f9f0dd3416799593fb6b8a1fb34aa79b1de1543c1cf05c1c5a8ad9f4cf6": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Causal discovery method, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "50994e7a1dcbc7bf62110a4597f9726996dc18824639c3e6ae2c28efae6019e2": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Code analysis tool using TabPFN, not synthesis",
+   "score_status": "scored"
+  },
+  "4188763fdf3c0332f783c86561e5e3a1e21a689ba06050d44ef0dd2dc41c8b11": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Tabular foundation model for performance prediction",
+   "score_status": "scored"
+  },
+  "820ba904979d3dab1298d7202f7d72512c096fa301f221e2ab4df881cbce4071": {
+   "score": 10,
+   "well7_fit": 10,
+   "reason": "Federated differentially private tabular synthesis tool",
+   "score_status": "scored"
+  },
+  "5fc8ff2281abae031ac1a93b3a025df2e5cc522dd79454dccf5882bfbbbd7f83": {
+   "score": 7,
+   "well7_fit": 6,
+   "reason": "Data-free knowledge distillation via synthetic data",
+   "score_status": "scored"
+  },
+  "d6e40ad02afe74963facfdb7e42cb0b3c7da5dee804f5207c7e0dd8d74bb0d46": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "DIY robotics project, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "bc0944289f2004d5d9593ef166ab7f4c75696fa0ad2f94e3f5e3d2b2ce0b225f": {
+   "score": 9,
+   "well7_fit": 9,
+   "reason": "Microsoft Copilot synthetic data for enterprise privacy",
+   "score_status": "scored"
+  },
+  "7eb4a20b6974d61844a6b19576687df55c4deadb19697095d3a8d731588aaf85": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "FinOps cost management for Bedrock, no synthetic data content",
+   "score_status": "scored"
+  },
+  "1101e713f4e75d470c12fca6a415e251815d58bdd6733e28d896c70697eed7ba": {
+   "score": 3,
+   "well7_fit": 2,
+   "reason": "Video segmentation dataset, not tabular/time-series synthesis",
+   "score_status": "scored"
+  },
+  "aa800247e0a9bec570f48a49a960592b5bd3d34406493072885de05fea1a265f": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Bedrock AgentCore runtime for web app preview, unrelated",
+   "score_status": "scored"
+  },
+  "dee39ef1c4615d8bea4ea23058df64461b70b53595fc5ece3325a18bf413cad5": {
+   "score": 5,
+   "well7_fit": 5,
+   "reason": "Interpretable irregular time-series decomposition, relevant to synthesis",
+   "score_status": "scored"
+  },
+  "c5c0df1657bd417c48b4815629c81923a1fefb0f6abd446563ac3f02a195e533": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Unclear Halloween-themed blog, no synthetic data signal",
+   "score_status": "scored"
+  },
+  "6e80c5a5d8bb5ceb3edc7b7f332738091315b845c279a0ffee73df1d5b566a81": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Freight billing automation with Bedrock agents, applied AI not synthesis",
+   "score_status": "scored"
+  },
+  "10ac3e187ecff7fd643e79fa98be5ec4c0e1c23b430fcdbfc5eff6cc37829d8e": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "ChatGPT desktop config for GovCloud, no synthetic data",
+   "score_status": "scored"
+  },
+  "e31bebdffa3e9645914711aa9fab5e516a07a832ace6d8fa585af0343f6ad874": {
+   "score": 3,
+   "well7_fit": 3,
+   "reason": "Thin news snippet mentioning synthetic datasets, no technical detail",
+   "score_status": "scored"
+  },
+  "ce459012b5a358b02149dfc693c8c61c024aefdba70e8ee5a9836e5804c45ab9": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "General data news roundup, robotics real-world data collection",
+   "score_status": "scored"
+  },
+  "253c19eacc23406916cdad484bfa782494ca2efd10fed075bef4f87532b5421e": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Sports computer vision CEO interview, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "69087f8166b3442791667057c152f6d1bc89c1777399e7c4ea7136be0189151b": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Wildlife crossing map visualization, environmental data not synthesis",
+   "score_status": "scored"
+  },
+  "c37a3ec7a7b67d0bba45a358c61d4c8bf704c0294ff7fb4c76b79a0cfd24021b": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Real immune cell dataset from researchers, not synthetic",
+   "score_status": "scored"
+  },
+  "e503d1968539bb44fe8bcb7c83f14cf44bb37021e970c058588cfb99da1f020c": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "3D reconstruction from stereo video, computer vision not synthesis",
+   "score_status": "scored"
+  },
+  "1e33abef635366420cf29975574292111cd9e5e5e351cc15545822ffb0ae5466": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI for planning decisions, government partnership, no synthesis",
+   "score_status": "scored"
+  },
+  "e5e4f8fb579c499fd222344e7f7b2c72e548aa205c877f4a0076d66e0b37ff1d": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI-assisted game coding tutorial, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "07cb645880ef5d7e655bb45f578176f6a54f14d1381874aa480416dd1adad8dd": {
+   "score": 8,
+   "well7_fit": 8,
+   "reason": "Microsoft synthetic enterprise data evaluation research",
+   "score_status": "scored"
+  },
+  "003ea39c7d03307e186e3b1f57514faae0064da52356f1ce229a5fcfaedd0904": {
+   "score": 2,
+   "well7_fit": 3,
+   "reason": "Data cleaning bugs, not synthetic data generation",
+   "score_status": "scored"
+  },
+  "69e984d2b614345006fab95837bc6b5c0246700c4356cf090d0c5f37764e4c39": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI training preferences, not synthetic data",
+   "score_status": "scored"
+  },
+  "f9b012dbf15cf0e3676056a3f52a75d95d5d53d41fc4f9ada2a86eb13f6ba662": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Teen safety protections, not synthetic data",
+   "score_status": "scored"
+  },
+  "b5576ba04a6c11cb732d95278607528e1bfd3213ef40ca6356bbe9aceeaab761": {
+   "score": 9,
+   "well7_fit": 8,
+   "reason": "Open-source toolkit evaluates synthetic data fidelity, diversity, privacy",
+   "score_status": "scored"
+  },
+  "8656a80d0885445eafcda063d6229dcb70b3444a1a4e243d99082c4fe9eba06c": {
+   "score": 8,
+   "well7_fit": 7,
+   "reason": "Synthetic brain scans improve cross-site medical predictions",
+   "score_status": "scored"
+  },
+  "1e36fa93eefd98a2d760b6b335ce290664be8cfdc58699325fd982918bd18919": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Fair use legal arguments, not synthetic data",
+   "score_status": "scored"
+  },
+  "76d8fbe4e6067029b6da7701df77c5924e5a62c44fd312c2b94e5b4fb999fba9": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AWS user group meetup, not synthetic data",
+   "score_status": "scored"
+  },
+  "3617a4917807ba4d27db7b5bfeb957963634aa71513d666bd5babcb174422757": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Microsoft Research newsletter, no synthetic data focus",
+   "score_status": "scored"
+  },
+  "ce157dd7a239d6c3d2eb633e00c2d94396d259d0fa808cef94dc10f310f47961": {
+   "score": 3,
+   "well7_fit": 3,
+   "reason": "Surrogate models for transformer prediction, not synthetic data",
+   "score_status": "scored"
+  },
+  "0efd92a74b0fa2801b50e687202f583a60c46710bb441c5270659c73e98d7535": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "OpenAI Model Spec update, not synthetic data",
+   "score_status": "scored"
+  },
+  "dd04b2a956d473fe905e8908786ce1a8a9c448ea8646c5757b6484eb178c7ed2": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Mistral model weights release, not synthetic data",
+   "score_status": "scored"
+  },
+  "3ce8d1272a06b3044121b2210b2e63c9485d7c285e2c8b376928c08fe175cd3b": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "AI job skills analysis, not synthetic data",
+   "score_status": "scored"
+  },
+  "036358329b492b69c210ac1b46e8421ec71e3f9736fc754e128443ae6bb6e128": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Model versioning tool, not synthetic data",
+   "score_status": "scored"
+  },
+  "9bf427e48529a6cda104bf1d0c94c3bb839acb53bc4cfd419c39666d498eb764": {
+   "score": 3,
+   "well7_fit": 4,
+   "reason": "Federated model selection research, not synthetic data",
+   "score_status": "scored"
+  },
+  "541a419811fda5feddb78369bb8b2fcbd3808f9b51ce3a8f5a692d423e3cf2c8": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Home AI lab containers, no synthetic data",
+   "score_status": "scored"
+  },
+  "83e7cb5b553d4c95e1b90c0716abaa49196bdeed43b989041007be35c5fccb03": {
+   "score": 3,
+   "well7_fit": 2,
+   "reason": "Dataset transparency policy, not synthesis",
+   "score_status": "scored"
+  },
+  "93727d2459b1170ee8f3f20d9d104fc701b73162110a8b1df9660b35f30750b6": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Physical AI scaling, not synthetic data",
+   "score_status": "scored"
+  },
+  "7b6f2cd30ed899aa9b6e0d606e32c6ddba5d25dd0658b8576ba1dd7af52a8bf9": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Data labeling market, not synthesis",
+   "score_status": "scored"
+  },
+  "12f19474037d415215fa81b6e079d59094110b0ecb3b307e0e495d020dc4c108": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Training method, not synthetic data",
+   "score_status": "scored"
+  },
+  "cac78c5bb2401844640d8f628efa779a12cf1a7fec1b4024eb865d0c7ad55366": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Real dataset for rumors, not synthesis",
+   "score_status": "scored"
+  },
+  "9c0e536926b4982eaa09a5ba09c154fca2ef0e0fce684710fd6a33c3f44e71cc": {
+   "score": 5,
+   "well7_fit": 5,
+   "reason": "Synthetic data market size press release",
+   "score_status": "scored"
+  },
+  "3541c9cbd4f4ba1a53ee016fd8f84cfdcee6b313b1a07c2eb883c00aed212041": {
+   "score": 4,
+   "well7_fit": 4,
+   "reason": "Federated learning in healthcare, privacy-adjacent",
+   "score_status": "scored"
+  },
+  "cb9ad7eff7b5da9933d1c02023a567dc364018fa164837fd5e335d91863a9317": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Data prioritization in simulation, not synthesis",
+   "score_status": "scored"
+  },
+  "5553c7fa7bf1c947b2f7edf6cc863f0db837602c457600aeed0c92d420df18ed": {
+   "score": 8,
+   "well7_fit": 9,
+   "reason": "Bayesian CTGAN for tabular synthesis, direct method",
+   "score_status": "scored"
+  },
+  "23ad3800b9229e463dc3bfea6f3f02679cf6f29e11d292f36e8b10a9dae1905f": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Public science for AI, not synthetic data",
+   "score_status": "scored"
+  },
+  "26f1f85276631aba5ca8f45e923b3bfed0b9f1b3785fa8e7f9b300043b85932b": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Mistral LLM release, not synthetic data",
+   "score_status": "scored"
+  },
+  "92fb48fbbbda77817a41fe16bcbb57dbad0b1a975aac28049bdc7fae25fde1fb": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "Speech/decision models, not synthetic data",
+   "score_status": "scored"
+  },
+  "79e03e8c21f21ce0be3b391148da746379058e2df4daca516ba46128bd5772b9": {
+   "score": 2,
+   "well7_fit": 1,
+   "reason": "Generative AI in energy, not data synthesis",
+   "score_status": "scored"
+  },
+  "ecf22f40e2c0376264bf09668a82d06f38f594a0f07d46e4c1283a4d4cf15f7c": {
+   "score": 1,
+   "well7_fit": 1,
+   "reason": "HIPAA cloud backup, not synthetic data",
+   "score_status": "scored"
+  },
+  "fad27128b1b7cd2b69b6770202efc9981258a6f6af40260e6e3ff0cfaa3e49ed": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Data center economics, not synthetic data",
+   "score_status": "scored"
+  },
+  "63f91882ca20822d258f1e0715294764e6727facb325fd3347d14401ba94e904": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "LLM model release, no synthetic data content",
+   "score_status": "scored"
+  },
+  "e9c69d2c543ff7383f8b0aa21526bfbd724b368e9e3289ad413373390d43a4c3": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "Speech benchmark, unrelated to synthetic data",
+   "score_status": "scored"
+  },
+  "2954c348b4783bcb2226f32240a42d935561a0130394c2f9437cf9ce9c4d2501": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "API tutorial, no synthetic data relevance",
+   "score_status": "scored"
+  },
+  "7730f69bff1768dc1cc6d5f2cdf9a26ac418797963f8233f660fa1a80773249d": {
+   "score": 4,
+   "well7_fit": 5,
+   "reason": "CX-focused AI simulation, likely thin content",
+   "score_status": "scored"
+  },
+  "d77e47d70799d451e4511ce30ab6f81ff6e17152ce3004be8f5bac49dd6e679e": {
+   "score": 8,
+   "well7_fit": 9,
+   "reason": "Microsoft analysis of synthetic data limits and evaluation",
+   "score_status": "scored"
+  },
+  "a0eba9a412a972523d436cd3ddc4d0b1e28f636480d316a9aa5bf110a5c5559b": {
+   "score": 2,
+   "well7_fit": 2,
+   "reason": "AI detection evasion, not synthetic data generation",
+   "score_status": "scored"
+  }
+ }
+}

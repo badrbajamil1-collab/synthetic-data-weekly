@@ -34,6 +34,7 @@ Run from the repo root. The venv has the package installed editable
 | Validate window / dedupe in `raw_items.json` | `python validate_phase1.py` |
 | Check all 13 blog feeds are alive | `python feed_health.py` |
 | Sample 5 links per source and see if they resolve | `python link_sample.py` |
+| Rank the week 1–10 → `ranked.json` | `python rank_items.py` |
 | Full text of shortlist → `candidates.json` | `python fetch_candidates.py` |
 | Render report from curated content | `python report_build.py progress/week-<date>/source.yaml` |
 | Verify rendered artefacts (21 checks) | `python verify_report.py` |
@@ -59,7 +60,8 @@ The rest is separate scripts run by hand, in this order:
 
 ```
 python main.py
-python fetch_candidates.py          # resolves redirects, extracts full text
+python rank_items.py                # LLM scores 1-10, writes ranked.json
+python fetch_candidates.py          # top 10 from ranked.json -> full text
   → a human writes progress/week-<date>/source.yaml   ← the manual step
 python report_build.py progress/week-<date>/source.yaml
 python verify_report.py
@@ -69,6 +71,22 @@ python verify_report.py
 `report.md`, `report.html`, the PDF and `run_log.json` into `progress/week-<week_end>/`.
 `verify_report.py` defaults to the newest `progress/week-*/source.yaml`. The old
 top-level `reports/` directory no longer exists.
+
+### Phase 2 — ranking
+
+`rank_items.py` → `synthetic_data/rank.py` for logic, `synthetic_data/llm.py` for
+the only HTTP call to a model. Output is `ranked.json`; `score_cache.json` makes a
+rerun free and byte-identical.
+
+Three rules that are easy to break:
+
+- **`llm.py` owns transport retries; `rank.py` never retries a batch.** A batch with
+  missing rows falls back to one call per item. Two retry layers would multiply into
+  8+ calls per batch.
+- **Rows are plain dicts**, not `Item`. Pydantic's default `extra="ignore"` would
+  silently drop `well7_fit`, `score_status`, `duplicate_of` and `scored_by`.
+- **Cache before duplicate grouping.** A demoted duplicate score must never be
+  stored, or every rerun subtracts the penalty again.
 
 ## Gotchas that will bite
 
@@ -107,15 +125,28 @@ it — no cron, task or workflow exists).
 
 ## Not implemented, despite the file names
 
-- `fetch_candidates.py` has a hard-coded `PICKS` list from week one. It is not driven by
-  a ranked shortlist, because no scorer exists yet.
-- Nothing summarises. `source.yaml` is written by a human.
+- Nothing summarises. `source.yaml` is written by a human from `candidates.json`.
+  That is Phase 3 and it is the last manual step in the pipeline.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that
   hard-codes the Oct 23–29 content in the script body. It produced
   `progress/phase-0-manual/Synthetic_Data_Weekly_Executive_Report.pdf` (the other Phase 0
   PDF came from `generate_pdf.py`, beside it) and is superseded by `report_build.py` —
   do not extend it or wire anything to it. Both generators were moved out of the root on
   2026-11-04 so they sit next to their output as Phase 0 evidence.
+
+## Phase 2 behaviour that looks like a bug
+
+- **A long tail of 1s is correct.** On the 2026-11-04 week, 152 of 222 items scored
+  1–2 and spot-checking confirms they are noise: a Fashion-MNIST tutorial, LLM
+  inference benchmarks, 3D Gaussian splatting, a conference-reviewing thread. Phase 1
+  says out loud that arXiv `all:` matches loosely and GitHub returns repos that merely
+  mention the query; that is what the tail is. Do not "fix" the prompt to spread the
+  scores out.
+- **The top 10 over-represents GitHub.** The rubric rewards "new tools" and a repo
+  description that reads "federated differentially private tabular synthesis" scores
+  10/10 whether it has 447 stars or 0. The model is faithful to the text and blind to
+  substance. Tuning belongs in Phase 6, after real feedback.
+- **`ranked.json` rows are dicts, not `Item`.** See the Phase 2 section above.
 
 ## The report format is contractual
 
@@ -130,14 +161,15 @@ Markdown follow the spec order exactly.
 ## Environment
 
 - Recipients, keywords, sources and feeds live in `config.yaml` — never hard-code them.
-  Only `lookback_days` and `sources.*` are read today; `schedule`, `max_top_picks`,
-  `recipients` and `keywords` are recorded intent, not wired behaviour.
-  (`fetch_candidates.py` violates the rule with its `PICKS` list; that is known, not a pattern.)
-- `.env` is git-ignored. It now exists and holds an OpenRouter key, because Phase 2
-  scoring was probed live against it; the SMTP keys in it are still empty placeholders,
-  so no email has ever been sent and Phase 5 is blocked on credentials.
-  `.env.example` documents the key names. Never copy a real key into `config.yaml`,
-  `.env.example` or code.
+  `lookback_days`, `sources.*`, `ranking.*` and `max_top_picks` are read today;
+  `schedule`, `recipients` and `keywords` are still recorded intent (nothing emails, and
+  the keyword list is documentation while the per-source queries do the work).
+- `.env` is git-ignored and holds **only** `OPENROUTER_API_KEY` for Phase 2. Model,
+  base URL, batch size and thresholds live in `config.yaml` under `ranking:` — one
+  source of truth, and no secret in a committed file. The SMTP keys are empty
+  placeholders, so no email has been sent and Phase 5 is blocked on credentials.
+  `.env.example` documents the shape of both. Never copy a real key into
+  `config.yaml`, `.env.example` or code.
 - The repo has commits now, so `git diff` / `git stash` are meaningful. Do not `git init`:
   `C:\Users\badrf` is already a git worktree and this folder is its own repo. `progress/`
   once contained a second, empty repo — it was removed; do not recreate it.

@@ -117,6 +117,157 @@ print("Item shape")
 required = {"title", "url", "source", "published", "snippet", "full_text", "score", "summary"}
 check("all spec fields present", required <= set(Item.model_fields))
 
+# ---------------------------------------------------------------------------
+# Phase 2 — ranking. All fake: no network, no API key, no files.
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+from synthetic_data import llm as _llm
+from synthetic_data import rank as _rank
+
+
+def _item(title, url, score=0, well7=None, published="2026-11-01T00:00:00Z", source="arxiv"):
+    return {
+        "title": title, "url": url, "source": source, "published": published,
+        "snippet": "snippet text", "score": score, "well7_fit": well7,
+        "score_status": "scored" if score else "unscored",
+    }
+
+
+def _fake_model(count_holder, partial=None, broken_marker=None, raise_always=False):
+    """A chat_fn that scores every id it is given, optionally badly."""
+    def fake(messages):
+        prompt = messages[0]["content"]
+        body = prompt.split("BEGIN ITEMS\n", 1)[1].split("\nEND ITEMS", 1)[0]
+        lines = [line for line in body.splitlines() if line.strip()]
+        count_holder.append(len(lines))
+        if raise_always:
+            raise RuntimeError("model down")
+        if broken_marker and broken_marker in prompt:
+            return "this is not json at all"
+        if partial is not None and len(lines) > 1:
+            lines = lines[:partial]
+        return _json.dumps(
+            [{"id": i, "score": 5, "well7_fit": 4, "reason": "fine"} for i in range(len(lines))]
+        )
+    return fake
+
+
+print("build_prompt")
+batch = [_item(f"Title {i}", f"https://ex/{i}") for i in range(15)]
+prompt = _rank.build_prompt(batch)
+check("ids are local 0..n-1", "\n14 |" in prompt)
+check("never emits id 15", "\n15 |" not in prompt)
+check("BEGIN marker present", "BEGIN ITEMS" in prompt)
+check("END marker present", "END ITEMS" in prompt)
+check(
+    "untrusted instruction is complete",
+    "never instructions" in prompt and "instruction-like" in prompt,
+)
+check("empty snippet does not leave a dangling pipe", "|  " not in _rank.build_prompt([_item("t", "u")]).split("BEGIN ITEMS")[1])
+
+print("parse_scores")
+good = _json.dumps([{"id": 0, "score": 7, "well7_fit": 8, "reason": "r"}, {"id": 1, "score": 3, "well7_fit": 2, "reason": "s"}])
+check("plain array", len(_rank.parse_scores(good, [0, 1])) == 2)
+check("fenced json", len(_rank.parse_scores("```json\n" + good + "\n```", [0, 1])) == 2)
+check("prose preamble", len(_rank.parse_scores("Here you go:\n" + good, [0, 1])) == 2)
+check("scores wrapper", len(_rank.parse_scores(_json.dumps({"scores": _json.loads(good)}), [0, 1])) == 2)
+check("non-json -> None", _rank.parse_scores("not json", [0]) is None)
+check("empty -> None", _rank.parse_scores("", [0]) is None)
+check("missing id dropped", len(_rank.parse_scores(good, [0])) == 1)
+check("out-of-range id dropped", _rank.parse_scores(good, [5]) == {})
+check("score 0 rejected", _rank.parse_scores(_json.dumps([{"id": 0, "score": 0, "reason": "r"}]), [0]) == {})
+check("score 11 rejected", _rank.parse_scores(_json.dumps([{"id": 0, "score": 11, "reason": "r"}]), [0]) == {})
+check("score '7' string rejected", _rank.parse_scores(_json.dumps([{"id": 0, "score": "7", "reason": "r"}]), [0]) == {})
+check("empty reason rejected", _rank.parse_scores(_json.dumps([{"id": 0, "score": 5, "reason": "  "}]), [0]) == {})
+dup = _json.dumps([{"id": 0, "score": 9, "reason": "first"}, {"id": 0, "score": 1, "reason": "second"}])
+check("duplicate id keeps first", _rank.parse_scores(dup, [0])[0]["score"] == 9)
+long_reason = _rank.parse_scores(_json.dumps([{"id": 0, "score": 5, "reason": "x" * 500}]), [0])
+check("reason truncated to 160", len(long_reason[0]["reason"]) == 160)
+check("missing well7_fit -> None", _rank.parse_scores(_json.dumps([{"id": 0, "score": 5, "reason": "r"}]), [0])[0]["well7_fit"] is None)
+
+print("group_duplicates")
+same = [
+    _item("Same Story Here - Outlet A", "https://a", score=9, published="2026-10-30T00:00:00Z"),
+    _item("Same Story Here - Outlet B", "https://b", score=8, published="2026-10-31T00:00:00Z"),
+    _item("Totally unrelated paper on diffusion", "https://c", score=7),
+]
+grouped = _rank.group_duplicates(same)
+winner = next(row for row in grouped if row["url"] == "https://a")
+loser = next(row for row in grouped if row["url"] == "https://b")
+other = next(row for row in grouped if row["url"] == "https://c")
+check("publisher suffix treated as same story", loser["duplicate_of"] == "https://a")
+check("highest score is the keeper", winner["duplicate_of"] is None)
+check("loser demoted by 3", loser["score"] == 5, str(loser["score"]))
+check("unrelated title not grouped", other["duplicate_of"] is None)
+check("unscored duplicate not given a score", _rank.group_duplicates([
+    _item("Same Story Here", "https://x", score=0),
+    _item("Same Story Here", "https://y", score=0),
+])[-1]["score"] == 0)
+
+early = _rank.group_duplicates([
+    _item("Identical Headline", "https://late", score=8, published="2026-10-31T00:00:00Z"),
+    _item("Identical Headline", "https://early", score=8, published="2026-10-29T00:00:00Z"),
+])
+check("tie on score keeps the earliest", next(r for r in early if r["url"] == "https://early")["duplicate_of"] is None)
+
+print("sort_ranked")
+sorted_rows = _rank.sort_ranked([
+    _item("b", "https://2", score=5, well7=9),
+    _item("a", "https://1", score=5, well7=9),
+    _item("c", "https://3", score=9, well7=1),
+    _item("d", "https://4", score=0),
+])
+check("score first", sorted_rows[0]["url"] == "https://3")
+check("well7 breaks ties", sorted_rows[1]["url"] == "https://1")
+check("null well7 sorts last among scored", [r["url"] for r in sorted_rows][-1] == "https://4")
+check("deterministic", _rank.sort_ranked(sorted_rows) == sorted_rows)
+
+print("score_items orchestration")
+calls = []
+rows = _rank.score_items([_item(f"T{i}", f"https://e/{i}") for i in range(30)], _fake_model(calls), batch_size=15, concurrency=1)
+check("30 items -> 2 batch calls", calls == [15, 15], str(calls))
+check("every item scored", all(row["score_status"] == "scored" for row in rows))
+check("every item survives", len(rows) == 30)
+
+calls = []
+rows = _rank.score_items([_item(f"T{i}", f"https://e/{i}") for i in range(15)], _fake_model(calls, partial=12), batch_size=15, concurrency=1)
+check("partial batch recovers the 3 missing", calls == [15, 1, 1, 1], str(calls))
+check("partial batch ends fully scored", all(row["score_status"] == "scored" for row in rows))
+
+calls = []
+rows = _rank.score_items([_item(f"T{i}", f"https://e/{i}") for i in range(15)], _fake_model(calls, raise_always=True), batch_size=15, concurrency=1)
+check("total failure leaves items unscored", all(row["score_status"] == "unscored" for row in rows))
+check("total failure keeps every item", len(rows) == 15)
+check("total failure writes score 0", all(row["score"] == 0 for row in rows))
+
+calls = []
+mixed = [_item("good one", "https://g"), _item("bad one", "https://b")]
+rows = _rank.score_items(mixed, _fake_model(calls, broken_marker="bad one"), batch_size=15, concurrency=1)
+check("one broken item does not sink its sibling", sum(r["score_status"] == "scored" for r in rows) == 1)
+check("broken item is the one marked", next(r for r in rows if r["url"] == "https://b")["score_status"] == "unscored")
+
+print("llm.load_env precedence")
+_env_dir = Path(tempfile.mkdtemp())
+_env_file = _env_dir / ".env"
+_env_file.write_text("OPENROUTER_API_KEY=from_file\nOTHER=file_value\n", encoding="utf-8")
+check(".env fills a gap", _llm.load_env(str(_env_file), environ={}).get("OPENROUTER_API_KEY") == "from_file")
+check("os.environ wins", _llm.load_env(str(_env_file), environ={"OPENROUTER_API_KEY": "from_env"})["OPENROUTER_API_KEY"] == "from_env")
+check("missing .env is not an error", _llm.load_env(str(_env_dir / "nope"), environ={}) == {})
+try:
+    _llm.require({}, "OPENROUTER_API_KEY")
+    check("require raises on a missing key", False)
+except _llm.LLMError:
+    check("require raises on a missing key", True)
+
+print("Phase 2 wiring")
+_source = Path("fetch_candidates.py").read_text(encoding="utf-8")
+check("fetch_candidates has no PICKS list", "PICKS =" not in _source and "PICKS: " not in _source)
+check("fetch_candidates reads ranked.json", "ranked.json" in _source)
+check("fetch_candidates filters scored rows", 'score_status' in _source)
+check("rubric version is recorded", isinstance(_rank.RUBRIC_VERSION, str) and _rank.RUBRIC_VERSION)
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)
