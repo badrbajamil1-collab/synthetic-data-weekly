@@ -51,5 +51,6 @@ if problems:
     print(f"\nFAIL - {len(problems)} problem(s):")
     for p in problems[:25]:
         print("  -", p)
+    raise SystemExit(1)
 else:
     print("\nPASS - all items inside the 7-day window, URLs well-formed, no duplicates.")

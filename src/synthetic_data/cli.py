@@ -46,8 +46,15 @@ def main(argv=None) -> int:
         default=None,
         help="limit to a source: arxiv, news, blog, reddit, hn, github (repeatable)",
     )
-    parser.add_argument("--limit", type=int, default=25, help="how many items to print")
-    parser.add_argument("--all", action="store_true", help="print every item")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="print at most N items (0 = every item, the default)",
+    )
+    parser.add_argument(
+        "--all", action="store_true", help="print every item (same as --limit 0)"
+    )
     parser.add_argument("--json", default="raw_items.json", help="output JSON path")
     parser.add_argument(
         "--no-save",
@@ -64,7 +71,10 @@ def main(argv=None) -> int:
     result = collect_all(config, only=only)
 
     print_summary(result)
-    print_items(result.items, limit=None if args.all else args.limit)
+    # The Phase 1 deliverable is "prints all raw items found this week", so the
+    # default is everything; --limit N is the opt-in cap.
+    limit = None if (args.all or args.limit <= 0) else args.limit
+    print_items(result.items, limit=limit)
 
     if not args.no_save:
         save_items(result.items, args.json)

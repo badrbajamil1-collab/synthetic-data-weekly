@@ -66,3 +66,17 @@ Phase 4 (LangGraph) is deliberately not on this list. The pipeline is six
 sequential functions with one shared result object; wrapping it in a graph adds a
 dependency and no behaviour today. Revisit it when there is a branch or retry that
 actually needs coordinating.
+
+## Known blemishes in Phase 0
+
+Both are recorded rather than quietly fixed, because the Phase 0 report is meant to
+be a historical artefact and editing it after the fact would fake the process.
+
+- **Six top picks, not seven.** The brief says "pick the top 7 items"; the manual
+  report carries 6 picks, 2 tools and 2 worth-a-look. That is inside the report
+  format's own 5–10 bound, so it does not fail the format check, but it is one short
+  of the brief's example.
+- **No record of the 3–5 introductory readings.** The brief starts Phase 0 with
+  "read 3 to 5 introductions to synthetic data". Nothing in the repo records which
+  five, or what each one contributed. Unlike the source list, this cannot be
+  reconstructed honestly after the fact; it needs the reader to supply the list.

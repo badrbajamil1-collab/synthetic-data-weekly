@@ -29,7 +29,7 @@ this folder is the evidence.
 
 | Phase | Name | State |
 |---|---|---|
-| 0 | Manual report + sources | **done** — manual report, 12 keywords, 18 sources in `docs/sources.md` |
+| 0 | Manual report + sources | **done**, with two blemishes — 6 picks instead of 7, no record of the intro readings (see `docs/one-page-note.md`) |
 | 1 | One collector per source | **done** — 6 collectors / 18 sources / 27 requests, 223 items, 0 errors |
 | 2 | Normalise, dedupe, score | half — URL normalisation, dedupe and `history.db` are live and tested; **no LLM scorer yet** |
 | 3 | Fetch, summarise, render | templates work and full text is fetched; summarising is still manual |

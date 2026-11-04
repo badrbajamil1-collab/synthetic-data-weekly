@@ -240,7 +240,7 @@ def print_items(items: List[Item], limit: Optional[int] = None) -> None:
         if item.snippet:
             print(f"      {item.snippet[:160]}...")
     if limit is not None and len(items) > limit:
-        print(f"\n... {len(items) - limit} more items not shown (use --all)")
+        print(f"\n... {len(items) - limit} more items not shown (use --limit 0 for every item)")
 
 
 def save_items(items: List[Item], path: str = "raw_items.json") -> None:

@@ -32,6 +32,14 @@ Run from the repo root. The venv has the package installed editable
 | Render report from curated content | `python report_build.py progress/week-<date>/source.yaml` |
 | Verify rendered artefacts (21 checks) | `python verify_report.py` |
 
+`main.py` prints **every** item by default — that is the Phase 1 deliverable, "a script
+that prints all raw items found this week". `--limit N` caps the print; `--all` is the
+same as `--limit 0`. Items already recorded in `history.db` are excluded from the print
+and counted in the summary as `already sent (history)`.
+
+`--source` takes collector names (`arxiv`, `news`, `blog`, `reddit`, `hn`, `github`),
+not the `config.yaml` keys.
+
 `python` is not on PATH on this machine — use `.venv\Scripts\python.exe` or `uv run python`.
 There is no pytest, linter, formatter, typecheck or CI. `selftest.py` + `verify_report.py`
 are the test suite; both exit non-zero on failure.

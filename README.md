@@ -55,6 +55,11 @@ uv run python main.py --source arxiv --limit 5 --no-save    # one source, nothin
 `github` — not the `config.yaml` keys (`google_news`, `blogs`, `hacker_news` would
 match nothing and exit 1).
 
+`main.py` prints every item by default, which is the Phase 1 deliverable: "a script
+that prints all raw items found this week". `--limit N` caps the print, and `--all`
+is the same as `--limit 0`. Items already in `history.db` are not printed — the
+summary counts them as `already sent (history)`.
+
 The weekly pipeline, in order:
 
 ```powershell
@@ -73,7 +78,7 @@ uv run python verify_report.py
 | `verify_report.py` | Checks the rendered report against the brief | exit code only |
 | `selftest.py` | Offline unit tests for parsing, dates, dedupe, history | exit code only |
 | `feed_health.py` | Checks all 13 blog feeds are alive | stdout |
-| `validate_phase1.py` | Validates window and dedupe in an existing `raw_items.json` | stdout |
+| `validate_phase1.py` | Validates window and dedupe in an existing `raw_items.json` | stdout + exit code |
 
 ## Configuration
 
