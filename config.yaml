@@ -28,6 +28,29 @@ ranking:
   duplicate_similarity: 0.80
   cache: true
 
+# Phase 3 — summarising. The model writes prose only; the section split is a
+# rule in summarise.py. `picks` is the target number of top picks and must stay
+# inside the format's 5-10 bound; tools and worth-a-look keep the format's 0-5
+# caps. The API key is still only OPENROUTER_API_KEY in .env.
+summarising:
+  model: "nvidia/nemotron-3-ultra-550b-a55b:free"
+  base_url: "https://openrouter.ai/api/v1"
+  temperature: 0.2
+  # 700 was too low: this model spends part of the budget on hidden reasoning
+  # and then emits truncated JSON, which parses as nothing and forces the
+  # extractive fallback. 2000 matches the ranking budget and was verified.
+  max_tokens: 2000
+  reasoning_effort: "low"
+  timeout_seconds: 180
+  max_attempts: 4
+  concurrency: 3
+  picks: 6
+  max_tools: 5
+  max_worth_a_look: 5
+  # Characters of full text sent per item. The Microsoft item has ~21k; the
+  # opening 6k is what a 2-3 sentence summary actually needs.
+  max_text_chars: 6000
+
 # Recipients from project requirements (Well7 team)
 recipients:
   - yasminemehrez890@gmail.com

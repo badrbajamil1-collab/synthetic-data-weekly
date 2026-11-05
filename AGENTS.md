@@ -1,9 +1,10 @@
 # AGENTS.md — Weekly Synthetic Data Research Agent
 
 Python 3.13 / uv, Windows + PowerShell 5.1. Collects 7 days of synthetic-data
-content and renders a weekly report. **Only the collection half is automated** —
-ranking, summarising and sending are still done by hand. Deliverables live in
-`progress/`; `progress/README.md` is the index of what has been produced.
+content and renders a weekly report. The **collect → clean → rank → report →
+render** chain now runs as a LangGraph state machine (`src/synthetic_data/graph.py`);
+**sending (email) is still not implemented**. Deliverables live in `progress/`;
+`progress/README.md` is the index of what has been produced.
 
 The unrelated work that used to sit in the repo root (a video/showcase recut
 experiment, a PII-blur/PDF-crop experiment, screenshots, a scratch notebook) was
@@ -38,6 +39,7 @@ Run from the repo root. The venv has the package installed editable
 | Full text of shortlist → `candidates.json` | `python fetch_candidates.py` |
 | Render report from curated content | `python report_build.py progress/week-<date>/source.yaml` |
 | Verify rendered artefacts (21 checks) | `python verify_report.py` |
+| Run the full weekly pipeline (LangGraph) | `python main.py --pipeline` |
 
 `main.py` prints **every** item by default — that is the Phase 1 deliverable, "a script
 that prints all raw items found this week". `--limit N` caps the print; `--all` is the
@@ -54,23 +56,39 @@ are the test suite; both exit non-zero on failure.
 ## Pipeline
 
 `main.py` → `cli.main` → `runner.collect_all` → the 6 collectors in `collectors.py`.
-**That is all `main.py` does** — no ranking, no summaries, no rendering, no email.
 
-The rest is separate scripts run by hand, in this order:
+- **Collect-only** (Phase 1): `python main.py` → `raw_items.json` + `raw_run_log.json`.
+- **Full weekly pipeline** (Phase 4): `python main.py --pipeline` →
+  `synthetic_data.graph.weekly_run` → LangGraph `collect -> clean -> rank -> report -> render`.
 
-```
-python main.py
-python rank_items.py                # LLM scores 1-10, writes ranked.json
-python fetch_candidates.py          # top 10 from ranked.json -> full text
-  → a human writes progress/week-<date>/source.yaml   ← the manual step
-python report_build.py progress/week-<date>/source.yaml
-python verify_report.py
-```
+`python rank_items.py` → `synthetic_data/rank.py` for logic, `synthetic_data/llm.py` for
+the only HTTP call to a model. Output is `ranked.json`; `score_cache.json` makes a
+rerun free and byte-identical.
+
+`write_report.py` → `synthetic_data/summarise.py` turns the ranked shortlist into the
+report dict that `report_build.py` renders. `fetch_candidates.py` fetches full text for
+the shortlist.
 
 `report_build.py` verifies every link, drops dead ones, then writes
 `report.md`, `report.html`, the PDF and `run_log.json` into `progress/week-<week_end>/`.
 `verify_report.py` defaults to the newest `progress/week-*/source.yaml`. The old
 top-level `reports/` directory no longer exists.
+
+### Phase 4 — the graph
+
+`src/synthetic_data/graph.py` builds the `StateGraph` over `AgentState` (a `TypedDict`,
+not a Pydantic model — LangGraph requires TypedDict). Nodes:
+
+- `collect` → `clean` → `rank` → `report` → `render` → `END`.
+
+Nodes never raise out of the graph; they record the error in state and return, so one
+failing source or one failing model call does not stop the report. Run it:
+
+```
+uv run python main.py --pipeline
+```
+
+The collect-only behaviour of `python main.py` is untouched and stays reproducible.
 
 ### Phase 2 — ranking
 
@@ -119,14 +137,14 @@ Three rules that are easy to break:
 - `report_build.py` exits **1 when it dropped dead links** — that is a successful render of
   a filtered report, not a crash.
 
-Genuinely dead, and fine to delete whenever: `models.AgentState` (imported nowhere,
-`langgraph` is not installed) and the `schedule` string in `config.yaml` (nothing reads
-it — no cron, task or workflow exists).
+Genuinely dead, and fine to delete whenever: the `schedule` string in `config.yaml`
+(nothing reads it — no cron, task or workflow exists yet).
 
 ## Not implemented, despite the file names
 
-- Nothing summarises. `source.yaml` is written by a human from `candidates.json`.
-  That is Phase 3 and it is the last manual step in the pipeline.
+- Sending (email) is not implemented. `report_build.py` records published URLs in
+  `history.db` (`--no-record` opts out for test renders); the SMTP + Gmail send step is
+  Phase 5.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that
   hard-codes the Oct 23–29 content in the script body. It produced
   `progress/phase-0-manual/Synthetic_Data_Weekly_Executive_Report.pdf` (the other Phase 0

@@ -61,6 +61,36 @@ def load_shortlist(path=RANKED, config_path="config.yaml"):
     return scored[:top_n]
 
 
+GITHUB_REPO = re.compile(r"^https?://github\.com/([^/\s]+)/([^/?#\s]+)/?$")
+
+
+def fetch_github_readme(url):
+    """README text for a repo root, or "" when this is not one / it fails.
+
+    A repo page rendered as HTML is mostly navigation: trafilatura returns
+    "GitHub - owner/repo: ... You signed in with another tab" for some repos,
+    which is useless as summary evidence. The API serves the README itself.
+    """
+    match = GITHUB_REPO.match(url or "")
+    if not match:
+        return ""
+    owner, repo = match.groups()
+    headers = dict(UA)
+    headers["Accept"] = "application/vnd.github.raw"
+    try:
+        response = httpx.get(
+            f"https://api.github.com/repos/{owner}/{repo}/readme",
+            headers=headers,
+            timeout=35.0,
+            follow_redirects=True,
+        )
+    except httpx.HTTPError:
+        return ""
+    if response.status_code != 200:
+        return ""
+    return response.text.strip()
+
+
 def fetch(record):
     resolved = resolve_google_news(record["url"])
     out = {
@@ -70,16 +100,30 @@ def fetch(record):
         "score": record.get("score"),
         "well7_fit": record.get("well7_fit"),
         "reason": record.get("reason", ""),
+        # Kept so write_report.py can still summarise an item whose page blocks
+        # fetching (Hacker News answers 419 to non-browser clients).
+        "snippet": record.get("snippet", ""),
         "feed_url": record.get("url", ""),
         "url": resolved,
         "normalized": normalize_url(resolved),
         "status": None,
+        "fetched_from": "none",
         "chars": 0,
         "text": "",
     }
+
+    readme = fetch_github_readme(resolved)
+    if readme:
+        out["status"] = 200
+        out["fetched_from"] = "github readme"
+        out["chars"] = len(readme)
+        out["text"] = re.sub(r"\n{3,}", "\n\n", readme)[:8000]
+        return out
+
     try:
         response = httpx.get(resolved, headers=UA, timeout=35.0, follow_redirects=True)
         out["status"] = response.status_code
+        out["fetched_from"] = "html"
         text = trafilatura.extract(response.text, include_comments=False) or ""
         out["chars"] = len(text)
         out["text"] = re.sub(r"\n{3,}", "\n\n", text)[:8000]

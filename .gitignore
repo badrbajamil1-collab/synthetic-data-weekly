@@ -8,6 +8,7 @@ raw_run_log.json
 history.db
 ranked.json
 score_cache.json
+summary_cache.json
 *.log
 
 # python

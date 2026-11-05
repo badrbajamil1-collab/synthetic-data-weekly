@@ -268,6 +268,203 @@ check("fetch_candidates reads ranked.json", "ranked.json" in _source)
 check("fetch_candidates filters scored rows", 'score_status' in _source)
 check("rubric version is recorded", isinstance(_rank.RUBRIC_VERSION, str) and _rank.RUBRIC_VERSION)
 
+# ---------------------------------------------------------------------------
+# Phase 3 — summarising. All fake: no network, no API key, no files.
+# ---------------------------------------------------------------------------
+
+import yaml as _yaml
+
+from synthetic_data import summarise as _sum
+
+
+def _cand(index, source="arxiv", day=4, score=None):
+    return {
+        "title": f"Item {index}",
+        "url": f"https://example.com/{index}",
+        "source": source,
+        "published": f"2026-11-{day:02d}T00:00:00Z",
+        "score": 100 - index if score is None else score,
+        "well7_fit": 5,
+        "text": f"Item {index} reports 223 tables. It uses 12 models. It finds a 0.54 correlation.",
+        "snippet": "",
+    }
+
+
+print("extract_numbers / unsupported_numbers")
+check("decimal kept", _sum.extract_numbers("r = 0.54") == {"0.54"}, str(_sum.extract_numbers("r = 0.54")))
+check("thousands separator normalised", _sum.extract_numbers("79,000 rows") == {"79000"}, str(_sum.extract_numbers("79,000 rows")))
+check("percent sign is not part of the token", _sum.extract_numbers("above 90%") == {"90"})
+check("suffix letter is not part of the token", _sum.extract_numbers("79M rows") == {"79"})
+check("no digits is an empty set", _sum.extract_numbers("no numbers here") == set())
+check("supported number passes", _sum.unsupported_numbers("uses 223 tables", "a dataset with 223 tables") == [])
+check("invented number is caught", _sum.unsupported_numbers("uses 300 tables", "a dataset with 223 tables") == ["300"])
+check("5 does not pass because 15 exists", _sum.unsupported_numbers("uses 5 tables", "uses 15 tables") == ["5"])
+check("comma form matches plain form", _sum.unsupported_numbers("1,000 rows", "1000 rows") == [])
+check("0.5 does not pass because 0.54 exists", _sum.unsupported_numbers("r = 0.5", "r = 0.54") == ["0.5"])
+
+print("extractive_summary")
+_multi = "First sentence is long enough to count. Second sentence follows it here. Third sentence is also here. Fourth is dropped."
+_extracted = _sum.extractive_summary(_multi)
+check("three sentences at most", _extracted.count(". ") == 2, _extracted)
+check("extractive text comes from the source", "Fourth" not in _extracted)
+check("empty text gives empty summary", _sum.extractive_summary("") == "")
+check("no punctuation still returns text", _sum.extractive_summary("a plain fragment with no full stop") == "a plain fragment with no full stop")
+
+print("clean_text")
+check("markdown heading removed", not _sum.clean_text("# CrossSynth").startswith("#"))
+check("bold markers removed", "**" not in _sum.clean_text("**bold** text"))
+check("link keeps its label", _sum.clean_text("[read this](https://x)") == "read this")
+check("underscore in a name survives", "seege_" in _sum.clean_text("library called seege_ here"))
+check("html tags removed", "<p>" not in _sum.clean_text("<p>hello</p>"))
+check("code fences removed", "pip install" not in _sum.clean_text("Text.\n```\npip install x\n```\nMore."))
+check("a heading line is dropped whole", "Installation" not in _sum.clean_text("# Installation\nRun this."))
+
+print("parse_summary")
+check("plain json object", _sum.parse_summary('{"summary": "hello"}') == "hello")
+check("fenced json", _sum.parse_summary('```json\n{"summary": "hello"}\n```') == "hello")
+check("prose preamble", _sum.parse_summary('Here:\n{"summary": "hello"}') == "hello")
+check("trend key", _sum.parse_summary('{"trend": "paragraph"}', key="trend") == "paragraph")
+check("single-object array", _sum.parse_summary('[{"summary": "hello"}]') == "hello")
+check("blank summary rejected", _sum.parse_summary('{"summary": "   "}') is None)
+check("non-json rejected", _sum.parse_summary("not json") is None)
+check("empty rejected", _sum.parse_summary("") is None)
+check("newlines collapse", _sum.parse_summary('{"summary": "a\\nb"}') == "a b")
+
+print("summarise_item")
+
+
+def _reply(text):
+    return lambda messages: _json.dumps({"summary": text})
+
+
+good = _sum.summarise_item(_cand(0), _reply("It reports 223 tables."))
+check("honest summary passes the guard", good["guard"] == "passed", str(good))
+check("origin records full text", good["origin"] == "full text")
+
+invented = _sum.summarise_item(_cand(0), _reply("It reports 900 tables."))
+check("invented number falls back to extractive", invented["guard"] == "extractive", str(invented))
+check("extractive fallback quotes the source", "223 tables" in invented["summary"], invented["summary"])
+
+_calls = []
+
+
+def _flaky(messages):
+    _calls.append(1)
+    if len(_calls) == 1:
+        return _json.dumps({"summary": "It reports 900 tables."})
+    return _json.dumps({"summary": "It reports 223 tables."})
+
+
+repaired = _sum.summarise_item(_cand(0), _flaky)
+check("bad first reply is repaired once", repaired["guard"] == "repaired", str(repaired))
+check("repair took exactly two calls", len(_calls) == 2, str(len(_calls)))
+
+_snippet = _cand(1, source="hn")
+_snippet["text"] = ""
+_snippet["snippet"] = "A fictional company with 223 tables."
+from_snippet = _sum.summarise_item(_snippet, _reply("It has 223 tables."))
+check("snippet is used when there is no text", from_snippet["origin"] == "snippet only", str(from_snippet))
+check("snippet summary says so", _sum._SNIPPET_MARK in from_snippet["summary"], from_snippet["summary"])
+
+_title_only = _cand(2)
+_title_only["text"] = ""
+_title_only["snippet"] = ""
+bare = _sum.summarise_item(_title_only, _reply("should never be called"))
+check("no text is disclosed as such", bare["guard"] == "skipped" and "No text" in bare["summary"], str(bare))
+
+
+def _always_down(messages):
+    raise RuntimeError("model down")
+
+
+down = _sum.summarise_item(_cand(3), _always_down)
+check("unreachable model still yields a summary", down["guard"] == "extractive" and bool(down["summary"]))
+check("failure reason is recorded", any("call failed" in item for item in down["detail"]), str(down["detail"]))
+
+print("compose_sections")
+_ten = [_cand(i, source="github" if i in (6, 7, 8) else "arxiv") for i in range(9)] + [
+    _cand(9, source="news")
+]
+_split = _sum.compose_sections(_ten, picks=6)
+check("six top picks", len(_split["top_picks"]) == 6, str(len(_split["top_picks"])))
+check("github items after the picks become tools", len(_split["tools"]) == 3, str(len(_split["tools"])))
+check("the news item becomes worth a look", len(_split["worth_a_look"]) == 1, str(len(_split["worth_a_look"])))
+check("nothing is lost when caps do not bind", len(_split["dropped"]) == 0, str(len(_split["dropped"])))
+check("week_end is the newest publication date", _split["week_end"] == _sum.published_date("2026-11-04"), str(_split["week_end"]))
+check("week_start is six days before week_end", _split["week_start"] == _sum.published_date("2026-10-29"), str(_split["week_start"]))
+
+_many = [_cand(i, source="github" if i % 2 == 0 else "arxiv") for i in range(20)]
+_capped = _sum.compose_sections(_many, picks=6, max_tools=5, max_worth=5)
+check("tools capped at five", len(_capped["tools"]) == 5, str(len(_capped["tools"])))
+check("worth a look capped at five", len(_capped["worth_a_look"]) == 5, str(len(_capped["worth_a_look"])))
+check("items beyond the caps are reported as dropped", len(_capped["dropped"]) == 4, str(len(_capped["dropped"])))
+
+_days = [_cand(i, day=i) for i in range(1, 11)]
+_dated = _sum.compose_sections(_days, picks=6, week_end=_sum.published_date("2026-11-10"))
+_pick_urls = {item["url"] for item in _dated["top_picks"]}
+check("an item older than the week is not a top pick", "https://example.com/1" not in _pick_urls)
+check("the old item survives in worth a look", any(i["url"] == "https://example.com/1" for i in _dated["worth_a_look"]))
+check("every pick is inside the week", all(
+    _dated["week_start"] <= _sum.published_date(item["published"]) <= _dated["week_end"]
+    for item in _dated["top_picks"]
+))
+
+try:
+    _sum.compose_sections([_cand(i) for i in range(3)])
+    check("too few items raises CompositionError", False)
+except _sum.CompositionError:
+    check("too few items raises CompositionError", True)
+
+print("source_label")
+check("github label", _sum.source_label({"source": "github", "url": "https://github.com/a/b"}) == "GitHub")
+check("arxiv label", _sum.source_label({"source": "arxiv", "url": "https://arxiv.org/abs/1"}) == "arXiv")
+check("news uses the publisher host", _sum.source_label({"source": "news", "url": "https://www.remio.ai/post/x"}) == "remio.ai")
+check("blog uses the publisher host", _sum.source_label({"source": "blog", "url": "https://openai.com/news/x"}) == "openai.com")
+
+print("dump_report")
+_report = {
+    "week_start": _sum.published_date("2026-10-29"),
+    "week_end": _sum.published_date("2026-11-04"),
+    "trend": 'A trend with a colon: "quotes" and an em dash — and 223 tables.',
+    "top_picks": [
+        {
+            "title": 'Title with "quotes": and a colon',
+            "url": "https://example.com/a",
+            "source": "arXiv",
+            "published": _sum.published_date("2026-11-04"),
+            "summary": "One sentence. Two sentences.",
+            "score": 9,
+            "well7_fit": 8,
+            "summary_origin": "full text",
+            "guard": "passed",
+        }
+    ],
+    "tools": [
+        {"name": "owner/repo", "url": "https://github.com/a/b", "note": "A note.", "score": 9}
+    ],
+    "worth_a_look": [],
+}
+_dumped = _sum.dump_report(_report, generated_at="2026-11-04T12:00:00+00:00")
+_loaded = _yaml.safe_load(_dumped)
+check("round-trips through YAML", _loaded["week_end"] == _sum.published_date("2026-11-04"), str(_loaded["week_end"]))
+check("quoted title survives", _loaded["top_picks"][0]["title"] == _report["top_picks"][0]["title"], _loaded["top_picks"][0]["title"])
+check("unicode survives", "—" in _loaded["trend"])
+check("summary survives", _loaded["top_picks"][0]["summary"] == "One sentence. Two sentences.")
+check("scores survive", _loaded["top_picks"][0]["score"] == 9 and _loaded["top_picks"][0]["well7_fit"] == 8)
+check("tools use name and note", _loaded["tools"][0]["name"] == "owner/repo" and _loaded["tools"][0]["note"] == "A note.")
+check("an empty section is omitted", "worth_a_look" not in _loaded)
+
+print("Phase 3 wiring")
+_write = Path("write_report.py").read_text(encoding="utf-8")
+_check = Path("report_build.py").read_text(encoding="utf-8")
+_config = _yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
+check("write_report reads candidates.json", "candidates.json" in _write)
+check("write_report has an offline mode", "--no-llm" in _write)
+check("report_build supports --no-record", "--no-record" in _check and "history_recorded" in _check)
+check("config has a summarising block", isinstance(_config.get("summarising"), dict))
+check("config picks stay inside the format bound", 5 <= int(_config["summarising"]["picks"]) <= 10)
+check("summary version is recorded", isinstance(_sum.SUMMARY_VERSION, str) and _sum.SUMMARY_VERSION)
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

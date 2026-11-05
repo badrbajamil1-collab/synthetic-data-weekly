@@ -1,11 +1,11 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, TypedDict
 from pydantic import BaseModel, Field
 
 class Item(BaseModel):
     title: str
     url: str
-    source: str  # "arxiv", "news", "reddit", "hn", "github", "blog"
+    source: str  # "arxiv", "news", "blog", "reddit", "hn", "github"
     published: datetime
     snippet: str = ""
     full_text: str = ""
@@ -13,9 +13,18 @@ class Item(BaseModel):
     reason: str = ""
     summary: str = ""
 
-class AgentState(BaseModel):
-    raw_items: List[Item] = Field(default_factory=list)
-    ranked_items: List[Item] = Field(default_factory=list)
-    report_html: str = ""
-    report_markdown: str = ""
-    errors: List[str] = Field(default_factory=list)
+class AgentState(TypedDict, total=False):
+    """The one shared state every Phase 4 node reads and writes.
+
+    LangGraph requires a TypedDict, not a Pydantic model - a Pydantic class
+    silently overwrote fields instead of merging channel updates.
+    """
+    raw_items: List[dict]
+    deduped_items: List[dict]
+    duplicates: int
+    ranked_items: List[dict]
+    shortlist: List[dict]
+    report: dict
+    report_html: str
+    report_markdown: str
+    errors: List[str]

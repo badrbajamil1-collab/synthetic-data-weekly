@@ -61,7 +61,27 @@ def main(argv=None) -> int:
         action="store_true",
         help="print only; do not write raw_items.json or the run log",
     )
+    parser.add_argument(
+        "--pipeline",
+        action="store_true",
+        help="run the full LangGraph weekly pipeline (collect -> clean -> rank -> "
+             "report -> render) instead of the collect-only print",
+    )
     args = parser.parse_args(argv)
+
+    if args.pipeline:
+        from synthetic_data import graph
+
+        state = graph.weekly_run(args.config)
+        errors = list(state.get("errors") or [])
+        print("\n=== PIPELINE RESULT ===")
+        print(f"  raw items : {len(state.get('raw_items') or [])}")
+        print(f"  ranked    : {len(state.get('ranked_items') or [])}")
+        print(f"  report    : {'yes' if state.get('report') else 'no'}")
+        print(f"  errors    : {len(errors)}")
+        for error in errors:
+            print(f"    ! {error}")
+        return 1 if errors else 0
 
     config = load_config(args.config)
     only = None

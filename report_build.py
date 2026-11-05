@@ -6,6 +6,7 @@ report. Failures are dropped and logged, not silently kept.
 Usage:
     python report_build.py progress/week-2026-11-01/source.yaml
     python report_build.py            # newest progress/week-*/source.yaml
+    python report_build.py ... --no-record   # test render, leave history.db alone
 
 Writes into progress/week-<week_end>/ so weeks never overwrite each other.
 """
@@ -74,7 +75,9 @@ def newest_report() -> str:
 
 
 def main(argv=None) -> int:
-    argv = argv or sys.argv[1:]
+    argv = list(argv if argv is not None else sys.argv[1:])
+    record = "--no-record" not in argv
+    argv = [argument for argument in argv if argument != "--no-record"]
     path = argv[0] if argv else newest_report()
     report = load_report(path)
 
@@ -109,11 +112,16 @@ def main(argv=None) -> int:
 
     # These URLs are now published. Record them so next week's run drops them
     # before ranking ever sees them (spec rule: no link in two different weeks).
+    # A test render passes --no-record so it cannot suppress items it never sent.
     published = render_all_links(report)
-    newly_recorded = memory.mark_sent(
-        [(link["url"], link["label"], "") for link in published]
-    )
-    print(f"Recorded {newly_recorded} new URL(s) in history.db")
+    if record:
+        newly_recorded = memory.mark_sent(
+            [(link["url"], link["label"], "") for link in published]
+        )
+        print(f"Recorded {newly_recorded} new URL(s) in history.db")
+    else:
+        newly_recorded = 0
+        print("--no-record: history.db untouched (test render)")
 
     raw = json.loads(Path("raw_items.json").read_text(encoding="utf-8"))
     collected = load_run_log()
@@ -132,6 +140,7 @@ def main(argv=None) -> int:
         "worth_a_look": len(report.get("worth_a_look", [])),
         "links_checked": len(results),
         "links_dead": len(dead),
+        "history_recorded": record,
         "urls_recorded": newly_recorded,
         "source_errors": source_errors(),
     }
