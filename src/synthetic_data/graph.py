@@ -1,8 +1,8 @@
 """Phase 4 - the weekly synthetic-data report as a LangGraph state machine.
 
-One shared ``AgentState`` flows through six nodes:
+One shared ``AgentState`` flows through seven nodes:
 
-    collect -> clean -> rank -> fetch -> report -> render -> END
+    collect -> clean -> rank -> fetch -> report -> render -> send -> END
 
 Nodes never raise out of the graph. A failing node records the error in the
 state and returns, so the chain keeps going - that is the brief's resilience
@@ -18,14 +18,15 @@ and print every raw item) so historical weeks stay reproducible.
 """
 
 import concurrent.futures
-from datetime import timedelta
+import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
 
 import fetch_candidates
-from synthetic_data import llm, rank, runner, summarise
+from synthetic_data import emailer, llm, rank, runner, summarise
 from synthetic_data.models import AgentState, Item
 from synthetic_data.rank import sort_ranked
 
@@ -39,23 +40,32 @@ DEFAULT_SUMMARISE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 
 _SETTINGS: Dict[str, Any] = {}
 _CHAT_FN: Optional[Callable[[List[dict]], str]] = None
+_CONFIG_PATH = "config.yaml"
+_DELIVERY: Dict[str, bool] = {"enabled": True, "dry_run": False}
 
 
 def configure(
     *,
     settings: Optional[Dict[str, Any]] = None,
     chat_fn: Optional[Callable[[List[dict]], str]] = None,
+    config_path: Optional[str] = None,
+    delivery: Optional[Dict[str, bool]] = None,
 ) -> None:
     """Set the config + chat function a weekly run should use.
 
     ``chat_fn`` exists so offline tests can inject a fake model and the real
-    run can bind the configured OpenRouter client.
+    run can bind the configured OpenRouter client. ``delivery`` controls the
+    send node: disabled for ``--no-email``, dry-run for ``--dry-run``.
     """
-    global _SETTINGS, _CHAT_FN
+    global _SETTINGS, _CHAT_FN, _CONFIG_PATH, _DELIVERY
     if settings is not None:
         _SETTINGS = settings
     if chat_fn is not None:
         _CHAT_FN = chat_fn
+    if config_path is not None:
+        _CONFIG_PATH = config_path
+    if delivery is not None:
+        _DELIVERY = {**_DELIVERY, **delivery}
 
 
 def _chat_for(section: str) -> Callable[[List[dict]], str]:
@@ -87,12 +97,34 @@ def _chat_for(section: str) -> Callable[[List[dict]], str]:
 
 
 def collect_node(state: AgentState, config) -> AgentState:
-    """Node 1 - gather this week's raw items from every source."""
+    """Node 1 - gather this week's raw items from every source.
+
+    History is applied here, before ranking, so a URL that already went out in
+    an earlier week never competes for a slot. The collector artefacts are
+    written to the same filenames as the Phase 1 CLI, which is what
+    ``report_build.py`` reads for its counts.
+    """
     errors = list(state.get("errors") or [])
     try:
-        result = runner.collect_all(_SETTINGS, use_history=False)
+        result = runner.collect_all(_SETTINGS, use_history=True)
+        runner.save_items(result.items)
+        payload = {
+            "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "counts": result.counts,
+            "found": result.found,
+            "duplicates": result.duplicates,
+            "already_sent": result.already_sent,
+            "kept": len(result.items),
+            "errors": result.errors,
+            "warnings": result.warnings,
+        }
+        Path("raw_run_log.json").write_text(
+            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         return {
             "raw_items": [item.model_dump(mode="json") for item in result.items],
+            "collect_counts": result.counts,
+            "already_sent": result.already_sent,
             "errors": [*errors, *result.errors],
         }
     except Exception as exc:  # noqa: BLE001 - a node failure is data, not a crash
@@ -189,6 +221,16 @@ def fetch_node(state: AgentState, config) -> AgentState:
         shortlist = sort_ranked(in_window)[:cap]
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             records = list(pool.map(_fetch_one, shortlist))
+        # Keep the Phase 3 artefact current: report_build.py reports how many
+        # candidates it read, and a stale file made that count lie.
+        Path("candidates.json").write_text(
+            json.dumps(
+                {record.get("url") or record.get("feed_url"): record for record in records},
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
         return {**state, "shortlist": records}
     except Exception as exc:  # noqa: BLE001
         return {
@@ -273,7 +315,7 @@ def report_node(state: AgentState, config) -> AgentState:
 
 
 def render_node(state: AgentState, config) -> AgentState:
-    """Node 5 - write source.yaml, render, verify, and record the sent URLs."""
+    """Node 6 - write source.yaml, render, verify, and load the email body."""
     errors = list(state.get("errors") or [])
     report = state.get("report") or {}
     if not report:
@@ -287,7 +329,10 @@ def render_node(state: AgentState, config) -> AgentState:
         source_path = Path("progress") / f"week-{report.get('week_end')}" / "source.yaml"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text(summarise.dump_report(report, generated_at=""), encoding="utf-8")
-        code = report_build_main([str(source_path)])
+        # --no-record: the send node records URLs only after a successful email.
+        # A render, a dry run or a failed SMTP attempt must not suppress next
+        # week's copy of the same link.
+        code = report_build_main([str(source_path), "--no-record"])
         if code != 0:
             errors.append(f"render: report_build exited {code}")
 
@@ -311,8 +356,35 @@ def render_node(state: AgentState, config) -> AgentState:
         return {**state, "errors": [*errors, f"render: {type(exc).__name__}: {exc}"]}
 
 
+def send_node(state: AgentState, config) -> AgentState:
+    """Node 7 - email the rendered report, or write ``email.eml`` in dry-run.
+
+    This is the only place that records URLs in ``history.db``. If SMTP fails,
+    the links stay unrecorded so the next run can still offer them.
+    """
+    errors = list(state.get("errors") or [])
+    if not _DELIVERY.get("enabled", True):
+        return state
+
+    report = state.get("report") or {}
+    if not report:
+        return {**state, "errors": [*errors, "send: no report to email"]}
+
+    source_path = Path("progress") / f"week-{report.get('week_end')}" / "source.yaml"
+    try:
+        summary = emailer.deliver(
+            str(source_path),
+            _CONFIG_PATH,
+            dry_run=bool(_DELIVERY.get("dry_run")),
+            record=True,
+        )
+        return {**state, "email": summary}
+    except Exception as exc:  # noqa: BLE001 - the report exists even if email fails
+        return {**state, "errors": [*errors, f"send: {type(exc).__name__}: {exc}"]}
+
+
 def build_weekly_graph():
-    """collect -> clean -> rank -> fetch -> report -> render."""
+    """collect -> clean -> rank -> fetch -> report -> render -> send."""
     graph = StateGraph(AgentState)
     graph.add_node("collect", collect_node)
     graph.add_node("clean", clean_node)
@@ -320,20 +392,36 @@ def build_weekly_graph():
     graph.add_node("fetch", fetch_node)
     graph.add_node("report", report_node)
     graph.add_node("render", render_node)
+    graph.add_node("send", send_node)
     graph.add_edge(START, "collect")
     graph.add_edge("collect", "clean")
     graph.add_edge("clean", "rank")
     graph.add_edge("rank", "fetch")
     graph.add_edge("fetch", "report")
     graph.add_edge("report", "render")
-    graph.add_edge("render", END)
+    graph.add_edge("render", "send")
+    graph.add_edge("send", END)
     return graph.compile()
 
 
-def weekly_run(config_path: str = "config.yaml") -> AgentState:
-    """Run the whole weekly pipeline and return the final state."""
+def weekly_run(
+    config_path: str = "config.yaml",
+    *,
+    dry_run: bool = False,
+    send: bool = True,
+) -> AgentState:
+    """Run the whole weekly pipeline and return the final state.
+
+    ``dry_run`` writes the email as ``email.eml`` instead of sending it;
+    ``send=False`` stops after rendering. Neither records history.
+    """
     global _SETTINGS
     _SETTINGS = runner.load_config(config_path)
+    configure(
+        settings=_SETTINGS,
+        config_path=config_path,
+        delivery={"enabled": bool(send), "dry_run": bool(dry_run)},
+    )
     graph = build_weekly_graph()
     return graph.invoke(
         {"errors": []},

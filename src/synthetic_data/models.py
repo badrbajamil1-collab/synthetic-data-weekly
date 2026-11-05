@@ -22,9 +22,12 @@ class AgentState(TypedDict, total=False):
     raw_items: List[dict]
     deduped_items: List[dict]
     duplicates: int
+    collect_counts: dict
+    already_sent: int
     ranked_items: List[dict]
     shortlist: List[dict]
     report: dict
     report_html: str
     report_markdown: str
+    email: dict
     errors: List[str]

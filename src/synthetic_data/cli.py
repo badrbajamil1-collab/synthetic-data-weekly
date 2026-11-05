@@ -65,19 +65,41 @@ def main(argv=None) -> int:
         "--pipeline",
         action="store_true",
         help="run the full LangGraph weekly pipeline (collect -> clean -> rank -> "
-             "report -> render) instead of the collect-only print",
+             "fetch -> report -> render -> send) instead of the collect-only print",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --pipeline: write progress/week-<date>/email.eml instead of "
+             "sending; history.db is left untouched",
+    )
+    parser.add_argument(
+        "--no-email",
+        action="store_true",
+        help="with --pipeline: stop after rendering; do not compose or send email",
     )
     args = parser.parse_args(argv)
 
     if args.pipeline:
         from synthetic_data import graph
 
-        state = graph.weekly_run(args.config)
+        state = graph.weekly_run(
+            args.config, dry_run=args.dry_run, send=not args.no_email
+        )
         errors = list(state.get("errors") or [])
         print("\n=== PIPELINE RESULT ===")
         print(f"  raw items : {len(state.get('raw_items') or [])}")
         print(f"  ranked    : {len(state.get('ranked_items') or [])}")
         print(f"  report    : {'yes' if state.get('report') else 'no'}")
+        email = state.get("email") or {}
+        if args.no_email:
+            print("  email     : skipped (--no-email)")
+        elif email.get("dry_run"):
+            print(f"  email     : dry run -> {email.get('path')}")
+        elif email.get("sent"):
+            print(f"  email     : sent to {len(email.get('recipients') or [])} recipient(s)")
+        else:
+            print("  email     : not sent")
         print(f"  errors    : {len(errors)}")
         for error in errors:
             print(f"    ! {error}")

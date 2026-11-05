@@ -465,6 +465,220 @@ check("scores survive", _loaded["top_picks"][0]["score"] == 9 and _loaded["top_p
 check("tools use name and note", _loaded["tools"][0]["name"] == "owner/repo" and _loaded["tools"][0]["note"] == "A note.")
 check("an empty section is omitted", "worth_a_look" not in _loaded)
 
+print("emailer")
+from synthetic_data import emailer as _mail
+
+_mail_report = {
+    "week_start": _sum.published_date("2026-10-26"),
+    "week_end": _sum.published_date("2026-11-01"),
+    "trend": "A trend sentence. Another one.",
+    "top_picks": [
+        {
+            "title": "A pick",
+            "url": "https://example.com/pick",
+            "source": "arXiv",
+            "published": _sum.published_date("2026-10-30"),
+            "summary": "One sentence. Two sentences.",
+        }
+    ],
+    "tools": [],
+    "worth_a_look": [],
+}
+
+with tempfile.TemporaryDirectory() as _tmp:
+    _out = Path(_tmp)
+    (_out / "report.md").write_text("plain body", encoding="utf-8")
+    (_out / "report.html").write_text("<html><body>html body</body></html>", encoding="utf-8")
+    (_out / "Synthetic_Data_Weekly_2026-11-01.pdf").write_bytes(b"%PDF-1.4 fake pdf")
+
+    _msg = _mail.compose(
+        _mail_report,
+        _out,
+        recipients=["a@example.com", "b@example.com"],
+        sender="Weekly <weekly@example.com>",
+    )
+    check(
+        "subject comes from the report",
+        _msg["Subject"] == "Synthetic Data Weekly — Week of 26 Oct – 1 Nov 2026",
+        str(_msg["Subject"]),
+    )
+    check("recipients are the configured ones", _msg["To"] == "a@example.com, b@example.com", str(_msg["To"]))
+    check("sender is the configured From", "weekly@example.com" in _msg["From"], str(_msg["From"]))
+    check("message has a Message-ID", bool(_msg["Message-ID"]))
+    check("message is multipart/mixed", _msg.get_content_type() == "multipart/mixed", _msg.get_content_type())
+    _alternative = _msg.get_payload(0)
+    check(
+        "body is multipart/alternative",
+        _alternative.get_content_type() == "multipart/alternative",
+        _alternative.get_content_type(),
+    )
+    _types = [part.get_content_type() for part in _alternative.get_payload()]
+    check("plain text then html", _types == ["text/plain", "text/html"], str(_types))
+    check("plain text body is present", "plain body" in _msg.get_body(("plain",)).get_content())
+    check("html body is present", "html body" in _msg.get_body(("html",)).get_content())
+    _attachments = list(_msg.iter_attachments())
+    check("pdf attached", len(_attachments) == 1, str(len(_attachments)))
+    check(
+        "attachment is the report pdf",
+        _attachments[0].get_content_type() == "application/pdf"
+        and _attachments[0].get_filename() == "Synthetic_Data_Weekly_2026-11-01.pdf",
+        str(_attachments[0].get_filename()),
+    )
+
+    _eml = _mail.write_eml(_msg, _out / "email.eml")
+    check("eml is written", _eml.exists() and _eml.stat().st_size > 0)
+
+    check(
+        "recipients default to config",
+        _mail.resolve_recipients({"recipients": ["x@example.com"]}, {}, test=False, to=None)
+        == ["x@example.com"],
+    )
+    check(
+        "an explicit recipient overrides config",
+        _mail.resolve_recipients({"recipients": ["x@example.com"]}, {}, test=False, to=["y@example.com"])
+        == ["y@example.com"],
+    )
+    check(
+        "a test send uses DRY_RUN_RECIPIENT",
+        _mail.resolve_recipients(
+            {"recipients": ["x@example.com"]}, {"DRY_RUN_RECIPIENT": "me@example.com"}, test=True, to=None
+        )
+        == ["me@example.com"],
+    )
+    try:
+        _mail.resolve_recipients({"recipients": []}, {}, test=False, to=None)
+    except _mail.EmailError as _exc:
+        check("no recipients is a clear error", "recipient" in str(_exc).lower(), str(_exc))
+    else:
+        check("no recipients is a clear error", False, "no exception")
+
+    try:
+        _mail.smtp_settings({"SMTP_HOST": "smtp.example.com", "SMTP_PORT": "587"})
+    except _mail.EmailError as _exc:
+        check("missing credential is a clear error", "SMTP_USER" in str(_exc), str(_exc))
+    else:
+        check("missing credential is a clear error", False, "no exception")
+
+    _settings = _mail.smtp_settings(
+        {
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "587",
+            "SMTP_USER": "me@example.com",
+            "SMTP_PASSWORD": "secret",
+            "MAIL_FROM": "Weekly <weekly@example.com>",
+        }
+    )
+    check("smtp port is an integer", _settings["port"] == 587, str(_settings["port"]))
+    check("smtp sender is mail-from", _settings["sender"] == "Weekly <weekly@example.com>", _settings["sender"])
+
+    _sent = {}
+
+    class _FakeSMTP:
+        def __init__(self):
+            self.logged = None
+            self.sent = None
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def ehlo(self):
+            pass
+
+        def starttls(self, context=None):
+            self.started_tls = True
+
+        def login(self, user, password):
+            self.logged = (user, password)
+
+        def send_message(self, message):
+            self.sent = message
+
+    def _fake_factory(host, port, timeout, ssl=False):
+        _sent["host"] = host
+        _sent["port"] = port
+        _sent["ssl"] = ssl
+        _sent["smtp"] = _FakeSMTP()
+        return _sent["smtp"]
+
+    _mail.send_message(_msg, _settings, smtp_factory=_fake_factory)
+    check("smtp host used", _sent["host"] == "smtp.example.com", str(_sent["host"]))
+    check("starttls used on port 587", _sent["ssl"] is False)
+    check("smtp login used", _sent["smtp"].logged == ("me@example.com", "secret"), str(_sent["smtp"].logged))
+    check("smtp received the message", _sent["smtp"].sent is _msg)
+
+    _smtp_cfg = _out / "config.yaml"
+    _smtp_cfg.write_text("recipients:\n  - a@example.com\n", encoding="utf-8")
+    _report_yaml = _out / "source.yaml"
+    _report_yaml.write_text(_yaml.safe_dump(_mail_report), encoding="utf-8")
+    _history = _out / "history.db"
+    _sent.clear()
+
+    _summary = _mail.deliver(
+        str(_report_yaml),
+        str(_smtp_cfg),
+        dry_run=True,
+        db_path=str(_history),
+        env={"MAIL_FROM": "Weekly <weekly@example.com>"},
+        smtp_factory=_fake_factory,
+    )
+    check("dry run writes an eml", _summary["dry_run"] and Path(_summary["path"]).exists(), str(_summary))
+    check("dry run sends nothing", _sent.get("smtp") is None, str(_sent))
+    check("dry run records no history", not _history.exists())
+
+    _mail.deliver(
+        str(_report_yaml),
+        str(_smtp_cfg),
+        dry_run=False,
+        db_path=str(_history),
+        env={
+            "SMTP_HOST": "smtp.example.com",
+            "SMTP_PORT": "587",
+            "SMTP_USER": "me@example.com",
+            "SMTP_PASSWORD": "secret",
+            "MAIL_FROM": "Weekly <weekly@example.com>",
+        },
+        smtp_factory=_fake_factory,
+    )
+    import sqlite3 as _sqlite3
+
+    _conn = _sqlite3.connect(_history)
+    try:
+        _recorded = {row[0] for row in _conn.execute("SELECT url FROM sent_urls")}
+    finally:
+        _conn.close()
+    check("a real send records the links", "https://example.com/pick" in _recorded, str(_recorded))
+
+print("schedule_task")
+import schedule_task as _sched
+
+check("Saturday maps to SAT", _sched.parse_schedule("Saturday 08:00") == ("SAT", "08:00"))
+check("lower case is accepted", _sched.parse_schedule("saturday 08:00") == ("SAT", "08:00"))
+try:
+    _sched.parse_schedule("Funday 08:00")
+except ValueError as _exc:
+    check("an unknown day is rejected", "Funday" in str(_exc), str(_exc))
+else:
+    check("an unknown day is rejected", False, "no exception")
+try:
+    _sched.parse_schedule("Saturday 25:00")
+except ValueError as _exc:
+    check("an invalid time is rejected", "25:00" in str(_exc), str(_exc))
+else:
+    check("an invalid time is rejected", False, "no exception")
+
+_task_cmd = _sched.build_create_command(Path(r"C:\Users\badrf\Desktop\Work\synthetic data"), "Saturday 08:00")
+check("task is weekly", _task_cmd[_task_cmd.index("/SC") + 1] == "WEEKLY", str(_task_cmd))
+check("task runs on Saturday", _task_cmd[_task_cmd.index("/D") + 1] == "SAT", str(_task_cmd))
+check("task runs at the configured time", _task_cmd[_task_cmd.index("/ST") + 1] == "08:00", str(_task_cmd))
+check(
+    "task calls the weekly runner",
+    "run_weekly.ps1" in _task_cmd[_task_cmd.index("/TR") + 1],
+    _task_cmd[_task_cmd.index("/TR") + 1],
+)
+
 print("Phase 3 wiring")
 _write = Path("write_report.py").read_text(encoding="utf-8")
 _check = Path("report_build.py").read_text(encoding="utf-8")
@@ -475,6 +689,28 @@ check("report_build supports --no-record", "--no-record" in _check and "history_
 check("config has a summarising block", isinstance(_config.get("summarising"), dict))
 check("config picks stay inside the format bound", 5 <= int(_config["summarising"]["picks"]) <= 10)
 check("summary version is recorded", isinstance(_sum.SUMMARY_VERSION, str) and _sum.SUMMARY_VERSION)
+
+print("Phase 5 wiring")
+_send_src = Path("send_report.py").read_text(encoding="utf-8")
+_graph_src = Path("src/synthetic_data/graph.py").read_text(encoding="utf-8")
+_cli_src = Path("src/synthetic_data/cli.py").read_text(encoding="utf-8")
+check("send_report has a dry run", "--dry-run" in _send_src)
+check("send_report has a test send", "--test" in _send_src)
+check("graph has a send node", 'add_node("send"' in _graph_src)
+check("graph sends after render", 'add_edge("render", "send")' in _graph_src)
+check("graph renders without recording history", '"--no-record"' in _graph_src)
+check("graph collects with history", "use_history=True" in _graph_src)
+check("cli exposes --dry-run and --no-email", "--dry-run" in _cli_src and "--no-email" in _cli_src)
+check(
+    "config schedule parses",
+    _sched.parse_schedule(_config.get("schedule", ""))[0] == "SAT",
+    str(_config.get("schedule")),
+)
+check(
+    "smtp credentials are documented, not hard-coded",
+    "SMTP_PASSWORD" in Path(".env.example").read_text(encoding="utf-8")
+    and "SMTP_PASSWORD=" not in Path("config.yaml").read_text(encoding="utf-8"),
+)
 
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")

@@ -13,6 +13,7 @@ this folder is the evidence.
 | `phase-0-manual/` | The hand-written report that proved the format works, plus the executive version | 0 |
 | `phase-2-ranking/` | The ranked list: all 222 items scored, frozen with its score cache | 2 |
 | `week-2026-11-01/` | First real week, end to end: source YAML → Markdown, HTML, PDF, run log | 1 + 3 |
+| `week-2026-11-05/` | First fully automatic week: 214 items → 6 picks, 1 tool, 3 worth a look; dry-run email | 4 + 5 |
 | `review/` | Build review page (progress + flow diagram + code verdict) and PDF page renders. The page is a 1 Nov snapshot; a banner on it lists what changed on 4 Nov. | — |
 
 ### `week-2026-11-01/`
@@ -24,6 +25,18 @@ this folder is the evidence.
 | `report.html` | Same content, rendered |
 | `Synthetic_Data_Weekly_2026-11-01.pdf` | Three-page PDF, glossary first |
 | `run_log.json` | 223 found → 222 kept (1 already sent) → 20 read → 17 links → 0 dead |
+
+### `week-2026-11-05/`
+
+| File | What it is |
+|---|---|
+| `source.yaml` | The automatic content: trend, 6 picks, 1 tool, 3 worth-a-look |
+| `report.md` | The email body, spec format |
+| `report.html` | Same content, rendered |
+| `Synthetic_Data_Weekly_2026-11-05.pdf` | Three-page PDF, glossary first |
+| `email.eml` | Dry-run message: HTML body + plain text + PDF attachment, never sent |
+| `run_log.json` | 219 found → 214 kept (5 already sent) → 10 read → 10 links → 0 dead |
+
 ---
 
 ## Status
@@ -33,14 +46,15 @@ this folder is the evidence.
 | 0 | Manual report + sources | **done**, with two blemishes — 6 picks instead of 7, no record of the intro readings (see `docs/one-page-note.md`) |
 | 1 | One collector per source | **done** — 6 collectors / 18 sources / 27 requests, 223 items, 0 errors |
 | 2 | Normalise, dedupe, score | **done** — 222/222 scored, 15 calls, 4 duplicate stories collapsed; evidence in `phase-2-ranking/` |
-| 3 | Fetch, summarise, render | half — templates work and full text is fetched; summarising is still manual |
-| 4 | LangGraph pipeline | skipped on purpose — see `docs/one-page-note.md` |
-| 5 | Dry-run, schedule, email | not started — no SMTP credentials |
-| 6 | Two unattended Saturdays | blocked on 3 and 5 |
+| 3 | Fetch, summarise, render | **done** — summaries written from fetched text, with a number guard and extractive fallback |
+| 4 | LangGraph pipeline | **done** — `collect → clean → rank → fetch → report → render → send`, one shared state |
+| 5 | Dry-run, schedule, email | **implemented and dry-run verified**; real test send blocked on SMTP credentials |
+| 6 | Two unattended Saturdays | blocked on the Phase 5 test send |
 
-The honest summary: **collection and ranking are real, the writing is still me.**
-`main.py` collects and `rank_items.py` ranks, but nothing summarises the shortlist —
-`source.yaml` is still written by hand from `candidates.json`.
+The honest summary: **collection, ranking, writing, rendering and email composition are
+automatic.** `python main.py --pipeline --dry-run` produced the week of 5 Nov and wrote
+`email.eml`; the only missing link is a real SMTP send, because `.env` has no credentials
+yet. The Saturday task is registered.
 
 The close-out work that made Phase 0–1 defensible is in git history: the baseline
 commit, then `fix: make dedupe, history and run-log counts real`, then the docs
@@ -63,11 +77,9 @@ Or run `view.bat` in this folder to serve it at
 From the project root:
 
 ```
-uv run python main.py                      # collect → raw_items.json + raw_run_log.json
-uv run python rank_items.py                # rank → ranked.json (cached reruns are free)
-uv run python fetch_candidates.py          # top 10 → candidates.json
-uv run python report_build.py progress/week-2026-11-01/source.yaml
-uv run python verify_report.py             # 21 checks against the files on disk
+uv run python main.py --pipeline --dry-run  # collect → rank → fetch → report → render → email.eml
+uv run python main.py --pipeline            # same, then a real SMTP send
+uv run python verify_report.py              # 22 checks against the files on disk
 ```
 
 `report_build.py` writes into `progress/week-<week_end>/`, so weekly reports never

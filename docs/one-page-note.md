@@ -82,34 +82,31 @@ judged against a real week of feedback rather than guessed at now.
 
 ## What does not work yet
 
-- **No summaries.** Full text is fetched into `candidates.json`, but the prose is
-  still written by hand from it.
-- **No email.** No SMTP credentials exist, so no report has ever been sent. The
-  send path is unwritten, not merely untested.
-- **No schedule.** `schedule: "Saturday 08:00"` in `config.yaml` is documentation;
-  no cron, Windows task or workflow file reads it.
+- **No real email has been sent.** The send path exists and `--dry-run` writes the exact
+  message (HTML body, plain-text alternative, PDF attachment), but `.env` still has no
+  SMTP credentials, so a real send is untested.
+- **The scheduled task is interactive-only.** It runs as the current user when signed
+  in, with no stored password; it will not fire while the machine is signed out.
 - **The ranker cannot judge substance**, per the comparison above.
 
 ## Three next steps
 
-1. **Summarise from evidence only (finishes Phase 3).** Generate the 2–3 line
-   summaries and the trend-of-the-week from `candidates.json` full text with an
-   explicit "summarise only from this text, never invent facts, numbers or authors"
-   instruction, then hand the result to `report_build.py` instead of a human
-   writing `source.yaml`. That is the point where one command produces a report.
-2. **Send it, then schedule it (Phase 5).** SMTP send with `--dry-run` defaulting
-   to a single address, recipients read from `config.yaml`, then a Saturday 08:00
-   trigger. Only after a correct dry-run email exists does a workflow file make
-   sense; a cron that cannot send is theatre.
-3. **Tune the ranking on real feedback (Phase 6).** Decide whether GitHub repos
-   should be discounted by stars, whether the top 10 must contain at least one
-   paper, and whether the 1–2 band is too wide. Do this after two real weeks, not
-   from one run.
+1. **Fill the SMTP set and prove receipt (finishes Phase 5).** Add `SMTP_HOST`,
+   `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` to `.env`, then run
+   `python send_report.py --test`. The test send goes only to `DRY_RUN_RECIPIENT` and
+   records no history. Check the HTML body renders in the mail client and the PDF
+   attachment opens.
+2. **Run two real Saturdays unattended (Phase 6).** The `SyntheticDataWeekly` task is
+   registered for Saturday 08:00. Watch `logs/weekly.log`, `run_log.json` and the
+   recipients' replies; do not tune anything from a single week.
+3. **Tune the ranking on that feedback (Phase 6).** Decide whether GitHub repos should
+   be discounted by stars, whether the top 10 must contain at least one paper, and
+   whether the 1–2 band is too wide.
 
-Phase 4 (LangGraph) is deliberately not on this list. The pipeline is seven
-sequential functions with one shared result object; wrapping it in a graph adds a
-dependency and no behaviour today. Revisit it when there is a branch or retry that
-actually needs coordinating.
+Phase 4 is no longer deferred: the pipeline is a LangGraph state machine
+(`collect → clean → rank → fetch → report → render → send`) over one shared
+`AgentState`. The graph is what makes "one source fails, the report still goes out"
+structural rather than a pile of try/excepts.
 
 ## Known blemishes in Phase 0
 

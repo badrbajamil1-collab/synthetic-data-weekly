@@ -123,7 +123,8 @@ def main(argv=None) -> int:
         newly_recorded = 0
         print("--no-record: history.db untouched (test render)")
 
-    raw = json.loads(Path("raw_items.json").read_text(encoding="utf-8"))
+    raw_path = Path("raw_items.json")
+    raw = json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.exists() else []
     collected = load_run_log()
     candidates = Path("candidates.json")
     counts = {

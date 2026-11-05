@@ -1,4 +1,4 @@
-schedule: "Saturday 08:00"
+schedule: "Saturday 08:00"  # read by schedule_task.py (Windows Task Scheduler)
 lookback_days: 7
 max_top_picks: 10
 

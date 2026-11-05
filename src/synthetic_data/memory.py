@@ -11,6 +11,7 @@ The database path is a parameter everywhere so tests can use a temp file.
 """
 
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
@@ -27,7 +28,7 @@ def _key(url: str) -> str:
 
 def init_db(db_path: str = DB_PATH) -> None:
     """Creates the URLs table if it does not already exist."""
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS sent_urls (
@@ -46,7 +47,7 @@ def filter_seen_urls(items: List[Item], db_path: str = DB_PATH) -> List[Item]:
     if not Path(db_path).exists():
         return list(items)
 
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT url FROM sent_urls")
         seen_urls = {row[0] for row in cursor.fetchall()}
@@ -60,7 +61,7 @@ def mark_sent(records: Iterable[Sequence[str]], db_path: str = DB_PATH) -> int:
     rows = [(_key(url), title, source) for url, title, source in records]
     if not rows:
         return 0
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn:
         before = conn.total_changes
         conn.executemany(
             """

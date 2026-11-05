@@ -1,0 +1,34 @@
+{
+  "run_at": "2026-11-05T07:30:30+00:00",
+  "items_found": 219,
+  "items_after_dedupe": 214,
+  "duplicates_removed": 0,
+  "already_sent": 5,
+  "candidates_read": 10,
+  "top_picks": 6,
+  "tools": 1,
+  "worth_a_look": 3,
+  "links_checked": 10,
+  "links_dead": 0,
+  "history_recorded": false,
+  "urls_recorded": 0,
+  "source_errors": [],
+  "email": {
+    "subject": "Synthetic Data Weekly — Week of 30 Oct – 5 Nov 2026",
+    "recipients": [
+      "yasminemehrez890@gmail.com",
+      "lailabashmal@gmail.com",
+      "sbashmal@awqef.sa",
+      "mohammed.abdo@awqef.sa",
+      "umairafzal92786@gmail.com"
+    ],
+    "message_id": "<179386383095.18000.9588235756653277837@BadrRealLove>",
+    "dry_run": true,
+    "test": false,
+    "sent": false,
+    "sent_at": "2026-11-05T07:30:31+00:00",
+    "pdf_attached": true,
+    "urls_recorded": 0,
+    "path": "progress\\week-2026-11-05\\email.eml"
+  }
+}

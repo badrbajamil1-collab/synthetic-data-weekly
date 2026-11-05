@@ -63,22 +63,34 @@ summary counts them as `already sent (history)`.
 The weekly pipeline, in order:
 
 ```powershell
+uv run python main.py --pipeline        # collect → clean → rank → fetch → report → render → send
+uv run python main.py --pipeline --dry-run   # same, but write email.eml instead of sending
+uv run python verify_report.py          # check the rendered artefacts
+```
+
+The individual steps are still runnable by hand:
+
+```powershell
 uv run python main.py
 uv run python rank_items.py              # LLM scores 1-10 → ranked.json
 uv run python fetch_candidates.py        # top 10 from ranked.json → candidates.json
-#   → a human writes progress/week-<week_end>/source.yaml  ← the manual step
-uv run python report_build.py progress/week-2026-11-01/source.yaml
+uv run python write_report.py            # summaries + sections → source.yaml
+uv run python report_build.py progress/week-2026-11-05/source.yaml
+uv run python send_report.py progress/week-2026-11-05/source.yaml --dry-run
 uv run python verify_report.py
 ```
 
 | Script | What it does | Writes |
 |---|---|---|
-| `main.py` | Collects, normalises, dedupes, drops already-published URLs | `raw_items.json`, `raw_run_log.json` |
+| `main.py` | Collects, normalises, dedupes, drops already-published URLs; `--pipeline` runs the whole graph | `raw_items.json`, `raw_run_log.json`, report + email |
 | `rank_items.py` | Scores each item 1–10 for relevance and 1–10 for Well7 fit, with a reason; collapses same-story coverage | `ranked.json`, `score_cache.json`, merges into `raw_run_log.json` |
 | `fetch_candidates.py` | Takes the top 10 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
-| `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
+| `write_report.py` | Writes summaries from the fetched text and splits the three sections | `source.yaml` |
+| `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs when run standalone | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
+| `send_report.py` | Emails the rendered report as the body plus a PDF attachment; `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
+| `schedule_task.py` | Registers/query/deletes the Saturday Windows task from `config.yaml` | Windows Task Scheduler |
 | `verify_report.py` | Checks the rendered report against the brief | exit code only |
-| `selftest.py` | Offline unit tests for parsing, dates, dedupe, history, ranking | exit code only |
+| `selftest.py` | Offline unit tests for parsing, dates, dedupe, history, ranking, email, scheduling | exit code only |
 | `feed_health.py` | Checks all 13 blog feeds are alive | stdout |
 | `validate_phase1.py` | Validates window and dedupe in an existing `raw_items.json` | stdout + exit code |
 
@@ -92,21 +104,18 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 
 | Key | Meaning |
 |---|---|
-| `schedule` | Intended cadence. Documentation only — nothing reads it yet. |
+| `schedule` | Weekly cadence read by `schedule_task.py` (`Saturday 08:00`). |
 | `lookback_days` | How far back an item may be published. Default 7. Read by every collector. |
 | `max_top_picks` | Shortlist size. Read by `fetch_candidates.py` and `rank_items.py`. |
 | `ranking.*` | Model, batch size, concurrency, thresholds and cache toggle for Phase 2. |
-| `recipients` | Who the report goes to once email exists. Nothing reads it yet. |
+| `summarising.*` | Model, picks, tool/worth caps, text window and token budget for Phase 3. |
+| `recipients` | Who the report goes to. Read by `emailer.deliver`. |
 | `keywords` | The Phase 0 vocabulary, for reference. Collectors search each source's own `queries` / `tags` / `subreddits`. |
 | `sources.*` | Per-source queries, subreddits, feeds and result caps. |
 
-The honest reading of that table: `lookback_days`, `sources.*`, `ranking.*` and
-`max_top_picks` change behaviour today. `schedule`, `recipients` and `keywords` are
-intent recorded in config.
-
 Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in.
-`.env` is git-ignored and holds only `OPENROUTER_API_KEY`; the SMTP keys in it are
-empty placeholders, which is why nothing has ever been emailed.
+`.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the SMTP credential set.
+The SMTP keys are still empty placeholders, which is why no real email has been sent.
 
 ## Outputs
 
@@ -119,23 +128,29 @@ score_cache.json                   scores keyed by URL + model + rubric version
 candidates.json                    full text of the shortlist
 history.db                         URLs already published, so no link repeats
 progress/week-<week_end>/
-  source.yaml                      curated content — written by a human
-  report.md                        email body, spec format
-  report.html                      same content, rendered
-  Synthetic_Data_Weekly_<date>.pdf glossary first, then the report
-  run_log.json                     counts for the run that produced the report
+  source.yaml                      report content (trend, picks, tools, worth a look)
+  report.md                        plain-text email body / Markdown deliverable
+  report.html                      HTML email body, spec format
+  Synthetic_Data_Weekly_<date>.pdf glossary first, then the report (email attachment)
+  email.eml                        dry-run email; never sent, for inspection
+  run_log.json                     counts for the render, plus the `email` block
 ```
 
-`history.db` is how "no link in two different weeks" is enforced: `collect_all`
-filters against it, `report_build.py` records the published URLs after a successful
-render. Delete it to replay a week from scratch.
+`history.db` is how "no link in two different weeks" is enforced. `collect_all`
+filters against it before ranking. A standalone `report_build.py` records the URLs
+it rendered. In the pipeline, `render` passes `--no-record` and the `send` node
+records the URLs only after SMTP succeeds — so a dry run or a failed send never
+suppresses next week's copy of the same link. Delete `history.db` to replay a week
+from scratch.
 
 ## What it does not do yet
 
-- **No automatic summaries.** Full text is fetched, but the prose in `source.yaml`
-  is written by a human from `candidates.json`.
-- **No email.** There are no SMTP credentials, so nothing has been sent.
-- **No schedule.** The Saturday 08:00 cadence is a config string, not a running job.
+- **No real email has been sent.** The send path is implemented and dry-run tested,
+  but `.env` still has empty SMTP placeholders. Until they are filled, a real
+  pipeline run records `send: EmailError: SMTP_HOST is not set ...` and exits 1.
+- **The scheduled task is interactive-only.** It runs as the current user when
+  signed in, with no stored password, so it will not fire while the machine is
+  signed out. `logs/weekly.log` is the evidence trail.
 - **The ranker cannot judge substance.** It rewards any text that matches the
   rubric's vocabulary, so a zero-star repo can outrank a real paper. See
   `docs/one-page-note.md` for the comparison against the manual report.
@@ -160,6 +175,6 @@ There is no pytest, linter or CI. The suite is two scripts that exit non-zero on
 failure:
 
 ```powershell
-uv run python selftest.py       # offline: parsing, dates, URL normalisation, dedupe, history
+uv run python selftest.py       # offline: parsing, dates, URL normalisation, dedupe, history, email, schedule
 uv run python verify_report.py  # structural: subject, section order, counts, dates, PDF
 ```

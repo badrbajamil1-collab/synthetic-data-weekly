@@ -1,9 +1,9 @@
 # AGENTS.md — Weekly Synthetic Data Research Agent
 
 Python 3.13 / uv, Windows + PowerShell 5.1. Collects 7 days of synthetic-data
-content and renders a weekly report. The **collect → clean → rank → fetch → report →
-render** chain now runs as a LangGraph state machine (`src/synthetic_data/graph.py`);
-**sending (email) is still not implemented**. Deliverables live in `progress/`;
+content, renders a weekly report, and emails it. The **collect → clean → rank →
+fetch → report → render → send** chain runs as a LangGraph state machine
+(`src/synthetic_data/graph.py`). Deliverables live in `progress/`;
 `progress/README.md` is the index of what has been produced.
 
 The unrelated work that used to sit in the repo root (a video/showcase recut
@@ -38,8 +38,15 @@ Run from the repo root. The venv has the package installed editable
 | Rank the week 1–10 → `ranked.json` | `python rank_items.py` |
 | Full text of shortlist → `candidates.json` | `python fetch_candidates.py` |
 | Render report from curated content | `python report_build.py progress/week-<date>/source.yaml` |
-| Verify rendered artefacts (21 checks) | `python verify_report.py` |
+| Email a rendered report (writes `email.eml`) | `python send_report.py progress/week-<date>/source.yaml --dry-run` |
+| Email the newest report for real | `python send_report.py` |
+| Send one real test email to `DRY_RUN_RECIPIENT` | `python send_report.py --test` |
+| Verify rendered artefacts (22 checks) | `python verify_report.py` |
 | Run the full weekly pipeline (LangGraph) | `python main.py --pipeline` |
+| Full pipeline, email written not sent | `python main.py --pipeline --dry-run` |
+| Full pipeline, stop after rendering | `python main.py --pipeline --no-email` |
+| Register the Saturday task | `python schedule_task.py --register` |
+| Show / remove the scheduled task | `python schedule_task.py --query` / `--delete` |
 
 `main.py` prints **every** item by default — that is the Phase 1 deliverable, "a script
 that prints all raw items found this week". `--limit N` caps the print; `--all` is the
@@ -58,35 +65,44 @@ are the test suite; both exit non-zero on failure.
 `main.py` → `cli.main` → `runner.collect_all` → the 6 collectors in `collectors.py`.
 
 - **Collect-only** (Phase 1): `python main.py` → `raw_items.json` + `raw_run_log.json`.
-- **Full weekly pipeline** (Phase 4): `python main.py --pipeline` →
+- **Full weekly pipeline** (Phases 4–5): `python main.py --pipeline` →
   `synthetic_data.graph.weekly_run` → LangGraph
-  `collect -> clean -> rank -> fetch -> report -> render`.
-
-`python rank_items.py` → `synthetic_data/rank.py` for logic, `synthetic_data/llm.py` for
-the only HTTP call to a model. Output is `ranked.json`; `score_cache.json` makes a
-rerun free and byte-identical.
-
-`write_report.py` → `synthetic_data/summarise.py` turns the ranked shortlist into the
-report dict that `report_build.py` renders. `fetch_candidates.py` fetches full text for
-the shortlist.
+  `collect -> clean -> rank -> fetch -> report -> render -> send`.
+  `--dry-run` writes `email.eml` instead of sending; `--no-email` stops after render.
 
 `report_build.py` verifies every link, drops dead ones, then writes
 `report.md`, `report.html`, the PDF and `run_log.json` into `progress/week-<week_end>/`.
 `verify_report.py` defaults to the newest `progress/week-*/source.yaml`. The old
 top-level `reports/` directory no longer exists.
 
+`send_report.py` → `synthetic_data/emailer.py` builds a multipart message: `report.md`
+as `text/plain`, `report.html` as the `text/html` body, and the week's PDF attached.
+Recipients come from `config.yaml`; SMTP credentials come from `.env`. A standalone
+send records the report's URLs in `history.db` (`--no-record` opts out). `--dry-run`
+writes `progress/week-<date>/email.eml` and touches neither SMTP nor history;
+`--test` sends only to `DRY_RUN_RECIPIENT` and also records no history.
+
 ### Phase 4 — the graph
 
 `src/synthetic_data/graph.py` builds the `StateGraph` over `AgentState` (a `TypedDict`,
 not a Pydantic model — LangGraph requires TypedDict). Nodes:
 
-- `collect` → `clean` → `rank` → `fetch` → `report` → `render` → `END`.
+- `collect` → `clean` → `rank` → `fetch` → `report` → `render` → `send` → `END`.
+
+`collect` applies `history.db` before ranking, writes `raw_items.json` and
+`raw_run_log.json` (the same artefacts as the Phase 1 CLI), and carries the
+`already_sent` count into the run log.
 
 `fetch` calls `fetch_candidates.fetch` for the ten best in-window items, so summaries
 are written from the real abstract or page text rather than the ranking snippet. A page
 that cannot be fetched keeps its snippet, and the report discloses that. `render` fills
 `report_markdown` / `report_html` in state from the files `report_build.py` wrote (the
-dead-link filter has already been applied), ready for the Phase 5 email body.
+dead-link filter has already been applied), ready for the email body.
+
+`render` calls `report_build.py` with `--no-record`. `send` is the only node that marks
+URLs in `history.db`, and only after SMTP succeeds. A dry run, a `--no-email` run and a
+failed send therefore leave history untouched, so the next run can still offer the
+same links.
 
 The 7-day window applies to **every** section: `summarise.compose_sections` takes top
 picks, tools and worth-a-look from the same eligible list, so an older release cannot
@@ -140,22 +156,26 @@ Three rules that are easy to break:
 - `links.normalize_url` **is** called — `runner.dedupe_items` keys on it, and so does
   `memory._key`, so dedupe and history agree on what "the same URL" means.
 - `memory.py` is wired both ways: `collect_all` filters against `history.db` when it
-  exists (never creating it), and `report_build.py` marks published URLs after a
-  successful render. Deleting `history.db` replays a week from scratch.
-- `raw_run_log.json` **is** written by `cli.main`, and `report_build.py` reads it for
-  `items_found`, `duplicates_removed`, `already_sent` and `source_errors`.
+  exists (never creating it), and a successful send (standalone `report_build.py` or the
+  graph's `send` node) marks the published URLs. The graph's `render` node passes
+  `--no-record` deliberately. Deleting `history.db` replays a week from scratch.
+- `raw_run_log.json` **is** written by `cli.main` and by the graph's `collect` node, and
+  `report_build.py` reads it for `items_found`, `duplicates_removed`, `already_sent` and
+  `source_errors`.
 - `config.yaml` → `sources.arxiv.categories` no longer exists; a comment records why.
+- `schedule` **is** read now — by `schedule_task.py`, which registers the Saturday task.
+- `recipients` **is** read now — by `emailer.deliver`.
 - `report_build.py` exits **1 when it dropped dead links** — that is a successful render of
   a filtered report, not a crash.
 
-Genuinely dead, and fine to delete whenever: the `schedule` string in `config.yaml`
-(nothing reads it — no cron, task or workflow exists yet).
+## Not implemented / untested
 
-## Not implemented, despite the file names
-
-- Sending (email) is not implemented. `report_build.py` records published URLs in
-  `history.db` (`--no-record` opts out for test renders); the SMTP + Gmail send step is
-  Phase 5.
+- **A real email has not been sent yet.** The send path is implemented and covered by
+  offline tests plus a real `--dry-run` render, but `.env` has no SMTP credentials. Fill
+  `SMTP_*` / `MAIL_FROM` and run `python send_report.py --test` before trusting the
+  weekly task. `send_report.py --dry-run` needs no credentials.
+- The scheduled task is **interactive-only**: it runs as the current user when signed
+  in, with no stored password. It will not fire while the machine is signed out.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that
   hard-codes the Oct 23–29 content in the script body. It produced
   `progress/phase-0-manual/Synthetic_Data_Weekly_Executive_Report.pdf` (the other Phase 0
@@ -190,15 +210,15 @@ Markdown follow the spec order exactly.
 ## Environment
 
 - Recipients, keywords, sources and feeds live in `config.yaml` — never hard-code them.
-  `lookback_days`, `sources.*`, `ranking.*` and `max_top_picks` are read today;
-  `schedule`, `recipients` and `keywords` are still recorded intent (nothing emails, and
-  the keyword list is documentation while the per-source queries do the work).
-- `.env` is git-ignored and holds **only** `OPENROUTER_API_KEY` for Phase 2. Model,
-  base URL, batch size and thresholds live in `config.yaml` under `ranking:` — one
-  source of truth, and no secret in a committed file. The SMTP keys are empty
-  placeholders, so no email has been sent and Phase 5 is blocked on credentials.
-  `.env.example` documents the shape of both. Never copy a real key into
-  `config.yaml`, `.env.example` or code.
+  `lookback_days`, `sources.*`, `ranking.*`, `summarising.*`, `max_top_picks`,
+  `schedule` and `recipients` are all read today; `keywords` remains documentation
+  while the per-source queries do the work.
+- `.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the SMTP credential set.
+  Model, base URL, batch size and thresholds live in `config.yaml` under `ranking:` and
+  `summarising:` — one source of truth, and no secret in a committed file. The SMTP
+  keys are still empty placeholders, so no real email has been sent. `.env.example`
+  documents the shape of both sets. Never copy a real key into `config.yaml`,
+  `.env.example` or code.
 - The repo has commits now, so `git diff` / `git stash` are meaningful. Do not `git init`:
   `C:\Users\badrf` is already a git worktree and this folder is its own repo. `progress/`
   once contained a second, empty repo — it was removed; do not recreate it.
