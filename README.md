@@ -88,7 +88,7 @@ uv run python verify_report.py
 | `write_report.py` | Writes summaries from the fetched text and splits the three sections | `source.yaml` |
 | `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs when run standalone | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
 | `send_report.py` | Emails the rendered report as the body plus a PDF attachment; `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
-| `schedule_task.py` | Registers/query/deletes the Saturday Windows task from `config.yaml` | Windows Task Scheduler |
+| `schedule_task.py` | Registers/query/deletes the Saturday Windows task from `config.yaml`; dry-run by default, `--send` for real email | Windows Task Scheduler |
 | `verify_report.py` | Checks the rendered report against the brief | exit code only |
 | `selftest.py` | Offline unit tests for parsing, dates, dedupe, history, ranking, email, scheduling | exit code only |
 | `feed_health.py` | Checks all 13 blog feeds are alive | stdout |
@@ -146,8 +146,13 @@ from scratch.
 ## What it does not do yet
 
 - **No real email has been sent.** The send path is implemented and dry-run tested,
-  but `.env` still has empty SMTP placeholders. Until they are filled, a real
-  pipeline run records `send: EmailError: SMTP_HOST is not set ...` and exits 1.
+  but `.env` still has empty SMTP placeholders. `send_report.py` fails loudly without
+  them, and `main.py --pipeline` records `send: EmailError: SMTP_HOST is not set ...`.
+- **The scheduled task runs dry.** The registered `SyntheticDataWeekly` task calls
+  `scripts/run_weekly.ps1`, which adds `--dry-run` unless it is invoked with `-Send`.
+  Each Saturday therefore writes a report and `email.eml` and never contacts SMTP.
+  Re-register with `uv run python schedule_task.py --register --send` once a test
+  email has arrived.
 - **The scheduled task is interactive-only.** It runs as the current user when
   signed in, with no stored password, so it will not fire while the machine is
   signed out. `logs/weekly.log` is the evidence trail.

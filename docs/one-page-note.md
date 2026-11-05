@@ -85,8 +85,10 @@ judged against a real week of feedback rather than guessed at now.
 - **No real email has been sent.** The send path exists and `--dry-run` writes the exact
   message (HTML body, plain-text alternative, PDF attachment), but `.env` still has no
   SMTP credentials, so a real send is untested.
-- **The scheduled task is interactive-only.** It runs as the current user when signed
-  in, with no stored password; it will not fire while the machine is signed out.
+- **The scheduled task runs in dry-run mode.** It produces the weekly report and
+  `email.eml` every Saturday without contacting SMTP, by design, until credentials are
+  configured. It is also interactive-only: it runs as the current user when signed in,
+  with no stored password, so it will not fire while the machine is signed out.
 - **The ranker cannot judge substance**, per the comparison above.
 
 ## Three next steps
@@ -95,10 +97,11 @@ judged against a real week of feedback rather than guessed at now.
    `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` to `.env`, then run
    `python send_report.py --test`. The test send goes only to `DRY_RUN_RECIPIENT` and
    records no history. Check the HTML body renders in the mail client and the PDF
-   attachment opens.
-2. **Run two real Saturdays unattended (Phase 6).** The `SyntheticDataWeekly` task is
-   registered for Saturday 08:00. Watch `logs/weekly.log`, `run_log.json` and the
-   recipients' replies; do not tune anything from a single week.
+   attachment opens. Until then the Saturday task stays dry.
+2. **Flip the task to real sending, then watch two Saturdays (Phase 6).** After the test
+   email arrives, run `python schedule_task.py --register --send`. Watch
+   `logs/weekly.log` (it records `mode: send`), `run_log.json` and the recipients'
+   replies; do not tune anything from a single week.
 3. **Tune the ranking on that feedback (Phase 6).** Decide whether GitHub repos should
    be discounted by stars, whether the top 10 must contain at least one paper, and
    whether the 1–2 band is too wide.

@@ -678,6 +678,25 @@ check(
     "run_weekly.ps1" in _task_cmd[_task_cmd.index("/TR") + 1],
     _task_cmd[_task_cmd.index("/TR") + 1],
 )
+check(
+    "the default task never asks the wrapper to send",
+    "-Send" not in _task_cmd[_task_cmd.index("/TR") + 1],
+    _task_cmd[_task_cmd.index("/TR") + 1],
+)
+_send_cmd = _sched.build_create_command(
+    Path(r"C:\Users\badrf\Desktop\Work\synthetic data"), "Saturday 08:00", send=True
+)
+check(
+    "--send asks the wrapper to send for real",
+    "-Send" in _send_cmd[_send_cmd.index("/TR") + 1],
+    _send_cmd[_send_cmd.index("/TR") + 1],
+)
+
+_wrapper_src = Path("scripts/run_weekly.ps1").read_text(encoding="utf-8")
+check("the wrapper knows the send switch", "[switch]$Send" in _wrapper_src)
+check("the wrapper dry-runs unless -Send is passed", '"--dry-run"' in _wrapper_src)
+check("the wrapper logs which mode it used", "mode" in _wrapper_src.lower())
+check("the wrapper logs the exact command", '">>>' in _wrapper_src)
 
 print("Phase 3 wiring")
 _write = Path("write_report.py").read_text(encoding="utf-8")

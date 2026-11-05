@@ -45,7 +45,8 @@ Run from the repo root. The venv has the package installed editable
 | Run the full weekly pipeline (LangGraph) | `python main.py --pipeline` |
 | Full pipeline, email written not sent | `python main.py --pipeline --dry-run` |
 | Full pipeline, stop after rendering | `python main.py --pipeline --no-email` |
-| Register the Saturday task | `python schedule_task.py --register` |
+| Register the Saturday task (dry-run mode) | `python schedule_task.py --register` |
+| Register it to send real email | `python schedule_task.py --register --send` |
 | Show / remove the scheduled task | `python schedule_task.py --query` / `--delete` |
 
 `main.py` prints **every** item by default — that is the Phase 1 deliverable, "a script
@@ -174,6 +175,12 @@ Three rules that are easy to break:
   offline tests plus a real `--dry-run` render, but `.env` has no SMTP credentials. Fill
   `SMTP_*` / `MAIL_FROM` and run `python send_report.py --test` before trusting the
   weekly task. `send_report.py --dry-run` needs no credentials.
+- **The scheduled task is registered in dry-run mode.** `scripts/run_weekly.ps1` adds
+  `--dry-run` unless it is called with `-Send`, so each Saturday writes a report and
+  `email.eml` without touching SMTP. That is deliberate while `.env` is empty: a missing
+  credential cannot make the weekly run fail. After a test email arrives, re-register
+  with `python schedule_task.py --register --send`. `logs/weekly.log` records
+  `mode: dry-run` or `mode: send` plus the exact command line for every run.
 - The scheduled task is **interactive-only**: it runs as the current user when signed
   in, with no stored password. It will not fire while the machine is signed out.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that

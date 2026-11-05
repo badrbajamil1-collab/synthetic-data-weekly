@@ -49,12 +49,14 @@ this folder is the evidence.
 | 3 | Fetch, summarise, render | **done** — summaries written from fetched text, with a number guard and extractive fallback |
 | 4 | LangGraph pipeline | **done** — `collect → clean → rank → fetch → report → render → send`, one shared state |
 | 5 | Dry-run, schedule, email | **implemented and dry-run verified**; real test send blocked on SMTP credentials |
-| 6 | Two unattended Saturdays | blocked on the Phase 5 test send |
+| 6 | Two unattended Saturdays | blocked on the Phase 5 test send; the task is registered in dry-run mode until then |
 
 The honest summary: **collection, ranking, writing, rendering and email composition are
 automatic.** `python main.py --pipeline --dry-run` produced the week of 5 Nov and wrote
 `email.eml`; the only missing link is a real SMTP send, because `.env` has no credentials
-yet. The Saturday task is registered.
+yet. The Saturday task is registered for 08:00 and runs the pipeline in dry-run mode, so
+it keeps producing weekly evidence without a credential failure; `schedule_task.py
+--register --send` flips it to real delivery.
 
 The close-out work that made Phase 0–1 defensible is in git history: the baseline
 commit, then `fix: make dedupe, history and run-log counts real`, then the docs
