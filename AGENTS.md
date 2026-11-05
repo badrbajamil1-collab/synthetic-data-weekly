@@ -1,7 +1,7 @@
 # AGENTS.md — Weekly Synthetic Data Research Agent
 
 Python 3.13 / uv, Windows + PowerShell 5.1. Collects 7 days of synthetic-data
-content and renders a weekly report. The **collect → clean → rank → report →
+content and renders a weekly report. The **collect → clean → rank → fetch → report →
 render** chain now runs as a LangGraph state machine (`src/synthetic_data/graph.py`);
 **sending (email) is still not implemented**. Deliverables live in `progress/`;
 `progress/README.md` is the index of what has been produced.
@@ -59,7 +59,8 @@ are the test suite; both exit non-zero on failure.
 
 - **Collect-only** (Phase 1): `python main.py` → `raw_items.json` + `raw_run_log.json`.
 - **Full weekly pipeline** (Phase 4): `python main.py --pipeline` →
-  `synthetic_data.graph.weekly_run` → LangGraph `collect -> clean -> rank -> report -> render`.
+  `synthetic_data.graph.weekly_run` → LangGraph
+  `collect -> clean -> rank -> fetch -> report -> render`.
 
 `python rank_items.py` → `synthetic_data/rank.py` for logic, `synthetic_data/llm.py` for
 the only HTTP call to a model. Output is `ranked.json`; `score_cache.json` makes a
@@ -79,7 +80,17 @@ top-level `reports/` directory no longer exists.
 `src/synthetic_data/graph.py` builds the `StateGraph` over `AgentState` (a `TypedDict`,
 not a Pydantic model — LangGraph requires TypedDict). Nodes:
 
-- `collect` → `clean` → `rank` → `report` → `render` → `END`.
+- `collect` → `clean` → `rank` → `fetch` → `report` → `render` → `END`.
+
+`fetch` calls `fetch_candidates.fetch` for the ten best in-window items, so summaries
+are written from the real abstract or page text rather than the ranking snippet. A page
+that cannot be fetched keeps its snippet, and the report discloses that. `render` fills
+`report_markdown` / `report_html` in state from the files `report_build.py` wrote (the
+dead-link filter has already been applied), ready for the Phase 5 email body.
+
+The 7-day window applies to **every** section: `summarise.compose_sections` takes top
+picks, tools and worth-a-look from the same eligible list, so an older release cannot
+re-enter through a side section. `verify_report.py` checks dates in all three sections.
 
 Nodes never raise out of the graph; they record the error in state and return, so one
 failing source or one failing model call does not stop the report. Run it:

@@ -81,6 +81,13 @@ week_end = date.fromisoformat(str(data["week_end"]))
 cutoff = week_end - timedelta(days=6)
 bad = [p["title"][:50] for p in data["top_picks"] if not (cutoff <= date.fromisoformat(str(p["published"])) <= week_end)]
 check("top picks inside the reported week", not bad, str(bad))
+bad_rest = [
+    str(entry.get("published"))
+    for entry in [*data["tools"], *data["worth_a_look"]]
+    if entry.get("published")
+    and not (cutoff <= date.fromisoformat(str(entry["published"])) <= week_end)
+]
+check("tools and worth a look inside the reported week", not bad_rest, str(bad_rest))
 
 print("Counts")
 log = json.loads((BASE / "run_log.json").read_text(encoding="utf-8"))

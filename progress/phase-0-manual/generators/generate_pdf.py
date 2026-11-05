@@ -141,7 +141,7 @@ story.append(Paragraph("Glossary of Key Technical Terms", section_heading))
 
 glossary_data = [
     [Paragraph("Term", table_header_style), Paragraph("Plain-English Definition & Enterprise Context", table_header_style)],
-    [Paragraph("Differential Privacy<br/>(DP / ε-DP)", table_term_style), Paragraph("Mathematical guarantee ensuring outputs do not reveal whether any individual record was in the training set. ε measures privacy budget (lower ε = stronger privacy).", table_body_style)],
+    [Paragraph("Differential Privacy<br/>(DP / ε-DP)", table_term_style), Paragraph("Mathematical guarantee ensuring outputs do not reveal whether any individual record was in the training set. ε measures the privacy budget: lower ε means stronger privacy but usually lower analytical utility.", table_body_style)],
     [Paragraph("Tabular Data", table_term_style), Paragraph("Structured information in rows/columns (SQL/CSVs) mixing continuous numeric values (salary, age) and discrete categories (diagnosis codes, nationality).", table_body_style)],
     [Paragraph("Time-Series Data", table_term_style), Paragraph("Data points ordered chronologically where sequence and intervals matter (patient vital signs, bank transactions, telemetry).", table_body_style)],
     [Paragraph("Mode-Specific<br/>Normalization", table_term_style), Paragraph("Technique in CTGAN splitting multi-modal numerical distributions into clusters so neural networks don't blur rare values.", table_body_style)],
@@ -193,7 +193,7 @@ top_picks = [
     {
         "title": "5. Two Is Enough: Binary Classification Priors Suffice for In-Context Tabular Prediction",
         "meta": "arXiv:2610.27569 · Published 20 Oct 2026",
-        "summary": "Reveals that tabular foundation transformers (like TabPFN) pretrained solely on synthetic binary classification priors transfer seamlessly to multi-class problems, dramatically shrinking pretraining compute."
+        "summary": "Reveals that tabular foundation transformers (like TabPFN) pretrained solely on synthetic binary classification priors transfer to multi-class problems, cutting pretraining compute."
     },
     {
         "title": "6. TxnQA: Benchmarking Analytical Reasoning over Transaction Event Sequences",
@@ -213,8 +213,7 @@ story.append(Spacer(1, 6))
 # 5. Tools and Lower priority side-by-side or stacked
 story.append(Paragraph("New Tools & Datasets", section_heading))
 tools = [
-    ("HuggingFaceFW/finephrase", "Open dataset of 486B didactic tokens and prompt playbooks demonstrating structured tabular and FAQ formatting for pretraining efficiency."),
-    ("sdv-dev/SDV v2.0", "Updated tabular synthesis ecosystem providing benchmarked CTGAN, TVAE, and Copula pipelines with automated multi-table constraint evaluators.")
+    ("HuggingFaceFW/finephrase", "486B-token open corpus of didactic prompts and prompt playbooks for text-model pretraining; it is text data, not a tabular dataset.")
 ]
 for name, desc in tools:
     story.append(Paragraph(f"• <b>{name}</b> — {desc}", body_style))

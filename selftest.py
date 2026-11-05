@@ -319,6 +319,12 @@ check("html tags removed", "<p>" not in _sum.clean_text("<p>hello</p>"))
 check("code fences removed", "pip install" not in _sum.clean_text("Text.\n```\npip install x\n```\nMore."))
 check("a heading line is dropped whole", "Installation" not in _sum.clean_text("# Installation\nRun this."))
 
+print("build_prompt")
+_prompt = _sum.build_prompt(_cand(0))
+check("prompt tells the model to use only the text", "Use ONLY facts stated in the TEXT" in _prompt)
+check("prompt bans hype words", "breakthrough" in _prompt and "dramatically" in _prompt)
+check("prompt does not let the title set the data type", "Do not infer its data type" in _prompt)
+
 print("parse_summary")
 check("plain json object", _sum.parse_summary('{"summary": "hello"}') == "hello")
 check("fenced json", _sum.parse_summary('```json\n{"summary": "hello"}\n```') == "hello")
@@ -399,14 +405,19 @@ check("tools capped at five", len(_capped["tools"]) == 5, str(len(_capped["tools
 check("worth a look capped at five", len(_capped["worth_a_look"]) == 5, str(len(_capped["worth_a_look"])))
 check("items beyond the caps are reported as dropped", len(_capped["dropped"]) == 4, str(len(_capped["dropped"])))
 
-_days = [_cand(i, day=i) for i in range(1, 11)]
+_days = [_cand(i, day=i, source="github" if i == 1 else "arxiv") for i in range(1, 11)]
 _dated = _sum.compose_sections(_days, picks=6, week_end=_sum.published_date("2026-11-10"))
 _pick_urls = {item["url"] for item in _dated["top_picks"]}
 check("an item older than the week is not a top pick", "https://example.com/1" not in _pick_urls)
-check("the old item survives in worth a look", any(i["url"] == "https://example.com/1" for i in _dated["worth_a_look"]))
+check("an item older than the week is not a tool", all(t["url"] != "https://example.com/1" for t in _dated["tools"]))
+check("an item older than the week is not in worth a look", all(i["url"] != "https://example.com/1" for i in _dated["worth_a_look"]))
 check("every pick is inside the week", all(
     _dated["week_start"] <= _sum.published_date(item["published"]) <= _dated["week_end"]
     for item in _dated["top_picks"]
+))
+check("every tool and worth item is inside the week", all(
+    _dated["week_start"] <= _sum.published_date(item["published"]) <= _dated["week_end"]
+    for item in _dated["tools"] + _dated["worth_a_look"]
 ))
 
 try:

@@ -138,7 +138,8 @@ GLOSSARY = [
     (
         "Differentially private synthetic data",
         "Synthetic records produced with a mathematical guarantee that no individual in the "
-        "source data can be identified from the output.",
+        "source data can be identified from the output. The privacy budget ε sets the "
+        "trade-off: a lower ε means stronger privacy but usually lower analytical utility.",
     ),
     (
         "Synthetic control arm",

@@ -51,8 +51,7 @@ Top picks
 
 New tools and datasets
 
-- [HuggingFaceFW/finephrase](https://huggingface.co/datasets/HuggingFaceFW/finephrase) — 486B-token corpus of didactic prompts and prompt playbooks for structured, tabular-style generation.
-- [sdv-dev/SDV v2.0](https://github.com/sdv-dev/SDV) — Tabular synthesis framework with benchmarked CTGAN / TVAE / Copula pipelines and automated multi-table constraint evaluation.
+- [HuggingFaceFW/finephrase](https://huggingface.co/datasets/HuggingFaceFW/finephrase) — 486B-token corpus of didactic prompts and prompt playbooks for text-model pretraining; it is text data, not a tabular dataset.
 
 ---
 

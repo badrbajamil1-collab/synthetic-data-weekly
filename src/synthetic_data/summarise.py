@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 # for scores and for summaries, and one implementation means one place to fix.
 from synthetic_data.rank import _first_json_value, _strip_fences, sort_ranked
 
-SUMMARY_VERSION = "2026-11-04.3"
+SUMMARY_VERSION = "2026-11-05.1"
 
 MIN_PICKS = 5
 MAX_PICKS = 10
@@ -182,9 +182,13 @@ Summarise the item below in {length}.
 Rules:
 - Use ONLY facts stated in the TEXT. Do not use outside knowledge.
 - Never invent a number, name, organisation or date. If it is not in the TEXT, leave it out.
+- Describe the item as the TEXT presents it. Do not infer its data type, domain or venue
+  from the title.
 - Start with the substance, not "This article" or "This paper".
 - Say what it is, what it does or finds, and why it matters to someone working on synthetic data.
-- Plain prose. No bullets, no marketing adjectives, no hype.
+- Plain prose. No bullets, no marketing adjectives, no hype words. Never use
+  "breakthrough", "dramatically", "revolutionary", "game-changing", "unprecedented"
+  or "groundbreaking".
 {extra}
 ITEM
 Title: {title}
@@ -209,6 +213,7 @@ Rules:
 - Never invent a number, name, organisation or date.
 - Name at most three organisations or projects.
 - Do not list the items one by one; find the common thread.
+- Avoid hype words such as "breakthrough", "dramatically", "revolutionary" or "game-changing".
 - If there is no clear thread, describe the range of topics instead of forcing one.
 
 ITEMS
@@ -492,7 +497,10 @@ def compose_sections(
     pick_index = eligible[:target]
     chosen = set(pick_index)
 
-    rest = [index for index in range(len(ordered)) if index not in chosen]
+    # Every section obeys the same seven-day window. Selecting tools and
+    # worth-a-look entries from all items let an older release back into the
+    # report even though it was correctly excluded from the top picks.
+    rest = [index for index in eligible if index not in chosen]
     tool_index = [
         index for index in rest if (ordered[index].get("source") or "").lower() == "github"
     ][:max_tools]

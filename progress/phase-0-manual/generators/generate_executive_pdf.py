@@ -183,13 +183,8 @@ TOOLS = [
         name="HuggingFaceFW/finephrase",
         url="https://huggingface.co/datasets/HuggingFaceFW/finephrase",
         source="Hugging Face Datasets",
-        desc="486B-token open corpus of didactic prompts and prompt playbooks for training structured, tabular-style generation.",
-    ),
-    dict(
-        name="sdv-dev/SDV v2.0",
-        url="https://github.com/sdv-dev/SDV",
-        source="GitHub · SDV",
-        desc="Tabular synthesis framework with benchmarked CTGAN / TVAE / Copula pipelines and automated multi-table constraint evaluation.",
+        desc="486B-token open corpus of didactic prompts and prompt playbooks for text-model "
+             "pretraining; it is text data, not a tabular dataset.",
     ),
 ]
 

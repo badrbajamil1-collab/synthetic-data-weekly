@@ -1,8 +1,8 @@
 """Phase 4 - the weekly synthetic-data report as a LangGraph state machine.
 
-One shared ``AgentState`` flows through five nodes:
+One shared ``AgentState`` flows through six nodes:
 
-    collect -> clean -> rank -> report -> render -> END
+    collect -> clean -> rank -> fetch -> report -> render -> END
 
 Nodes never raise out of the graph. A failing node records the error in the
 state and returns, so the chain keeps going - that is the brief's resilience
@@ -17,17 +17,19 @@ Run the whole pipeline from the CLI:
 and print every raw item) so historical weeks stay reproducible.
 """
 
+import concurrent.futures
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
 
+import fetch_candidates
 from synthetic_data import llm, rank, runner, summarise
-from synthetic_data.memory import mark_sent
 from synthetic_data.models import AgentState, Item
+from synthetic_data.rank import sort_ranked
 
 from report_build import main as report_build_main
-from synthetic_data import summarise
 from write_report import pick_entry, summarise_section, tool_entry, worth_entry
 
 
@@ -138,16 +140,76 @@ def rank_node(state: AgentState, config) -> AgentState:
         return {**state, "ranked_items": [], "errors": [*errors, f"rank: {type(exc).__name__}: {exc}"]}
 
 
-def report_node(state: AgentState, config) -> AgentState:
-    """Node 4 - write the trend, top picks, tools and worth-a-look."""
+def _fetch_one(record: dict) -> dict:
+    """One record with its real page/abstract text, or its snippet on failure."""
+    try:
+        return fetch_candidates.fetch(record)
+    except Exception as exc:  # noqa: BLE001 - one bad page must not stop the batch
+        fallback = dict(record)
+        fallback.update(
+            {
+                "text": "",
+                "status": f"ERR {type(exc).__name__}",
+                "fetched_from": "none",
+                "chars": 0,
+            }
+        )
+        return fallback
+
+
+def fetch_node(state: AgentState, config) -> AgentState:
+    """Node 4 - fetch the real abstract or page text for the shortlist.
+
+    Ranking only sees titles and feed snippets; a summary written from those
+    can describe the wrong thing. This node hands the summariser the real text
+    (GitHub README, article body or abstract). Anything that cannot be fetched
+    keeps its snippet, and the report says so.
+    """
     errors = list(state.get("errors") or [])
     ranked = list(state.get("ranked_items") or [])
     if not ranked:
+        return {**state, "shortlist": [], "errors": [*errors, "fetch: no ranked items"]}
+    try:
+        cap = int(_SETTINGS.get("max_top_picks") or 10)
+        eligible = [
+            row
+            for row in ranked
+            if row.get("score_status") == "scored" and not row.get("duplicate_of")
+        ]
+        # Apply the report's seven-day window before the cap, so a stale
+        # high-scorer cannot take a fetch slot from a current item.
+        end = summarise.week_end_for(eligible)
+        cutoff = end - timedelta(days=6)
+        in_window = [
+            row
+            for row in eligible
+            if (day := summarise.published_date(row.get("published")))
+            and cutoff <= day <= end
+        ]
+        shortlist = sort_ranked(in_window)[:cap]
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+            records = list(pool.map(_fetch_one, shortlist))
+        return {**state, "shortlist": records}
+    except Exception as exc:  # noqa: BLE001
+        return {
+            **state,
+            "shortlist": [],
+            "errors": [*errors, f"fetch: {type(exc).__name__}: {exc}"],
+        }
+
+
+def report_node(state: AgentState, config) -> AgentState:
+    """Node 5 - write the trend, top picks, tools and worth-a-look."""
+    errors = list(state.get("errors") or [])
+    # The fetch node replaces the shortlist with records that carry the real
+    # page text. If it failed, fall back to the ranked rows (snippet-only).
+    items = list(state.get("shortlist") or state.get("ranked_items") or [])
+    if not items:
         return {**state, "report": {}, "errors": [*errors, "report: no ranked items to write"]}
     try:
         summarising = _SETTINGS.get("summarising") or {}
         sections = summarise.compose_sections(
-            ranked,
+            items,
             picks=int(summarising.get("picks") or 6),
             max_tools=int(summarising.get("max_tools") or 5),
             max_worth=int(summarising.get("max_worth_a_look") or 5),
@@ -181,26 +243,31 @@ def report_node(state: AgentState, config) -> AgentState:
             one_line=True,
             cache_config=cache_config,
         )
-        trend = summarise.summarise_trend(sections["top_picks"], chat_fn)
+        top_picks = [
+            pick_entry(item, result)
+            for item, result in zip(sections["top_picks"], pick_results)
+        ]
+        tools = [
+            tool_entry(item, result)
+            for item, result in zip(sections["tools"], tool_results)
+        ]
+        worth = [
+            worth_entry(item, result)
+            for item, result in zip(sections["worth_a_look"], worth_results)
+        ]
+
+        # Write the trend from the finished summaries, not the raw rows.
+        trend = summarise.summarise_trend(top_picks, chat_fn)
 
         report = {
             "week_start": sections["week_start"],
             "week_end": sections["week_end"],
-            "top_picks": [
-                pick_entry(item, result)
-                for item, result in zip(sections["top_picks"], pick_results)
-            ],
-            "tools": [
-                tool_entry(item, result)
-                for item, result in zip(sections["tools"], tool_results)
-            ],
-            "worth_a_look": [
-                worth_entry(item, result)
-                for item, result in zip(sections["worth_a_look"], worth_results)
-            ],
+            "top_picks": top_picks,
+            "tools": tools,
+            "worth_a_look": worth,
             "trend": trend["trend"],
         }
-        return {**state, "report": report, "shortlist": ranked}
+        return {**state, "report": report}
     except Exception as exc:  # noqa: BLE001
         return {**state, "report": {}, "errors": [*errors, f"report: {type(exc).__name__}: {exc}"]}
 
@@ -223,11 +290,21 @@ def render_node(state: AgentState, config) -> AgentState:
         code = report_build_main([str(source_path)])
         if code != 0:
             errors.append(f"render: report_build exited {code}")
+
+        # The rendered files are the email body: report_build has already
+        # dropped dead links, so the state mirrors what is on disk.
+        out_dir = source_path.parent
+        markdown = ""
+        html_body = ""
+        if (out_dir / "report.md").exists():
+            markdown = (out_dir / "report.md").read_text(encoding="utf-8")
+        if (out_dir / "report.html").exists():
+            html_body = (out_dir / "report.html").read_text(encoding="utf-8")
         return {
             **state,
             "report": report,
-            "report_html": state.get("report_html") or "",
-            "report_markdown": state.get("report_markdown") or "",
+            "report_html": html_body,
+            "report_markdown": markdown,
             "errors": errors,
         }
     except Exception as exc:  # noqa: BLE001
@@ -235,17 +312,19 @@ def render_node(state: AgentState, config) -> AgentState:
 
 
 def build_weekly_graph():
-    """collect -> clean -> rank -> report -> render."""
+    """collect -> clean -> rank -> fetch -> report -> render."""
     graph = StateGraph(AgentState)
     graph.add_node("collect", collect_node)
     graph.add_node("clean", clean_node)
     graph.add_node("rank", rank_node)
+    graph.add_node("fetch", fetch_node)
     graph.add_node("report", report_node)
     graph.add_node("render", render_node)
     graph.add_edge(START, "collect")
     graph.add_edge("collect", "clean")
     graph.add_edge("clean", "rank")
-    graph.add_edge("rank", "report")
+    graph.add_edge("rank", "fetch")
+    graph.add_edge("fetch", "report")
     graph.add_edge("report", "render")
     graph.add_edge("render", END)
     return graph.compile()
