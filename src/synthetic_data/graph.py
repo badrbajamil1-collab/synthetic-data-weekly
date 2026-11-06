@@ -31,7 +31,14 @@ from synthetic_data.models import AgentState, Item
 from synthetic_data.rank import sort_ranked
 
 from report_build import main as report_build_main
-from write_report import pick_entry, summarise_section, tool_entry, worth_entry
+from write_report import (
+    load_cache,
+    pick_entry,
+    save_cache,
+    summarise_section,
+    tool_entry,
+    worth_entry,
+)
 
 
 MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
@@ -41,6 +48,7 @@ DEFAULT_SUMMARISE_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 _SETTINGS: Dict[str, Any] = {}
 _CHAT_FN: Optional[Callable[[List[dict]], str]] = None
 _CONFIG_PATH = "config.yaml"
+_CACHE_PATH = "summary_cache.json"
 _DELIVERY: Dict[str, bool] = {"enabled": True, "dry_run": False}
 
 
@@ -257,6 +265,10 @@ def report_node(state: AgentState, config) -> AgentState:
             max_worth=int(summarising.get("max_worth_a_look") or 5),
         )
         chat_fn = _chat_for("summarising")
+        model_name = str(summarising.get("model") or MODEL)
+        # Same cache as write_report.py: a rerun on an unchanged week makes no
+        # model calls, and a fallback is never stored, so an outage cannot freeze.
+        cache = load_cache(_CACHE_PATH, model_name)
         cache_config = {
             "max_chars": int(summarising.get("max_text_chars") or 6000),
             "concurrency": int(summarising.get("concurrency") or 3),
@@ -264,27 +276,36 @@ def report_node(state: AgentState, config) -> AgentState:
         pick_results = summarise_section(
             sections["top_picks"],
             chat_fn,
-            {},
-            model=str(summarising.get("model") or MODEL),
+            cache,
+            model=model_name,
             one_line=False,
             cache_config=cache_config,
         )
         tool_results = summarise_section(
             sections["tools"],
             chat_fn,
-            {},
-            model=str(summarising.get("model") or MODEL),
+            cache,
+            model=model_name,
             one_line=True,
             cache_config=cache_config,
         )
         worth_results = summarise_section(
             sections["worth_a_look"],
             chat_fn,
-            {},
-            model=str(summarising.get("model") or MODEL),
+            cache,
+            model=model_name,
             one_line=True,
             cache_config=cache_config,
         )
+        save_cache(_CACHE_PATH, model_name, cache)
+
+        all_results = pick_results + tool_results + worth_results
+        if all_results and all(
+            result.get("guard") in {"extractive", "skipped"} for result in all_results
+        ):
+            errors.append(
+                "report: every summary is an extractive fallback; the model was unreachable"
+            )
         top_picks = [
             pick_entry(item, result)
             for item, result in zip(sections["top_picks"], pick_results)
@@ -309,7 +330,7 @@ def report_node(state: AgentState, config) -> AgentState:
             "worth_a_look": worth,
             "trend": trend["trend"],
         }
-        return {**state, "report": report}
+        return {**state, "report": report, "errors": errors}
     except Exception as exc:  # noqa: BLE001
         return {**state, "report": {}, "errors": [*errors, f"report: {type(exc).__name__}: {exc}"]}
 

@@ -23,11 +23,16 @@ from urllib.parse import urlparse
 # for scores and for summaries, and one implementation means one place to fix.
 from synthetic_data.rank import _first_json_value, _strip_fences, sort_ranked
 
-SUMMARY_VERSION = "2026-11-05.1"
+SUMMARY_VERSION = "2026-11-06.1"
 
 MIN_PICKS = 5
 MAX_PICKS = 10
 MAX_SUMMARY_CHARS = 900
+
+# The brief asks for 2-3 line summaries; these are the word budgets the prompt
+# states and the guard enforces. A long reply is repaired once, then falls back.
+WORDS_LONG = 70
+WORDS_SHORT = 35
 
 # A number at the start of a token: 0.54, 1,000, 223, 79M (the suffix is not
 # part of the token). Deliberately no trailing word boundary, or "79M" and
@@ -155,6 +160,10 @@ def _sentences(text: str) -> List[str]:
     return [part.strip() for part in _SENTENCE.split(cleaned) if len(part.strip()) > 20]
 
 
+def word_count(text: str) -> int:
+    return len((text or "").replace(_SNIPPET_MARK, "").split())
+
+
 def extractive_summary(text: str, max_chars: int = 420, max_sentences: int = 3) -> str:
     """The first useful sentences of the source. Cannot invent a fact."""
     picked: List[str] = []
@@ -243,13 +252,15 @@ def build_prompt(
     one_line: bool = False,
     max_chars: int = 6000,
     rejected_numbers: Sequence[str] = (),
+    over_words: int = 0,
 ) -> str:
     text, origin = source_text(item, max_chars=max_chars)
     short = one_line or origin == "snippet only"
+    limit = WORDS_SHORT if short else WORDS_LONG
     length = (
-        "one sentence, at most 35 words"
+        f"one sentence, at most {WORDS_SHORT} words"
         if short
-        else "2 to 3 sentences, at most 70 words"
+        else f"2 to 3 sentences, at most {WORDS_LONG} words"
     )
 
     extra = []
@@ -263,6 +274,11 @@ def build_prompt(
             "- Your previous attempt used these numbers, which are NOT in the TEXT: "
             + ", ".join(rejected_numbers)
             + ". Remove them or correct them."
+        )
+    if over_words:
+        extra.append(
+            f"- Your previous attempt was {over_words} words long. "
+            f"Keep it under {limit} words and drop detail rather than sentences."
         )
     extra_text = ("\n".join(extra) + "\n") if extra else ""
 
@@ -335,6 +351,7 @@ def summarise_item(
 
     # The title is shown to the model, so a number quoted from it is legitimate.
     guard_text = f"{item.get('title') or ''}\n{text}"
+    short = one_line or origin == "snippet only"
     prompt = build_prompt(item, one_line=one_line, max_chars=max_chars)
     rejected: List[str] = []
     failures: List[str] = []
@@ -353,25 +370,35 @@ def summarise_item(
                 failures.append("reply was not usable JSON")
             continue
         missing = unsupported_numbers(candidate, guard_text)
-        if not missing:
+        words = word_count(candidate)
+        limit = WORDS_SHORT if short else WORDS_LONG
+        over = words if words > limit else 0
+        if not missing and not over:
             return {
                 "summary": _finish(candidate, origin),
                 "origin": origin,
                 "guard": "passed" if attempt == 0 else "repaired",
             }
+        if over:
+            failures.append(f"reply was {words} words, limit {limit}")
         rejected = missing
         prompt = build_prompt(
             item,
             one_line=one_line,
             max_chars=max_chars,
             rejected_numbers=missing,
+            over_words=over,
         )
 
     detail = list(failures)
     if rejected:
         detail.append("numbers not in text: " + ", ".join(rejected))
+    if short:
+        fallback = extractive_summary(text, max_chars=240, max_sentences=1)
+    else:
+        fallback = extractive_summary(text)
     return {
-        "summary": _finish(extractive_summary(text), origin),
+        "summary": _finish(fallback, origin),
         "origin": origin,
         "guard": "extractive",
         "rejected": rejected,

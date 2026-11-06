@@ -387,6 +387,25 @@ down = _sum.summarise_item(_cand(3), _always_down)
 check("unreachable model still yields a summary", down["guard"] == "extractive" and bool(down["summary"]))
 check("failure reason is recorded", any("call failed" in item for item in down["detail"]), str(down["detail"]))
 
+_long_reply = " ".join(["word"] * 90) + "."
+_too_long = _sum.summarise_item(_cand(0), _reply(_long_reply))
+check("over-long reply is not passed as is", _too_long["guard"] == "extractive", str(_too_long))
+check("over-long reply is recorded with its length", any("words" in item for item in _too_long["detail"]), str(_too_long["detail"]))
+check("extractive fallback stays inside the word budget", _sum.word_count(_too_long["summary"]) <= _sum.WORDS_LONG, _too_long["summary"])
+
+_length_calls = []
+
+
+def _long_then_short(messages):
+    _length_calls.append(1)
+    if len(_length_calls) == 1:
+        return _json.dumps({"summary": _long_reply})
+    return _json.dumps({"summary": "It reports 223 tables."})
+
+
+_shortened = _sum.summarise_item(_cand(0), _long_then_short)
+check("over-long first reply is repaired", _shortened["guard"] == "repaired", str(_shortened))
+
 print("compose_sections")
 _ten = [_cand(i, source="github" if i in (6, 7, 8) else "arxiv") for i in range(9)] + [
     _cand(9, source="news")
@@ -708,6 +727,47 @@ check("report_build supports --no-record", "--no-record" in _check and "history_
 check("config has a summarising block", isinstance(_config.get("summarising"), dict))
 check("config picks stay inside the format bound", 5 <= int(_config["summarising"]["picks"]) <= 10)
 check("summary version is recorded", isinstance(_sum.SUMMARY_VERSION, str) and _sum.SUMMARY_VERSION)
+
+print("Phase 4 report node")
+from synthetic_data import graph as _graph
+
+_cache_dir = Path(tempfile.mkdtemp())
+_item_calls = []
+
+
+def _fake_chat(messages):
+    prompt = messages[0]["content"]
+    if "opening paragraph" in prompt:
+        return _json.dumps({"trend": "A plain trend sentence."})
+    _item_calls.append(1)
+    return _json.dumps({"summary": "A plain summary sentence."})
+
+
+def _down_chat(messages):
+    raise RuntimeError("model down")
+
+
+_graph_items = [
+    _cand(i, source="github" if i in (6, 7, 8) else "arxiv") for i in range(10)
+]
+_graph._CACHE_PATH = str(_cache_dir / "summary_cache.json")
+_graph.configure(
+    settings={"summarising": {"picks": 5, "max_tools": 5, "max_worth_a_look": 5}},
+    chat_fn=_fake_chat,
+)
+_first_run = _graph.report_node({"errors": [], "shortlist": _graph_items}, None)
+check("report node builds picks, tools and worth-a-look", len(_first_run["report"]["top_picks"]) == 5 and len(_first_run["report"]["tools"]) == 3, str(_first_run.get("errors")))
+check("report node saves the summary cache", len(_json.loads((_cache_dir / "summary_cache.json").read_text(encoding="utf-8"))["entries"]) == 10)
+
+_calls_before = len(_item_calls)
+_graph.report_node({"errors": [], "shortlist": _graph_items}, None)
+check("a rerun on the same week makes no summary calls", len(_item_calls) == _calls_before, str(len(_item_calls) - _calls_before))
+
+_graph._CACHE_PATH = str(_cache_dir / "down.json")
+_graph.configure(chat_fn=_down_chat)
+_down_run = _graph.report_node({"errors": [], "shortlist": _graph_items}, None)
+check("an all-fallback run is flagged in the state", any("extractive fallback" in item for item in _down_run["errors"]), str(_down_run["errors"]))
+check("fallbacks are never cached", _json.loads((_cache_dir / "down.json").read_text(encoding="utf-8"))["entries"] == {})
 
 print("Phase 5 wiring")
 _send_src = Path("send_report.py").read_text(encoding="utf-8")
