@@ -224,6 +224,31 @@ check("well7 breaks ties", sorted_rows[1]["url"] == "https://1")
 check("null well7 sorts last among scored", [r["url"] for r in sorted_rows][-1] == "https://4")
 check("deterministic", _rank.sort_ranked(sorted_rows) == sorted_rows)
 
+print("cap_github_share")
+_rows_mix = [
+    {"title": "a", "url": "https://1", "source": "github", "score": 10, "well7_fit": 5},
+    {"title": "b", "url": "https://2", "source": "github", "score": 9, "well7_fit": 5},
+    {"title": "c", "url": "https://3", "source": "arxiv", "score": 9, "well7_fit": 5},
+    {"title": "d", "url": "https://4", "source": "github", "score": 9, "well7_fit": 5},
+    {"title": "e", "url": "https://5", "source": "arxiv", "score": 8, "well7_fit": 5},
+    {"title": "f", "url": "https://6", "source": "github", "score": 8, "well7_fit": 5},
+]
+_mixed = _rank.cap_github_share(_rows_mix, 2)
+_check_head = [row["source"] for row in _mixed[:4]]
+check("github beyond the cap moves to the tail", _check_head == ["github", "github", "arxiv", "arxiv"], str(_check_head))
+check("relative order elsewhere is kept", _mixed[2]["title"] == "c" and _mixed[3]["title"] == "e")
+check("capped but not lost", [r["title"] for r in _mixed if r["title"] == "d"] == ["d"])
+check("cap 0 keeps everything in place", _rank.cap_github_share(_rows_mix, 0) == _rows_mix)
+
+_gh_prompt = _rank.build_prompt([{
+    "title": "owner/repo",
+    "url": "https://github.com/owner/repo",
+    "source": "github",
+    "snippet": "GitHub metadata: stars: 447, project created: 2019-01-01. A privacy toolkit.",
+}])
+check("prompt carries repo substance metadata", "GitHub metadata: stars: 447" in _gh_prompt)
+check("prompt demotes old low-star repos", "at least 10 stars" in _rank._PROMPT_HEADER)
+
 print("score_items orchestration")
 calls = []
 rows = _rank.score_items([_item(f"T{i}", f"https://e/{i}") for i in range(30)], _fake_model(calls), batch_size=15, concurrency=1)

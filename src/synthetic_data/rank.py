@@ -17,7 +17,7 @@ import re
 from datetime import datetime, timezone
 from typing import Callable, Dict, Iterable, List, Optional
 
-RUBRIC_VERSION = "2026-11-04.1"
+RUBRIC_VERSION = "2026-11-06.1"
 
 DUPLICATE_PENALTY = 3
 REASON_MAX = 160
@@ -42,6 +42,12 @@ datasets in this space.
   - Score 4-7 for relevant but thin items.
   - Score 1-3 for generic "what is synthetic data" explainers, listicles,
     vendor marketing with no technical content, and unrelated AI news.
+  - GitHub items carry a "GitHub metadata:" line with the star count and the
+    project's creation date. That line is substance evidence. A repo older
+    than three weeks needs at least 10 stars to score above 6; without them,
+    a weekly push is maintenance, not news, and scores 3-5 unless the text
+    shows a real release. A genuinely new or heavily starred repo can score
+    8-10.
 
 Also rate well7_fit 1-10: how useful this is to a company selling privacy-first
 tabular and time-series synthetic data to regulated industries.
@@ -251,6 +257,29 @@ def sort_ranked(items: Iterable[dict]) -> List[dict]:
         )
 
     return sorted(items, key=key)
+
+
+def cap_github_share(rows: Iterable[dict], cap: int) -> List[dict]:
+    """Keep at most `cap` GitHub items at the head of an already-ranked list.
+
+    The rubric rewards "new tools", so GitHub repos can crowd papers and news
+    out of the shortlist on keyword fit alone. This moves GitHub items beyond
+    the cap to the tail, keeping every other item in place; a caller that
+    slices the head gets the mix. `cap <= 0` disables it.
+    """
+    if cap is None or cap <= 0:
+        return list(rows)
+    head: List[dict] = []
+    tail: List[dict] = []
+    count = 0
+    for row in rows:
+        if (row.get("source") or "").lower() == "github":
+            if count >= cap:
+                tail.append(row)
+                continue
+            count += 1
+        head.append(row)
+    return head + tail
 
 
 # ---------------------------------------------------------------------------

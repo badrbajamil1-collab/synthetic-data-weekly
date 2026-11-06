@@ -386,14 +386,30 @@ def fetch_github_repos(
             link = (repo.get("html_url") or "").strip()
             if not link:
                 continue
+            # Substance evidence lives in the snippet, never the title. The
+            # ranker needs stars and project age to judge substance; the report
+            # should show a clean name; and the duplicate grouper treats common
+            # title tokens as story identity, so "(stars: 0)" in every GitHub
+            # title inflated repo-vs-repo similarity and could merge distinct
+            # projects.
             stars = repo.get("stargazers_count", 0)
+            created = parse_iso_or_utc(repo.get("created_at"))
+            meta = (
+                "GitHub metadata: "
+                f"stars: {stars}, "
+                "project created: "
+                f"{created.date().isoformat() if created else 'unknown'}."
+            )
             items.append(
                 Item(
-                    title=f"{repo.get('full_name', '')} (stars: {stars})",
+                    title=(repo.get("full_name", "") or "").strip() or link,
                     url=link,
                     source="github",
                     published=published,
-                    snippet=clean_text(repo.get("description") or "No description provided.", 400),
+                    snippet=(
+                        f"{meta} "
+                        + clean_text(repo.get("description") or "No description provided.", 400)
+                    ),
                 )
             )
 

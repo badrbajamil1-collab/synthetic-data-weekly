@@ -14,6 +14,7 @@ this folder is the evidence.
 | `phase-2-ranking/` | The ranked list: all 222 items scored, frozen with its score cache | 2 |
 | `week-2026-11-01/` | First real week, end to end: source YAML → Markdown, HTML, PDF, run log | 1 + 3 |
 | `week-2026-11-05/` | First fully automatic week: 214 items → 6 picks, 1 tool, 3 worth a look; dry-run email | 4 + 5 |
+| `week-2026-11-06/` | First run with the all-fallback guard firing: model quota exhausted mid-run, so every summary is extractive; 0 dead links | 4 + 5 |
 | `review/` | Build review page (progress + flow diagram + code verdict) and PDF page renders. The page is a 1 Nov snapshot; a banner on it lists what changed on 4 Nov. | — |
 
 ### `week-2026-11-01/`

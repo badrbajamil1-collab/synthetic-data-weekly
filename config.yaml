@@ -18,7 +18,11 @@ ranking:
   reasoning_effort: "low"
   temperature: 0.0
   timeout_seconds: 180
-  max_attempts: 4
+  # 2, not 4: a 503 retry storm burns the day's 50 free-model requests before
+  # summarising runs, and the report degenerates to extractive prose. Two
+  # attempts cap the damage at ~2x the call count. A reshape of a retry is
+  # semantic recovery anyway, and rank.py owns that layer.
+  max_attempts: 2
   # Above this share of unscored items the run still writes output but warns.
   max_unscored_ratio: 0.10
   # fetch_candidates.py refuses to build a shortlist below this.
@@ -27,6 +31,11 @@ ranking:
   # with similar titles; keep the original source").
   duplicate_similarity: 0.80
   cache: true
+  # Shortlist mix: at most this many GitHub repositories head the top 10, so
+  # recently-pushed repos cannot crowd papers and news out on keyword fit
+  # alone. The ranker still sees a repo's stars and creation date in the
+  # prompt and discounts old low-star repos itself. 0 disables the cap.
+  github_share_cap: 3
 
 # Phase 3 — summarising. The model writes prose only; the section split is a
 # rule in summarise.py. `picks` is the target number of top picks and must stay
@@ -42,7 +51,7 @@ summarising:
   max_tokens: 2000
   reasoning_effort: "low"
   timeout_seconds: 180
-  max_attempts: 4
+  max_attempts: 2
   concurrency: 3
   picks: 6
   max_tools: 5

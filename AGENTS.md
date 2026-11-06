@@ -198,10 +198,15 @@ Three rules that are easy to break:
   says out loud that arXiv `all:` matches loosely and GitHub returns repos that merely
   mention the query; that is what the tail is. Do not "fix" the prompt to spread the
   scores out.
-- **The top 10 over-represents GitHub.** The rubric rewards "new tools" and a repo
-  description that reads "federated differentially private tabular synthesis" scores
-  10/10 whether it has 447 stars or 0. The model is faithful to the text and blind to
-  substance. Tuning belongs in Phase 6, after real feedback.
+- **The top 10 used to over-represent GitHub.** The rubric rewarded "new tools", so a
+  repo whose description read "federated differentially private tabular synthesis"
+  scored 10/10 whether it had 447 stars or 0. Tuned on 2026-11-06: the collector now
+  puts stars and project-creation date into the snippet (never the title), the rubric
+  tells the ranker to discount repos older than three weeks with under 10 stars, and
+  both shortlist paths cap GitHub's share (`ranking.github_share_cap: 3`). The
+  `(stars: 0)` title suffix that polluted duplicate grouping is gone. `RUBRIC_VERSION`
+  was bumped, so the next run re-scores everything. Judged properly in Phase 6, on a
+  real week.
 - **`ranked.json` rows are dicts, not `Item`.** See the Phase 2 section above.
 
 ## The report format is contractual

@@ -80,6 +80,12 @@ prompt is tuned to discount repositories by stars or to require an arXiv/news it
 in the mix. That is a Phase 6 tuning job, not a Phase 2 defect, and it should be
 judged against a real week of feedback rather than guessed at now.
 
+*Update 2026-11-06:* this tuning landed early, on user feedback about the first
+reports. Repos now carry stars and creation date to the ranker, the rubric
+discounts old low-star repos, and the shortlist caps GitHub's share at 3
+(`ranking.github_share_cap`). The `(stars: N)` title suffix is gone. Whether the
+output reads better is the next real week's test.
+
 ## What does not work yet
 
 - **No real email has been sent.** The send path exists and `--dry-run` writes the exact
@@ -89,7 +95,10 @@ judged against a real week of feedback rather than guessed at now.
   `email.eml` every Saturday without contacting SMTP, by design, until credentials are
   configured. It is also interactive-only: it runs as the current user when signed in,
   with no stored password, so it will not fire while the machine is signed out.
-- **The ranker cannot judge substance**, per the comparison above.
+- **The ranker cannot judge substance**, per the comparison above. *(Updated
+  2026-11-06: substance evidence — stars and project age — is now in the prompt, and
+  the shortlist caps GitHub's share. Whether that fixes the judgement is the next
+  real week's test.)*
 
 ## Three next steps
 

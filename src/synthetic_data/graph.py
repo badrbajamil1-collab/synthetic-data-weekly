@@ -226,7 +226,12 @@ def fetch_node(state: AgentState, config) -> AgentState:
             if (day := summarise.published_date(row.get("published")))
             and cutoff <= day <= end
         ]
-        shortlist = sort_ranked(in_window)[:cap]
+        shortlist = sort_ranked(in_window)
+        # Same mix rule as fetch_candidates.load_shortlist: the rubric rewards
+        # "new tools", so without a cap GitHub repos can take the whole
+        # shortlist away from papers and news.
+        share_cap = int((_SETTINGS.get("ranking") or {}).get("github_share_cap", 3))
+        shortlist = rank.cap_github_share(shortlist, share_cap)[:cap]
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             records = list(pool.map(_fetch_one, shortlist))
         # Keep the Phase 3 artefact current: report_build.py reports how many

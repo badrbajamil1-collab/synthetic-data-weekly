@@ -18,6 +18,7 @@ import httpx
 import trafilatura
 import yaml
 
+from synthetic_data import rank
 from synthetic_data.links import UA, normalize_url, resolve_google_news
 
 RANKED = "ranked.json"
@@ -58,7 +59,14 @@ def load_shortlist(path=RANKED, config_path="config.yaml"):
         )
 
     top_n = int(config.get("max_top_picks", 10))
-    return scored[:top_n]
+    # The shortlist is re-ordered defensively (ranked.json writes it sorted
+    # already) and then mix-capped: GitHub repos can crowd papers and news out
+    # of the top 10 on keyword fit alone, so at most `github_share_cap` of them
+    # lead the list.
+    ranking_cfg = config.get("ranking") or {}
+    share_cap = int(ranking_cfg.get("github_share_cap", 3))
+    ordered = rank.cap_github_share(rank.sort_ranked(scored), share_cap)
+    return ordered[:top_n]
 
 
 GITHUB_REPO = re.compile(r"^https?://github\.com/([^/\s]+)/([^/?#\s]+)/?$")
