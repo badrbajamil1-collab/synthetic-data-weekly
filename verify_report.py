@@ -23,6 +23,10 @@ if REPORT is None:
     REPORT = str(found[-1])
 
 data = yaml.safe_load(open(REPORT, encoding="utf-8"))
+# dump_report omits empty sections on purpose: 0 tools / 0 worth-a-look are
+# valid per the brief. The verifier still needs the keys to exist.
+for _section in ("top_picks", "tools", "worth_a_look"):
+    data.setdefault(_section, [])
 BASE = Path(REPORT).parent
 md = (BASE / "report.md").read_text(encoding="utf-8")
 html = (BASE / "report.html").read_text(encoding="utf-8")
