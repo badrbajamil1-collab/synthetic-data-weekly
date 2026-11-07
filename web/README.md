@@ -47,6 +47,29 @@ npm run preview    # runs the built Worker locally
    npx wrangler deploy
    ```
 
+## Pages & routes
+
+Routing is a tiny zero-dependency history router (`web/src/lib/router.tsx`:
+`useRoute`, `navigate`, `<Link>` — intercepts plain left-clicks only), no
+client-side routing dependency.
+
+| Route | Who | What |
+|---|---|---|
+| `/` | public | Landing: hero, this week's stats, CTAs. |
+| `/brief` | public | Redirects to the latest brief. |
+| `/brief/<week>` | public | The week's brief: importance donut + source/topic bars (static SVG under the title), the editorial read, ranked items, headlines. A deep link to an unknown week says so and links back to the archive. |
+| `/feed` | signed in | The current brief filtered to the topics and sources I follow, with the **My topics** manager; with zero follows it shows the whole brief plus a pick-topics prompt, never an empty page. |
+| `/library` | signed in | Read later, Important, **Notes** (saved entries carrying a note), **Upcoming** (free-text notes about things not in a brief yet). |
+| `/archive` | public | Every week, oldest to newest; admins trigger pipeline runs from here. |
+| anything else | — | Not-found page. |
+
+Navigation follows the signed-in state: signed out the logo goes to `/` with
+**Brief**/**Archive** links plus Sign in / Sign up buttons; signed in the logo
+goes to `/library` with **Feed**/**Brief**/**Library**/**Archive** links plus
+the avatar. A route change fades the incoming page in (220 ms, disabled under
+`prefers-reduced-motion`) and resets the scroll to the top. Stars on topic
+chips and source badges follow/unfollow (spec "Following topics and sources").
+
 ## The LangChain.js pipeline (new)
 
 A second pipeline lives in `web/worker/pipeline/` and runs the same weekly
@@ -108,8 +131,18 @@ single-user side project). How it works now:
   stores read-later, important and note per item id; identity = the Clerk user
   id. `PUT /api/my/items/<id>` with `{read_later, important, note}`;
   `GET /api/my/library` joins items + week back in.
+- Per-person follows and upcoming notes (migration
+  `0004_user_topics_notes.sql`): `user_topics(user_id, kind ∈ {topic, source},
+  value)` decides what the feed shows; `user_notes(id, user_id, body,
+  created_at)` holds the Upcoming entries. Endpoints, all Clerk-gated:
+  `GET /api/my/topics` → `{topics: [{kind, value}]}`; `PUT`/`DELETE
+  /api/my/topics` with `{kind, value}` re-answer `{topics}`; `GET /api/my/notes`
+  → `{notes: [{id, body, created_at}]}` newest first; `POST /api/my/notes` with
+  `{body}` (trimmed, ≤2000 chars) → `{note}`; `DELETE /api/my/notes/<id>` →
+  `{notes}`, 404 unless the row belongs to the caller; `GET /api/me` also
+  returns `topics` so the feed can filter on first paint.
 - The public archive (`/api/reports*`, PDFs, `/api/health`) needs no sign-in;
-  the personal library does.
+  the personal library, follows and notes do.
 
 ## OpenRouter quota (counts for this Worker too)
 
