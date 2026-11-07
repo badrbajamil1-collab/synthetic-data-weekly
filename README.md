@@ -69,31 +69,32 @@ read.
 
 ## Sample output
 
-From [`progress/week-2026-11-06/report.md`](progress/week-2026-11-06/report.md)
-(subject `Synthetic Data Weekly — Week of 31 Oct – 6 Nov 2026`, emailed as HTML
-with the PDF attached). The excerpt trims the `(stars: N)` suffixes that report
-still carries; the collector stopped writing them into titles on 2026-11-06, so
-newer renders show a clean repo name.
+Excerpt from [`progress/week-2026-11-05/report.md`](progress/week-2026-11-05/report.md)
+(subject `Synthetic Data Weekly — Week of 30 Oct – 5 Nov 2026`, emailed as HTML with
+the PDF attached). Both picks are arXiv papers, and both summaries are model-written
+and passed the number/length guard — not extractive fallbacks.
 
-> **1. [nathanielkang/CrossSynth](https://github.com/nathanielkang/CrossSynth)**
-> *GitHub · 31 Oct 2026*
-> When sites train generators on uneven shards, the synthetic union can keep the
-> counts and still miss the joints. CrossSynth is a federated tabular
-> synthesizer. Each party trains a local diffusion model under differential
-> privacy.
+> **1. [CoRTeC: A Differentially Private Release for Synthetic Tabular Data, Decodable by Any Generator](https://arxiv.org/abs/2611.06342)**
+> *arXiv · 4 Nov 2026*
+> CoRTeC releases differentially private synthetic tabular data by spending a privacy
+> budget once on a file of noisy counts — group sizes, outcome balances, column
+> histograms per outcome, and outcome rates in cells — that anyone can decode into
+> synthetic rows at no privacy cost using a maximum-entropy decoder or language models
+> that never see real records. At ε=2 on Adult the release trains classifiers within
+> 0.02 AUC of a real sample; on NHANES and bank marketing it stays within 0.05 AUC
+> without the selection step. Controls show utility comes from the release and
+> selection step, no private row reaches a model, no generated row copies a real one,
+> and the strongest membership attack remains far below the budget bound.
 >
-> **2. [Sejal116/federated-hospitals-simulation](https://github.com/Sejal116/federated-hospitals-simulation)**
-> *GitHub · 4 Nov 2026*
-> A small experiment on how hospitals can train a shared medical AI model
-> without sharing patient data — comparing single-hospital, pooled and
-> federated training, then testing what privacy noise costs in accuracy and
-> whether membership inference can tell who was in the training data.
->
-> **3. [opendp/opendp](https://github.com/opendp/opendp)**
-> *GitHub · 4 Nov 2026*
-> The OpenDP Library is a modular collection of statistical algorithms that
-> adhere to the definition of differential privacy, implemented in Rust with
-> Python and R bindings.
+> **3. [Exploring the Privacy--Size Tradeoff for Differentially Private Self-Attentive Variational Autoencoders](https://arxiv.org/abs/2611.05582)**
+> *arXiv · 3 Nov 2026*
+> SAVANT, a self-attentive variational autoencoder for tabular data trained with
+> DP-SGD, combines attention, VAE, and differential privacy in one model. Evaluated
+> against PrivBayes and MST on two public datasets across privacy budgets and dataset
+> sizes, it shows that more data generally increases utility under the same DP
+> guarantee. Marginal mechanisms absorb most utility loss from strict budgets, while
+> DP-SGD exchanges data for budget at a worse rate; membership-inference attacks
+> detected no aggregate signal.
 
 Every link in that report was verified HTTP 200 before being included; dates are
 checked against the week window by `verify_report.py`.
