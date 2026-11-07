@@ -49,7 +49,8 @@ export async function runWeeklyPipeline(
   }
 }
 
-async function produceReport(env: PipelineEnv): Promise<{ reportId: string; warnings: string }> {  const now = new Date()
+async function produceReport(env: PipelineEnv): Promise<{ reportId: string; warnings: string }> {
+  const now = new Date()
   const since = new Date(now.getTime() - WINDOW_DAYS * DAY)
   const weekEnd = now.toISOString().slice(0, 10)
   const reportId = `week-${weekEnd}`
@@ -108,11 +109,11 @@ async function produceReport(env: PipelineEnv): Promise<{ reportId: string; warn
     statements.push(
       env.DB.prepare(
         `INSERT INTO items (id, report_id, title, url, source, published, score, well7_fit, reason, summary, section, position)
-         VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET report_id = excluded.report_id, title = excluded.title,
            source = excluded.source, published = excluded.published, score = excluded.score,
-           reason = excluded.reason, summary = excluded.summary, section = excluded.section,
-           position = excluded.position`,
+           well7_fit = excluded.well7_fit, reason = excluded.reason, summary = excluded.summary,
+           section = excluded.section, position = excluded.position`,
       ).bind(
         id,
         reportId,
@@ -121,6 +122,7 @@ async function produceReport(env: PipelineEnv): Promise<{ reportId: string; warn
         section.item.source,
         section.item.published,
         section.item.score,
+        section.item.well7_fit,
         section.item.reason,
         section.summary.summary,
         section.section,

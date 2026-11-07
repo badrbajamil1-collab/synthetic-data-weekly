@@ -117,7 +117,7 @@ export interface Section {
 }
 
 export async function buildSections(ranked: Scored[], env: LlmEnv): Promise<SummariseStats> {
-  const sorted = [...ranked].sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+  const sorted = [...ranked].sort((a, b) => (b.well7_fit ?? b.score) - (a.well7_fit ?? a.score) || b.score - a.score || a.title.localeCompare(b.title))
   const picks = sorted.slice(0, 6)
   const rest = sorted.slice(6)
   const tools = rest.filter((item) => item.source === 'GitHub').slice(0, 5)

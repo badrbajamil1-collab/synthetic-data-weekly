@@ -4,7 +4,7 @@
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
 ![selftest](https://img.shields.io/badge/selftest-234%20checks%20passing-brightgreen)
-[![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
+[![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](https://synthetic-data-web.coolbadrtv1.workers.dev)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
 arXiv, Google News, research blogs, Reddit, Hacker News and GitHub (27 HTTP requests
@@ -14,8 +14,9 @@ per run) — then renders a weekly report for the Well7 team.
 
 - **`main`** — the Python agent: collectors → LangGraph pipeline →
   Markdown/HTML/PDF report → email. The source of truth.
-- **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + React archive/view
-  of the same weekly report, with its own JS pipeline inside the Worker.
+- **`web`** — a modern Cloudflare Workers + D1 + R2 + React live web archive and
+  feed ([synthetic-data-web.coolbadrtv1.workers.dev](https://synthetic-data-web.coolbadrtv1.workers.dev)),
+  with its own edge pipeline and Clerk authentication.
 
 **Status:** the pipeline is automated end to end — one command collects, cleans,
 ranks, fetches, writes, renders and (once credentials exist) sends. What is *not*
@@ -30,6 +31,24 @@ agent.
 - Why each source is on the list: [`docs/sources.md`](docs/sources.md)
 - What works, what does not, what is next: [`docs/one-page-note.md`](docs/one-page-note.md)
 - Everything produced so far: [`progress/README.md`](progress/README.md)
+- Web application documentation: [`web/README.md`](web/README.md)
+
+## Web Platform & Live Archive
+
+The web version is deployed live at **[`https://synthetic-data-web.coolbadrtv1.workers.dev`](https://synthetic-data-web.coolbadrtv1.workers.dev)**.
+
+### Current Web Stack
+- **Frontend SPA**: Vite 8 + React 19 + TypeScript.
+- **Styling & Design System**: Tailwind CSS v4 with an editorial light theme (`#f3f6fa` canvas, `#102a43` deep slate ink, `#d6e0ea` hairline borders, and `#0b6f6b` mint accents).
+- **Typography**: IBM Plex Serif (headlines & statistics), IBM Plex Sans (interface body), IBM Plex Mono (technical labels, scores & metadata).
+- **UI & Motion**: shadcn/ui accessible primitives, Magic UI (`NumberTicker`, `BlurFade`), and static editorial pipeline schematics following strict information-density standards (`diagram-design`).
+- **Edge Runtime**: Cloudflare Workers + Static Assets (single-page application with edge API routes under `/api/*`).
+- **Database (Metadata & Library)**: Cloudflare D1 SQL database (`synthetic-data-db`) storing weekly reports, scored findings, user collections, notes, and topic follows.
+- **Object Storage (PDF Archive)**: Cloudflare R2 bucket (`synthetic-data-reports`) storing and serving publication-ready PDF downloads.
+- **Authentication & User State**: Clerk (`@clerk/react` 6 in the browser + `@clerk/backend` 3 token verification in the Worker) powering personal feeds, custom topic follows, and admin controls.
+- **Edge Intelligence Pipeline**: LangChain.js inside the Worker with OpenRouter models, scoring items on both synthetic data relevance (`score` 1–10) and Well7 domain fit (`well7_fit` 1–10), guarded by extractive citation checks.
+
+---
 
 ## Build plan and status
 
@@ -124,6 +143,7 @@ means no link ever appears twice.
 ## Requirements
 
 - Python 3.11+ (the project's venv uses 3.13)
+- Node.js 20+ (for `web` directory)
 - [uv](https://docs.astral.sh/uv/) (recommended) or plain pip
 - Windows PowerShell 5.1 is what this was built on; nothing is Windows-specific
   except the notes below about `python` not being on `PATH`.
@@ -145,6 +165,13 @@ it after any dependency change:
 
 ```powershell
 uv export --no-hashes --no-dev -o requirements.txt
+```
+
+For the web application:
+```powershell
+cd web
+npm install
+npm run dev                      # local preview at http://localhost:5173
 ```
 
 ## Run it
@@ -205,23 +232,41 @@ uv run python verify_report.py
 are cached by URL + model + rubric version in `score_cache.json`, and a cached rerun
 produces a byte-identical `ranked.json`.
 
-## Scheduling
+## Scheduling & GitHub Actions (Cron)
 
-Two schedulers ship, both reading `config.yaml` → `schedule` (`Saturday 08:00`):
+Automated scheduling is configured across three environments:
 
-- **Windows Task Scheduler** — `uv run python schedule_task.py --register` creates
-  the `SyntheticDataWeekly` task. `scripts/run_weekly.ps1` adds `--dry-run` unless
-  it is called with `-Send`, so a missing credential can never fail the run. It is
-  interactive-only: it runs as the current user when signed in, with no stored
-  password, so it will not fire while the machine is signed out. `logs/weekly.log`
-  records `mode: dry-run` or `mode: send` plus the command line for every run.
-- **GitHub Actions** — `.github/workflows/weekly-report.yml`, Saturday 05:00 UTC
-  (08:00 UTC+3), also runnable by hand with `workflow_dispatch`. Scheduled runs are
-  always dry-run; a real send needs the SMTP secrets plus a manual run with
-  `send_email` checked. `history.db`, `score_cache.json` and `summary_cache.json`
-  are persisted through `actions/cache`, so cross-week dedupe keeps working.
+### 1. GitHub Actions Workflow (`.github/workflows/weekly-report.yml`)
+- **Schedule**: Triggers weekly on Saturday at 05:00 UTC (`0 5 * * 6`), matching Saturday 08:00 UTC+3 (Saudi time).
+- **Safety**: Scheduled runs always execute in safe dry-run mode (`python main.py --pipeline --dry-run`), generating the weekly brief, PDF, and `email.eml`.
+- **Cache Persistence**: Uses `actions/cache@v4` on `history.db`, `score_cache.json`, and `summary_cache.json`. This ensures deduplication across weeks and zero repeated LLM scoring costs.
+- **Artifact Upload**: Retains rendered output (`email.eml`, `progress/week-*/**`, PDFs) in GitHub Actions artifacts with a 30-day retention window.
+- **Manual Trigger**: Supports `workflow_dispatch` with a `send_email` boolean flag to trigger live sends when configured.
 
-Neither scheduler has sent a real email yet.
+### 2. Web CI Workflow (`.github/workflows/web-ci.yml`)
+- Automatically validates the frontend codebase on pushes or pull requests touching `web/**`.
+- Runs `npm ci`, TypeScript type checking (`tsc -b`), production build (`vite build`), and `oxlint`.
+
+### 3. Cloudflare Worker Cron Trigger (`wrangler.jsonc`)
+- **Schedule**: `0 5 * * 6` (Saturday 05:00 UTC).
+- Automatically runs `runWeeklyPipeline()` inside Cloudflare Workers, pulling fresh items, ranking them with OpenRouter, generating guarded summaries, and writing directly to Cloudflare D1.
+
+### 4. Windows Task Scheduler (`schedule_task.py`)
+- Registered via `uv run python schedule_task.py --register` for local scheduled execution.
+
+---
+
+## Future Plans & Roadmap
+
+### 1. Cloudflare Email (Free Service) Integration
+- **Zero Third-Party SMTP Dependency**: Rather than relying on external SMTP providers with separate credentials and fees, future releases will integrate with **Cloudflare Workers Email Routing / Email Sending (`send_email` binding)** on Cloudflare's free tier.
+- **Direct Dispatch from Worker**: After the Cloudflare Worker cron completes the weekly research brief, the Worker will generate the responsive HTML email body, attach the newly minted PDF from Cloudflare R2, and dispatch it directly to Well7 subscribers.
+- **Subscriber State in D1**: Team recipient lists and personal notification preferences will be managed directly in the existing `users` and `user_topics` D1 tables.
+
+### 2. Bi-directional Pipeline Sync
+- Add `publish_to_cloudflare.py` to push curated weeks from the Python research pipeline into Cloudflare D1 and R2 via an authorized Worker endpoint (`/api/pipeline/publish`).
+
+---
 
 ## Configuration
 
@@ -304,13 +349,20 @@ from scratch.
 
 ## Tests
 
-There is no pytest or linter. CI is one scheduled workflow,
-`.github/workflows/weekly-report.yml` (Saturday 05:00 UTC, or manual
-`workflow_dispatch`), which runs the pipeline in dry-run mode and keeps the report,
-PDF and `email.eml` as build artefacts. Locally, the suite is two scripts that exit
-non-zero on failure:
+CI consists of two workflows:
+- `.github/workflows/weekly-report.yml`: Runs the pipeline in dry-run mode on Saturday 05:00 UTC (or manual dispatch) and preserves report, PDF, and `email.eml` as build artifacts.
+- `.github/workflows/web-ci.yml`: Validates the web application on push/PR, checking TypeScript types, build bundles, and linter rules.
+
+Locally, the Python suite is two scripts that exit non-zero on failure:
 
 ```powershell
 uv run python selftest.py       # offline: parsing, dates, URL normalisation, dedupe, history, email, schedule
 uv run python verify_report.py  # structural: subject, section order, counts, dates, PDF
+```
+
+For the web application:
+```powershell
+cd web
+npm run build                   # tsc -b && vite build
+npm run lint                    # oxlint
 ```
