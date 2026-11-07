@@ -17,15 +17,55 @@ per run) — then renders a weekly report for the Well7 team.
 - **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + React archive/view
   of the same weekly report, with its own JS pipeline inside the Worker.
 
-**The collection half is automated. Ranking, summarising and sending are not.**
-`main.py` collects, dedupes, filters against history and prints/saves raw items.
-Everything after that is a script you run by hand, with a human writing
-`source.yaml`. This README is honest about where that line is.
+**Status:** the pipeline is automated end to end — one command collects, cleans,
+ranks, fetches, writes, renders and (once credentials exist) sends. What is *not*
+proven is delivery: no real email has been sent yet, so Phases 0–4 are done,
+Phase 5 is code-complete but untested against SMTP, and the two-week Phase 6
+pilot has not started. [Build plan and status](#build-plan-and-status) is the
+honest scoreboard. Running `main.py` with no flags still performs the Phase 1
+"print every raw item" deliverable; `--pipeline` is the one command for the whole
+agent.
 
 - Design notes and gotchas for coding agents: [`AGENTS.md`](AGENTS.md)
 - Why each source is on the list: [`docs/sources.md`](docs/sources.md)
 - What works, what does not, what is next: [`docs/one-page-note.md`](docs/one-page-note.md)
 - Everything produced so far: [`progress/README.md`](progress/README.md)
+
+## Build plan and status
+
+The brief builds the agent in seven phases (0–6) and calls week 4 "the pilot".
+This is where each phase stood on 2026-11-07.
+
+| Phase | Brief deliverable | Status | Evidence |
+|---|---|---|---|
+| **0 — Understand the topic** | Manual report, 15–20 sources, 10–15 keywords | ✅ Done, two recorded blemishes | `progress/phase-0-manual/`, `docs/sources.md` (18 sources), `config.yaml` → `keywords` (12 terms) |
+| **1 — Collectors** | A script that prints every raw item this week | ✅ Done | `python main.py`; 6 collectors over 18 sources, 7-day window; `progress/week-2026-11-01/run_log.json` (223 found, 222 kept, 0 source errors) |
+| **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned twice | `rank_items.py` → `ranked.json`; before/after comparison in `docs/one-page-note.md`; URL normalisation and `history.db` |
+| **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (22 structural checks) |
+| **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
+| **5 — Email and schedule** | You receive a correct test email | ⚠️ Code complete, **not proven** | send path and a dry-run `email.eml` exist; `SyntheticDataWeekly` is registered in dry-run mode; the `.env` SMTP block is empty |
+| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⛔ Not started | blocked on Phase 5; then `schedule_task.py --register --send` and two watched weeks |
+
+**Where that leaves the project:** end of week 3 of the brief's timetable. The
+remaining work is not code — it is credentials and two observed Saturdays.
+
+**The brief's "done" test** is that the agent runs unattended for two Saturdays and
+the team finds the reports useful. Neither has happened yet: the scheduled task
+deliberately runs `--dry-run` until SMTP is configured, and the Windows task is
+interactive-only (it will not fire while the machine is signed out).
+
+What is still missing, in order:
+
+1. `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` and
+   `DRY_RUN_RECIPIENT` in `.env`; without them `send_report.py` fails loudly.
+2. A test email that proves the HTML body and PDF attachment render in a real
+   mail client (`send_report.py --test`).
+3. Two unattended Saturdays with recipient feedback, then a tuning pass on
+   keywords, sources and prompts.
+
+The two Phase 0 blemishes are recorded in `docs/one-page-note.md`: six top picks
+instead of the brief's example seven, and no record of which 3–5 introductions were
+read.
 
 ## Sample output
 
@@ -47,7 +87,7 @@ with the PDF attached):
 > federated training, then testing what privacy noise costs in accuracy and
 > whether membership inference can tell who was in the training data.
 >
-> **3. [opendp/opendp](https://github.com/opendp/opendp) (447★)**
+> **3. [opendp/opendp](https://github.com/opendp/opendp)**
 > *GitHub · 4 Nov 2026*
 > The OpenDP Library is a modular collection of statistical algorithms that
 > adhere to the definition of differential privacy, implemented in Rust with
@@ -162,6 +202,24 @@ uv run python verify_report.py
 are cached by URL + model + rubric version in `score_cache.json`, and a cached rerun
 produces a byte-identical `ranked.json`.
 
+## Scheduling
+
+Two schedulers ship, both reading `config.yaml` → `schedule` (`Saturday 08:00`):
+
+- **Windows Task Scheduler** — `uv run python schedule_task.py --register` creates
+  the `SyntheticDataWeekly` task. `scripts/run_weekly.ps1` adds `--dry-run` unless
+  it is called with `-Send`, so a missing credential can never fail the run. It is
+  interactive-only: it runs as the current user when signed in, with no stored
+  password, so it will not fire while the machine is signed out. `logs/weekly.log`
+  records `mode: dry-run` or `mode: send` plus the command line for every run.
+- **GitHub Actions** — `.github/workflows/weekly-report.yml`, Saturday 05:00 UTC
+  (08:00 UTC+3), also runnable by hand with `workflow_dispatch`. Scheduled runs are
+  always dry-run; a real send needs the SMTP secrets plus a manual run with
+  `send_email` checked. `history.db`, `score_cache.json` and `summary_cache.json`
+  are persisted through `actions/cache`, so cross-week dedupe keeps working.
+
+Neither scheduler has sent a real email yet.
+
 ## Configuration
 
 Everything tunable lives in `config.yaml`, never in the collectors.
@@ -220,9 +278,12 @@ from scratch.
 - **The scheduled task is interactive-only.** It runs as the current user when
   signed in, with no stored password, so it will not fire while the machine is
   signed out. `logs/weekly.log` is the evidence trail.
-- **The ranker cannot judge substance.** It rewards any text that matches the
-  rubric's vocabulary, so a zero-star repo can outrank a real paper. See
-  `docs/one-page-note.md` for the comparison against the manual report.
+- **Ranker substance judgement is improved, not proven.** Since 2026-11-06 each
+  repo's stars and creation date reach the prompt, the rubric discounts old
+  low-star repos, and the shortlist caps GitHub's share at 3; since 2026-11-07
+  `well7_fit` is the primary sort key. Whether that beats the manual report is
+  the next real week's test — the before/after comparison is in
+  `docs/one-page-note.md`.
 
 ## Gotchas
 
@@ -240,8 +301,11 @@ from scratch.
 
 ## Tests
 
-There is no pytest, linter or CI. The suite is two scripts that exit non-zero on
-failure:
+There is no pytest or linter. CI is one scheduled workflow,
+`.github/workflows/weekly-report.yml` (Saturday 05:00 UTC, or manual
+`workflow_dispatch`), which runs the pipeline in dry-run mode and keeps the report,
+PDF and `email.eml` as build artefacts. Locally, the suite is two scripts that exit
+non-zero on failure:
 
 ```powershell
 uv run python selftest.py       # offline: parsing, dates, URL normalisation, dedupe, history, email, schedule
