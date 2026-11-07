@@ -102,6 +102,19 @@ a {
   background-size: 20px 20px;
 }
 
+/* Route change: 200–300 ms fade-and-rise on the incoming page. The global
+   prefers-reduced-motion block above already disables it. */
+.route-in {
+  animation: route-in 0.22s ease-out both;
+}
+
+@keyframes route-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

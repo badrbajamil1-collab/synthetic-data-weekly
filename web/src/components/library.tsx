@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ArrowUpRight, BookmarkCheck, Star } from 'lucide-react'
 
+import { NotesPanel } from '@/components/notes-panel'
 import { PaperActions } from '@/components/paper-actions'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -72,6 +73,8 @@ export function Library({ entries, onToggle, onNote, loading, error }: LibraryPr
   const readLater = entries.filter((e) => e.read_later === 1)
   const important = entries.filter((e) => e.important === 1)
 
+  const notes = entries.filter((e) => e.note.trim() !== '')
+
   if (error) {
     return <p role="alert" className="rounded-2xl border border-destructive/25 bg-[#fff5f7] p-5 text-sm text-destructive">{error}</p>
   }
@@ -87,6 +90,10 @@ export function Library({ entries, onToggle, onNote, loading, error }: LibraryPr
         <p className="mx-auto mt-2 max-w-md text-muted-foreground">
           Use Read later or Mark important on any paper and it will appear here, private to you.
         </p>
+        <div className="mt-10 max-w-xl text-left">
+          <p className="mb-4 text-center text-sm font-semibold text-muted-foreground">Upcoming already lives here:</p>
+          <NotesPanel />
+        </div>
       </div>
     )
   }
@@ -95,6 +102,7 @@ export function Library({ entries, onToggle, onNote, loading, error }: LibraryPr
     { value: 'all', label: 'All saved', items: entries },
     { value: 'later', label: 'Read later', items: readLater },
     { value: 'important', label: 'Important', items: important },
+    { value: 'notes', label: 'Notes', items: notes },
   ]
 
   return (
@@ -106,6 +114,9 @@ export function Library({ entries, onToggle, onNote, loading, error }: LibraryPr
             <span className="ml-1.5 rounded-full bg-black/6 px-1.5 py-0.5 text-[11px] leading-none">{list.items.length}</span>
           </TabsTrigger>
         ))}
+        <TabsTrigger value="upcoming">
+          Upcoming
+        </TabsTrigger>
       </TabsList>
       {lists.map((list) => (
         <TabsContent key={list.value} value={list.value}>
@@ -116,6 +127,9 @@ export function Library({ entries, onToggle, onNote, loading, error }: LibraryPr
           )}
         </TabsContent>
       ))}
+      <TabsContent value="upcoming">
+        <NotesPanel />
+      </TabsContent>
     </Tabs>
   )
 }

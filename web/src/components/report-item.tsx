@@ -9,9 +9,11 @@ interface ReportItemProps {
   rank: number
   tags?: ReactNode
   actions?: ReactNode
+  /** Optional follow star beside the source badge (Feed page). */
+  followControl?: ReactNode
 }
 
-export function ReportItemRow({ item, rank, tags, actions }: ReportItemProps) {
+export function ReportItemRow({ item, rank, tags, actions, followControl }: ReportItemProps) {
   return (
     <article className="group grid gap-5 border-t border-border py-7 first:border-t-0 first:pt-1 sm:grid-cols-[36px_minmax(0,1fr)_86px] sm:gap-6">
       <span className="hidden pt-1 font-mono text-sm text-muted-foreground sm:block">
@@ -20,7 +22,10 @@ export function ReportItemRow({ item, rank, tags, actions }: ReportItemProps) {
 
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <Badge variant="secondary">{sourceLabel(item.source)}</Badge>
+          <div className="inline-flex items-center gap-1">
+            <Badge variant="secondary">{sourceLabel(item.source)}</Badge>
+            {followControl}
+          </div>
           <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <CalendarDays className="size-3.5" aria-hidden="true" />
             {formatDate(item.published, 'short')}

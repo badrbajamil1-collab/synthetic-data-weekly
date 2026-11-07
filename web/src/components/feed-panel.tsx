@@ -1,12 +1,14 @@
 import { Search } from 'lucide-react'
 
 import { FilterChip } from '@/components/filter-chip'
+import { FollowToggle } from '@/components/follow-toggle'
 import { PaperActions } from '@/components/paper-actions'
 import { ReportItemRow } from '@/components/report-item'
 import { Button } from '@/components/ui/button'
 import type { LibraryEntry } from '@/lib/api'
 import { topicsFor, type FeedSection, type FeedView } from '@/lib/feed'
 import { formatDate, type Report, type ReportItem } from '@/lib/report'
+import type { TopicFollow, TopicKind } from '@/lib/topics'
 import { cn } from '@/lib/utils'
 
 const VIEW_LABELS: Record<FeedView, string> = {
@@ -150,24 +152,41 @@ interface KeywordStripProps {
   counts: Array<{ label: string; count: number }>
   active: string | null
   onToggle: (label: string) => void
+  /** When provided, every chip is followable: a small star sits beside it. */
+  follows?: TopicFollow[]
+  onFollow?: (kind: TopicKind, label: string, next: boolean) => void
 }
 
-export function KeywordStrip({ counts, active, onToggle }: KeywordStripProps) {
+export function KeywordStrip({ counts, active, onToggle, follows, onFollow }: KeywordStripProps) {
   if (counts.length === 0) return null
 
   return (
     <div className="mt-10">
       <p className="text-sm font-semibold text-muted-foreground">Key words this week</p>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {counts.map((keyword) => (
-          <FilterChip
-            key={keyword.label}
-            label={keyword.label}
-            count={keyword.count}
-            active={active === keyword.label}
-            onToggle={() => onToggle(keyword.label)}
-          />
-        ))}
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {counts.map((keyword) => {
+          const chip = (
+            <FilterChip
+              key={keyword.label}
+              label={keyword.label}
+              count={keyword.count}
+              active={active === keyword.label}
+              onToggle={() => onToggle(keyword.label)}
+            />
+          )
+          if (!onFollow) return chip
+          return (
+            <span key={keyword.label} className="inline-flex items-center gap-1">
+              {chip}
+              <FollowToggle
+                kind="topic"
+                value={keyword.label}
+                followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === keyword.label) ?? false}
+                onToggle={(kind, value, next) => onFollow(kind, value, next)}
+              />
+            </span>
+          )
+        })}
       </div>
     </div>
   )
@@ -180,9 +199,12 @@ interface FeedListProps {
   active: string | null
   onKeyword: (label: string) => void
   onToggle: (itemId: string, field: 'read_later' | 'important') => void
+  /** When provided (the Feed page), topic chips carry follow stars. */
+  follows?: TopicFollow[]
+  onFollow?: (kind: TopicKind, label: string, next: boolean) => void
 }
 
-export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle }: FeedListProps) {
+export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle, follows, onFollow }: FeedListProps) {
   return (
     <div>
       {items.map((item, index) => {
@@ -194,8 +216,28 @@ export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle }
             item={item}
             rank={index + 1}
             tags={topics.length > 0 ? topics.map((label) => (
-              <FilterChip key={label} label={label} active={active === label} onToggle={() => onKeyword(label)} />
+              onFollow ? (
+                <span key={label} className="inline-flex items-center gap-1">
+                  <FilterChip label={label} active={active === label} onToggle={() => onKeyword(label)} />
+                  <FollowToggle
+                    kind="topic"
+                    value={label}
+                    followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === label) ?? false}
+                    onToggle={(kind, value, next) => onFollow(kind, value, next)}
+                  />
+                </span>
+              ) : (
+                <FilterChip key={label} label={label} active={active === label} onToggle={() => onKeyword(label)} />
+              )
             )) : undefined}
+            followControl={onFollow ? (
+              <FollowToggle
+                kind="source"
+                value={item.source}
+                followed={follows?.some((follow) => follow.kind === 'source' && follow.value === item.source) ?? false}
+                onToggle={(kind, value, next) => onFollow(kind, value, next)}
+              />
+            ) : undefined}
             actions={signedIn ? (
               <PaperActions
                 readLater={state?.read_later === 1}
