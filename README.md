@@ -56,6 +56,28 @@ with the PDF attached):
 Every link in that report was verified HTTP 200 before being included; dates are
 checked against the week window by `verify_report.py`.
 
+## Pipeline
+
+One shared `AgentState` moves through seven LangGraph nodes; the LLM is used only
+where judgment is needed (ranking and writing), everything else is plain Python.
+Nodes record errors into the state instead of raising, so one bad source never
+stops the report.
+
+```mermaid
+flowchart LR
+    A["Collect - 18 sources, 6 collectors"] --> B["Clean - normalise, dedupe, history filter"]
+    B --> C["Rank - LLM score 1-10 + well7 fit"]
+    C --> D["Fetch - full text of the top 10"]
+    D --> E["Report - summaries + sections"]
+    E --> F["Render - verify links, MD + HTML + PDF"]
+    F --> G["Email - 5 recipients from config.yaml"]
+    G --> H[("history.db")]
+```
+
+The key locks are: nothing renders unless a link passes the HTTP check, a dry run
+or failed send never marks a URL as published, and `history.db` (the only memory)
+means no link ever appears twice.
+
 ## Requirements
 
 - Python 3.11+ (the project's venv uses 3.13)
