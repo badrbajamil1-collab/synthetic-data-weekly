@@ -57,6 +57,29 @@ async function putState(env: Env, userId: string, itemId: string, body: StateBod
   return json({ item_id: itemId, ...next, updated_at: now })
 }
 
+/** Follows live in user_topics; kind is the same 'topic' | 'source' union as the SPA. */
+type TopicKind = 'topic' | 'source'
+
+const TOPIC_KINDS: readonly string[] = ['topic', 'source']
+
+function isTopicKind(value: unknown): value is TopicKind {
+  return typeof value === 'string' && TOPIC_KINDS.includes(value)
+}
+
+async function listFollows(env: Env, userId: string): Promise<Array<{ kind: string; value: string }>> {
+  const { results } = await env.DB.prepare(
+    'SELECT kind, value FROM user_topics WHERE user_id = ? ORDER BY kind, value',
+  ).bind(userId).all<{ kind: string; value: string }>()
+  return results
+}
+
+async function listNotes(env: Env, userId: string): Promise<Array<{ id: string; body: string; created_at: string }>> {
+  const { results } = await env.DB.prepare(
+    'SELECT id, body, created_at FROM user_notes WHERE user_id = ? ORDER BY created_at DESC',
+  ).bind(userId).all<{ id: string; body: string; created_at: string }>()
+  return results
+}
+
 export default {
   async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     await runWeeklyPipeline(env, 'cron', new Date(controller.scheduledTime))
@@ -128,7 +151,62 @@ export default {
       if (viewer.email) await upsertUser(env, viewer)
 
       if (path === '/api/me' && method === 'GET') {
-        return json({ user_id: viewer.userId, email: viewer.email, isAdmin: viewer.isAdmin })
+        return json({
+          user_id: viewer.userId,
+          email: viewer.email,
+          isAdmin: viewer.isAdmin,
+          topics: await listFollows(env, viewer.userId),
+        })
+      }
+
+      if (path === '/api/my/topics' && (method === 'GET' || method === 'PUT' || method === 'DELETE')) {
+        if (method === 'GET') return json({ topics: await listFollows(env, viewer.userId) })
+
+        const body = (await request.json().catch(() => null)) as { kind?: unknown; value?: unknown } | null
+        const kind = body?.kind
+        const value = typeof body?.value === 'string' ? body.value.trim() : ''
+        if (!isTopicKind(kind) || !value || value.length > 120) {
+          return json({ error: 'expected { kind: "topic" | "source", value: string }' }, 400)
+        }
+
+        if (method === 'PUT') {
+          await env.DB.prepare(
+            'INSERT INTO user_topics (user_id, kind, value, created_at) VALUES (?, ?, ?, ?) ON CONFLICT DO NOTHING',
+          ).bind(viewer.userId, kind, value, new Date().toISOString()).run()
+        } else {
+          await env.DB.prepare(
+            'DELETE FROM user_topics WHERE user_id = ? AND kind = ? AND value = ?',
+          ).bind(viewer.userId, kind, value).run()
+        }
+        return json({ topics: await listFollows(env, viewer.userId) })
+      }
+
+      if (path === '/api/my/notes' && method === 'GET') {
+        return json({ notes: await listNotes(env, viewer.userId) })
+      }
+
+      if (path === '/api/my/notes' && method === 'POST') {
+        const body = (await request.json().catch(() => null)) as { body?: unknown } | null
+        const text = typeof body?.body === 'string' ? body.body.trim() : ''
+        if (!text) return json({ error: 'expected { body: string }' }, 400)
+        const note = {
+          id: crypto.randomUUID(),
+          body: text.slice(0, 2000),
+          created_at: new Date().toISOString(),
+        }
+        await env.DB.prepare(
+          'INSERT INTO user_notes (id, user_id, body, created_at) VALUES (?, ?, ?, ?)',
+        ).bind(note.id, viewer.userId, note.body, note.created_at).run()
+        return json({ note }, 201)
+      }
+
+      const noteMatch = path.match(/^\/api\/my\/notes\/([^/]+)$/)
+      if (noteMatch && method === 'DELETE') {
+        const deleted = await env.DB.prepare(
+          'DELETE FROM user_notes WHERE id = ? AND user_id = ?',
+        ).bind(noteMatch[1], viewer.userId).run()
+        if (deleted.meta.changes === 0) return json({ error: 'note not found' }, 404)
+        return json({ notes: await listNotes(env, viewer.userId) })
       }
 
       if (path === '/api/my/library' && method === 'GET') {

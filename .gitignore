@@ -27,6 +27,7 @@ Thumbs.db
 .agents/
 skills-lock.json
 .wrangler/
+.superpowers/
 
 # ---------------------------------------------------------------------------
 # Media and page renders. The unrelated experiments that used to produce these
