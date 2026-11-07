@@ -4,6 +4,7 @@ import { BookOpen, CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide
 import { FeedFilterBar, FeedList, KeywordStrip } from '@/components/feed-panel'
 import { NewsList } from '@/components/news-list'
 import { WeekShape } from '@/components/week-shape'
+import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -97,6 +98,18 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
         </div>
       )}
 
+      {!loading && !reportsLoading && !notFound && !error && reports.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
+          <p className="text-balance font-display text-2xl text-ink">Your first brief starts with the pipeline.</p>
+          <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+            Nothing has been published yet. Once a weekly report runs, the latest brief lands here.
+          </p>
+          <Button className="mt-5" variant="outline" size="sm" asChild>
+            <Link to="/archive">Open the archive</Link>
+          </Button>
+        </div>
+      )}
+
       {!loading && !reportsLoading && report && (
         <div className="min-w-0">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
@@ -118,31 +131,37 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
           </div>
 
           <div className="mt-10">
-            <WeekShape items={items} />
+            <BlurFade inView duration={0.4}>
+              <WeekShape items={items} />
+            </BlurFade>
           </div>
 
           <KeywordStrip counts={keywords} active={filters.keyword} onToggle={toggleKeyword} follows={follows} onFollow={onFollow} />
 
           {report.trend && (
-            <Card className="mt-10 rounded-[24px] border-0 bg-[#eaf0f7] shadow-none">
-              <CardContent className="grid gap-5 p-6 sm:p-8 md:grid-cols-[190px_1fr] md:gap-10">
-                <div className="flex items-start gap-3 text-primary">
-                  <BookOpen className="mt-1 size-5" aria-hidden="true" />
-                  <div>
-                    <h2 className="font-semibold text-ink">The editorial read</h2>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">The pattern across this week's selections</p>
+            <BlurFade inView duration={0.4}>
+              <Card className="mt-10 rounded-[24px] border-0 bg-[#eaf0f7] shadow-none">
+                <CardContent className="grid gap-5 p-6 sm:p-8 md:grid-cols-[190px_1fr] md:gap-10">
+                  <div className="flex items-start gap-3 text-primary">
+                    <BookOpen className="mt-1 size-5" aria-hidden="true" />
+                    <div>
+                      <h2 className="font-semibold text-ink">The editorial read</h2>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">The pattern across this week's selections</p>
+                    </div>
                   </div>
-                </div>
-                <p className="max-w-4xl font-display text-xl leading-8 text-ink/90 sm:text-2xl sm:leading-9">{report.trend}</p>
-              </CardContent>
-            </Card>
+                  <p className="max-w-4xl font-display text-xl leading-8 text-ink/90 sm:text-2xl sm:leading-9">{report.trend}</p>
+                </CardContent>
+              </Card>
+            </BlurFade>
           )}
 
           <div className="mt-14">
-            <div className="mb-7">
-              <h2 className="text-balance font-display text-3xl font-medium tracking-[-0.025em]">Inside this brief</h2>
-              <p className="mt-2 text-sm text-muted-foreground">Read the source, compare relevance and Well7 fit, follow the evidence.</p>
-            </div>
+            <BlurFade inView duration={0.4}>
+              <div className="mb-7">
+                <h2 className="text-balance font-display text-3xl font-medium tracking-[-0.025em]">Inside this brief</h2>
+                <p className="mt-2 text-sm text-muted-foreground">Read the source, compare relevance and Well7 fit, follow the evidence.</p>
+              </div>
+            </BlurFade>
 
             <FeedFilterBar
               query={filters.query}
@@ -181,7 +200,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
             </div>
           </div>
 
-          <NewsList items={visibleItems} active={filters.keyword} onKeyword={toggleKeyword} />
+          <NewsList items={visibleItems} active={filters.keyword} onKeyword={toggleKeyword} follows={follows} onFollow={onFollow} />
         </div>
       )}
     </section>

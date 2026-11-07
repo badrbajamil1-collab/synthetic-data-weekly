@@ -59,6 +59,8 @@ export default function App() {
   const route = useRoute()
   const [me, setMe] = useState<Me | null>(null)
   const [sessionChecked, setSessionChecked] = useState(false)
+  const [meError, setMeError] = useState<string | null>(null)
+  const [meRetryTick, setMeRetryTick] = useState(0)
   const [topics, setTopics] = useState<TopicFollow[]>([])
   const [followError, setFollowError] = useState<string | null>(null)
   const [library, setLibrary] = useState<LibraryEntry[]>([])
@@ -93,7 +95,11 @@ export default function App() {
   }, [])
 
   // /api/me follows the Clerk session: signing in or out re-keys the identity,
-  // re-loads (or clears) the private library and the followed topics.
+  // re-loads (or clears) the private library and the followed topics. Library
+  // loading is independent of /api/me (the endpoint verifies its own token),
+  // so a failed /api/me never strands the library; it only degrades the
+  // topics/isAdmin extras and surfaces here with a retry — the pages never
+  // mistake it for being signed out.
   useEffect(() => {
     if (!isLoaded) return
     let active = true
@@ -104,31 +110,46 @@ export default function App() {
           setMe(null)
           setTopics([])
           setLibrary([])
+          setMeError(null)
           setSessionChecked(true)
         }
         return
       }
       try {
         const user = await getJson<Me>('/api/me')
-        if (active && user) {
-          setMe(user)
-          setTopics(sortFollows(user.topics ?? []))
-          void loadLibrary()
-        } else if (active && !user) {
+        if (active) {
+          if (user) {
+            setMe(user)
+            setTopics(sortFollows(user.topics ?? []))
+          } else {
+            setMe(null)
+            setTopics([])
+          }
+          setMeError(null)
+        }
+      } catch (error) {
+        if (active) {
           setMe(null)
           setTopics([])
+          setMeError(errorText(error))
         }
-      } catch {
-        if (active) setMe(null)
       }
-      if (active) setSessionChecked(true)
+      if (active) {
+        void loadLibrary()
+        setSessionChecked(true)
+      }
     }
 
     void loadMe()
     return () => {
       active = false
     }
-  }, [isLoaded, userId, loadLibrary])
+  }, [isLoaded, userId, loadLibrary, meRetryTick])
+
+  const retryMe = useCallback(() => {
+    setMeError(null)
+    setMeRetryTick((value) => value + 1)
+  }, [])
 
   async function toggleFollow(kind: TopicKind, value: string, next: boolean) {
     setFollowError(null)
@@ -164,7 +185,8 @@ export default function App() {
     }
   }, [loadLibrary])
 
-  async function runPipeline() {    setRunning(true)
+  async function runPipeline() {
+    setRunning(true)
     setPipelineError(null)
     try {
       const response = await fetch('/api/pipeline/run', {
@@ -191,15 +213,31 @@ export default function App() {
     error: libraryError,
     togglePaper,
     saveNote,
-  }), [library, savedById, libraryLoading, libraryError, togglePaper, saveNote])
+    reload: () => void loadLibrary(),
+  }), [library, savedById, libraryLoading, libraryError, togglePaper, saveNote, loadLibrary])
 
-  const signedIn = Boolean(me)
+  // Signed-in is Clerk's judgment (userId), not /api/me's success — a failed
+  // identity fetch must not turn a signed-in feed into a sign-in prompt.
+  const signedIn = Boolean(userId)
   const active = (path: string) => route === path || (path !== '/' && route.startsWith(path))
   const briefWeek = route.match(/^\/brief\/([^/]+)$/)?.[1]
+  // Only the identity-dependent pages wait for the /api/me handshake; public
+  // routes render immediately with signed-in extras arriving afterwards.
+  const needsIdentity = route === '/feed' || route === '/library'
+  const identityPending = !isLoaded || (needsIdentity && !sessionChecked)
 
-  // Route change resets the scroll (history.pushState does not).
+  // Route change resets the scroll (history.pushState does not) — but not on
+  // first mount, which would fight browser scroll restoration and anchors.
+  const firstRouteRef = useRef(true)
+  const mainRef = useRef<HTMLElement>(null)
   useEffect(() => {
+    if (firstRouteRef.current) {
+      firstRouteRef.current = false
+      return
+    }
     window.scrollTo(0, 0)
+    // Keyboard and screen-reader users land at the new page's content.
+    mainRef.current?.focus({ preventScroll: true })
   }, [route])
 
   return (
@@ -222,17 +260,17 @@ export default function App() {
 
           <nav className="flex items-center gap-1 sm:gap-2" aria-label="Main navigation">
             <Show when="signed-in">
-              <span className="flex items-center gap-1 sm:gap-2">
+              <span className="flex items-center gap-0.5 sm:gap-1.5">
                 <NavLink to="/feed" active={active('/feed')}>Feed</NavLink>
-                <NavLink to="/brief" active={active('/brief')} className="hidden sm:inline-flex">Brief</NavLink>
-                <NavLink to="/library" active={active('/library')} className="hidden md:inline-flex">Library</NavLink>
-                <NavLink to="/archive" active={active('/archive')} className="hidden md:inline-flex">Archive</NavLink>
+                <NavLink to="/brief" active={active('/brief')}>Brief</NavLink>
+                <NavLink to="/library" active={active('/library')}>Library</NavLink>
+                <NavLink to="/archive" active={active('/archive')}>Archive</NavLink>
               </span>
             </Show>
             <Show when="signed-out">
-              <span className="flex items-center gap-1 sm:gap-2">
-                <NavLink to="/brief" active={active('/brief')} className="hidden sm:inline-flex">Brief</NavLink>
-                <NavLink to="/archive" active={active('/archive')} className="hidden sm:inline-flex">Archive</NavLink>
+              <span className="flex items-center gap-0.5 sm:gap-1.5">
+                <NavLink to="/brief" active={active('/brief')}>Brief</NavLink>
+                <NavLink to="/archive" active={active('/archive')}>Archive</NavLink>
               </span>
             </Show>
             <Show when="signed-in">
@@ -242,7 +280,7 @@ export default function App() {
               <UserButton />
             </Show>
             <Show when="signed-out">
-              <Button variant="ghost" size="sm" className="hidden sm:inline-flex" onClick={() => clerk.openSignUp()}>Sign up</Button>
+              <Button variant="ghost" size="sm" onClick={() => clerk.openSignUp()}>Sign up</Button>
               <Button variant="ink" size="sm" onClick={() => clerk.openSignIn()}>Sign in</Button>
             </Show>
           </nav>
@@ -258,14 +296,32 @@ export default function App() {
         </div>
       )}
 
-      <main id="top" key={route} className="route-in">
-        {(!isLoaded || !sessionChecked) && (
+      {signedIn && meError && (
+        <div className="mx-auto mt-3 max-w-7xl px-5 sm:px-8" role="alert">
+          <p className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/25 bg-[#fff5f7] px-4 py-2.5 text-sm text-destructive">
+            <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+            <span>{meError}</span>
+            <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={retryMe}>
+              Try again
+            </Button>
+          </p>
+        </div>
+      )}
+
+      <main
+        id="top"
+        key={route}
+        ref={mainRef}
+        tabIndex={-1}
+        className="route-in focus:outline-none focus-visible:outline-none"
+      >
+        {identityPending && (
           <section className="mx-auto max-w-3xl px-5 py-24 text-center" aria-live="polite">
             <p className="text-sm text-muted-foreground">Loading your session…</p>
           </section>
         )}
 
-        {isLoaded && sessionChecked && (
+        {!identityPending && (
           <>
             {route === '/' && <LandingPage />}
 

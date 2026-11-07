@@ -1,5 +1,6 @@
 import { currentViewer, type AuthEnv, type Viewer } from './auth.ts'
 import { runWeeklyPipeline, type PipelineEnv } from './pipeline/index.ts'
+import { sourceCounts, topicCounts } from '../src/lib/topics.ts'
 
 export interface Env extends PipelineEnv, AuthEnv {
   BUCKET: R2Bucket
@@ -75,7 +76,7 @@ async function listFollows(env: Env, userId: string): Promise<Array<{ kind: stri
 
 async function listNotes(env: Env, userId: string): Promise<Array<{ id: string; body: string; created_at: string }>> {
   const { results } = await env.DB.prepare(
-    'SELECT id, body, created_at FROM user_notes WHERE user_id = ? ORDER BY created_at DESC',
+    'SELECT id, body, created_at FROM user_notes WHERE user_id = ? ORDER BY created_at DESC, id DESC',
   ).bind(userId).all<{ id: string; body: string; created_at: string }>()
   return results
 }
@@ -140,11 +141,21 @@ export default {
       return json({ runs: results })
     }
 
+    // Archive-wide topic and source counts for the Feed page's **My topics**
+    // panel (spec: "every topic and source seen in the archive"). Counts reuse
+    // the SPA's own matcher (lib/topics.ts) so the rule exists once.
+    if (path === '/api/archive/counts' && method === 'GET') {
+      const { results } = await env.DB.prepare(
+        'SELECT title, summary, reason, source FROM items',
+      ).all<{ title: string; summary: string; reason: string; source: string }>()
+      return json({ topics: topicCounts(results), sources: sourceCounts(results) })
+    }
+
     // Everything below needs either a signed-in Clerk identity or, for the
     // pipeline trigger, a matching CRON_RUN_TOKEN secret (so a run can be
     // started by hand from tools). Fail-closed: with no token configured,
     // only a Clerk admin can trigger.
-    if (path.startsWith('/api/me') || path.startsWith('/api/my/')) {
+    if (path === '/api/me' || path.startsWith('/api/my/')) {
       const viewer = await currentViewer(request, env)
       if (!viewer) return json({ error: 'sign in required' }, 401)
 
@@ -166,7 +177,7 @@ export default {
         const kind = body?.kind
         const value = typeof body?.value === 'string' ? body.value.trim() : ''
         if (!isTopicKind(kind) || !value || value.length > 120) {
-          return json({ error: 'expected { kind: "topic" | "source", value: string }' }, 400)
+          return json({ error: 'expected { kind: "topic" | "source", value: string } with value of 120 characters or fewer' }, 400)
         }
 
         if (method === 'PUT') {
@@ -189,9 +200,10 @@ export default {
         const body = (await request.json().catch(() => null)) as { body?: unknown } | null
         const text = typeof body?.body === 'string' ? body.body.trim() : ''
         if (!text) return json({ error: 'expected { body: string }' }, 400)
+        if (text.length > 2000) return json({ error: 'notes are limited to 2000 characters' }, 400)
         const note = {
           id: crypto.randomUUID(),
-          body: text.slice(0, 2000),
+          body: text,
           created_at: new Date().toISOString(),
         }
         await env.DB.prepare(
@@ -229,7 +241,14 @@ export default {
         return putState(env, viewer.userId, stateMatch[1], body)
       }
 
-      return json({ error: 'sign in required' }, 401)
+      // Known personal paths with a wrong method answer 405; anything else
+      // under the gate is simply not a route.
+      if (path === '/api/my/topics' || path === '/api/my/notes'
+        || /^\/api\/my\/notes\/([^/]+)$/.test(path) || /^\/api\/my\/items\/([^/]+)$/.test(path)
+        || path === '/api/me') {
+        return json({ error: 'method not allowed' }, 405)
+      }
+      return json({ error: 'not found' }, 404)
     }
 
     if (path === '/api/pipeline/run' && method === 'POST') {

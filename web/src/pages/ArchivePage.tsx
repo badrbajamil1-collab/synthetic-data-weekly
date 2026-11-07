@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { briefTitle, formatDate } from '@/lib/report'
-import { Link, navigate } from '@/lib/router'
+import { navigate } from '@/lib/router'
 import { useReports } from '@/lib/use-report'
 
 interface ArchivePageProps {
@@ -26,7 +26,7 @@ export function ArchivePage({ isAdmin, running, onRunPipeline }: ArchivePageProp
       <div className="grid gap-10 lg:grid-cols-[0.65fr_1.35fr] lg:gap-20">
         <div>
           <p className="text-sm font-semibold text-primary">Report archive</p>
-          <h2 className="mt-3 text-balance font-display text-4xl font-medium tracking-[-0.03em]">Every week, kept in context.</h2>
+          <h1 className="text-balance font-display text-4xl font-medium tracking-[-0.03em]">Every week, kept in context.</h1>
           <p className="mt-5 max-w-md leading-7 text-muted-foreground">Return to an earlier brief without losing its rankings, source links, or editorial perspective.</p>
           {isAdmin && (
             <Button className="mt-6" variant="ink" onClick={onRunPipeline} disabled={running}>
@@ -77,7 +77,7 @@ export function ArchivePage({ isAdmin, running, onRunPipeline }: ArchivePageProp
           })}
           {!loading && rows.length > 0 && (
             <div className="px-5 py-3 text-xs text-muted-foreground sm:px-7">
-              Oldest to newest. Open a week to read the brief. Everything is also reachable from each brief's <Link to="/archive" className="underline decoration-primary/40 underline-offset-4 hover:text-primary">archive</Link>.
+              Oldest to newest. Open a week to read the brief. Each brief also links back here from its archive entry.
             </div>
           )}
         </div>

@@ -1,16 +1,20 @@
 import { ArrowUpRight } from 'lucide-react'
 
 import { FilterChip } from '@/components/filter-chip'
+import { FollowToggle } from '@/components/follow-toggle'
 import { topicsFor } from '@/lib/feed'
 import { formatDate, sourceLabel, type ReportItem } from '@/lib/report'
+import type { TopicFollow, TopicKind } from '@/lib/topics'
 
 interface NewsListProps {
   items: ReportItem[]
   active: string | null
   onKeyword: (label: string) => void
+  follows?: TopicFollow[]
+  onFollow?: (kind: TopicKind, label: string, next: boolean) => void
 }
 
-export function NewsList({ items, active, onKeyword }: NewsListProps) {
+export function NewsList({ items, active, onKeyword, follows, onFollow }: NewsListProps) {
   const newest = [...items].sort((a, b) => Date.parse(b.published) - Date.parse(a.published))
   if (newest.length === 0) return null
 
@@ -46,9 +50,19 @@ export function NewsList({ items, active, onKeyword }: NewsListProps) {
                   <span className="sr-only"> (opens in a new tab)</span>
                 </a>
                 {topics.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
                     {topics.map((label) => (
-                      <FilterChip key={label} label={label} active={active === label} onToggle={() => onKeyword(label)} />
+                      <span key={label} className="inline-flex items-center gap-1">
+                        <FilterChip label={label} active={active === label} onToggle={() => onKeyword(label)} />
+                        {onFollow && (
+                          <FollowToggle
+                            kind="topic"
+                            value={label}
+                            followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === label) ?? false}
+                            onToggle={(kind, value, next) => onFollow(kind, value, next)}
+                          />
+                        )}
+                      </span>
                     ))}
                   </div>
                 )}

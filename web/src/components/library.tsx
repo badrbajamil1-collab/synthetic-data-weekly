@@ -4,6 +4,7 @@ import { ArrowUpRight, BookmarkCheck, Star } from 'lucide-react'
 import { NotesPanel } from '@/components/notes-panel'
 import { PaperActions } from '@/components/paper-actions'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatDate, sourceLabel } from '@/lib/report'
 import type { LibraryEntry } from '@/lib/api'
@@ -14,6 +15,7 @@ interface LibraryProps {
   onNote: (itemId: string, note: string) => void
   loading: boolean
   error: string | null
+  reload?: () => void
 }
 
 function NoteEditor({ itemId, note, onSave }: { itemId: string; note: string; onSave: (id: string, note: string) => void }) {
@@ -69,21 +71,31 @@ function Entry({ entry, onToggle, onNote }: { entry: LibraryEntry; onToggle: Lib
   )
 }
 
-export function Library({ entries, onToggle, onNote, loading, error }: LibraryProps) {
+export function Library({ entries, onToggle, onNote, loading, error, reload }: LibraryProps) {
   const readLater = entries.filter((e) => e.read_later === 1)
   const important = entries.filter((e) => e.important === 1)
 
   const notes = entries.filter((e) => e.note.trim() !== '')
 
-  if (error) {
-    return <p role="alert" className="rounded-2xl border border-destructive/25 bg-[#fff5f7] p-5 text-sm text-destructive">{error}</p>
-  }
-
+  // One page-level alert above a surviving list: a failed save or reload must
+  // not erase the library (spec: failed API call → error with a retry button).
   if (loading) {
-    return <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Loading your library…</p>
+    return (
+      <div>
+        {error && (
+          <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
+            <span>{error}</span>
+            {reload && (
+              <Button className="ml-auto" variant="outline" size="sm" onClick={reload}>Try again</Button>
+            )}
+          </div>
+        )}
+        <p role="status" aria-live="polite" className="text-sm text-muted-foreground">Loading your library…</p>
+      </div>
+    )
   }
 
-  if (entries.length === 0) {
+  if (entries.length === 0 && !error) {
     return (
       <div className="rounded-3xl border border-dashed border-border bg-white/70 px-6 py-14 text-center">
         <p className="font-display text-2xl">Nothing saved yet.</p>
@@ -106,7 +118,16 @@ export function Library({ entries, onToggle, onNote, loading, error }: LibraryPr
   ]
 
   return (
-    <Tabs defaultValue="all">
+    <div>
+      {error && (
+        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
+          <span>{error}</span>
+          {reload && (
+            <Button className="ml-auto" variant="outline" size="sm" onClick={reload}>Try again</Button>
+          )}
+        </div>
+      )}
+      <Tabs defaultValue="all">
       <TabsList className="max-w-full overflow-x-auto overscroll-contain">
         {lists.map((list) => (
           <TabsTrigger key={list.value} value={list.value}>
@@ -130,6 +151,7 @@ export function Library({ entries, onToggle, onNote, loading, error }: LibraryPr
       <TabsContent value="upcoming">
         <NotesPanel />
       </TabsContent>
-    </Tabs>
+      </Tabs>
+    </div>
   )
 }

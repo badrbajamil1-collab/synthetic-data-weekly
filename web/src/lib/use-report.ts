@@ -73,6 +73,7 @@ export function useReport(id: string | null): ReportResult {
     setItems([])
     setNotFound(false)
     setError(null)
+    setLoading(false)
     if (!id) return
 
     const controller = new AbortController()

@@ -22,20 +22,25 @@ function ImportanceDonut({ items }: { items: ReportItem[] }) {
   const radius = 40
   const circumference = 2 * Math.PI * radius
 
-  // Prefix-summed band starts — no reassignment during render.
+  // Prefix-summed band starts in COUNTS, converted to circumference FRACTIONS
+  // for the dash offset — an offset in path-length units must be a fraction of
+  // the ring, not the count itself.
   const segments = bands.map((band, index) => ({
     band,
     fraction: total > 0 ? band.count / total : 0,
-    start: bands.slice(0, index).reduce((sum, earlier) => sum + earlier.count, 0),
+    startCount: bands.slice(0, index).reduce((sum, earlier) => sum + earlier.count, 0),
   }))
 
   return (
     <figure>
-      <figcaption className="text-sm font-semibold text-muted-foreground">Importance</figcaption>
+      <figcaption className="text-sm font-semibold text-muted-foreground">
+        Well7 fit
+        <span className="block font-normal">Importance bands; relevance where a paper is unrated.</span>
+      </figcaption>
       <div className="mt-3 flex items-center gap-5">
         <svg viewBox="0 0 120 120" className="size-28 shrink-0" role="img" aria-label={`Importance donut: ${bands.map((band) => `${band.label} ${band.count}`).join(', ')}`}>
           <circle cx="60" cy="60" r={radius} fill="none" strokeWidth="16" className="stroke-border/60" />
-          {total > 0 && segments.filter((segment) => segment.band.count > 0).map(({ band, fraction, start }) => (
+          {total > 0 && segments.filter((segment) => segment.band.count > 0).map(({ band, fraction, startCount }) => (
             <circle
               key={band.label}
               cx="60"
@@ -46,7 +51,7 @@ function ImportanceDonut({ items }: { items: ReportItem[] }) {
               strokeLinecap="butt"
               className={DONUT_STROKE[band.label]}
               strokeDasharray={`${Math.max(fraction * circumference - 2, 0)} ${circumference}`}
-              strokeDashoffset={-start * circumference}
+              strokeDashoffset={-((startCount / total) * circumference)}
               transform="rotate(-90 60 60)"
             />
           ))}

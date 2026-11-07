@@ -1,4 +1,4 @@
-import { ArrowDownToLine, ArrowRight, Clock3, ShieldCheck } from 'lucide-react'
+import { ArrowDownToLine, ArrowRight, CircleAlert, Clock3, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useClerk } from '@clerk/react'
 
 import { Badge } from '@/components/ui/badge'
@@ -17,9 +17,10 @@ import { useReport, useReports } from '@/lib/use-report'
  */
 export function LandingPage() {
   const clerk = useClerk()
-  const { reports } = useReports()
+  const { reports, error: reportsError, retry: retryReports } = useReports()
   const latest = reports[0] ?? null
-  const { items } = useReport(latest?.id ?? null)
+  const { items, error: itemsError, retry: retryItem } = useReport(latest?.id ?? null)
+  const archiveDown = Boolean(reportsError) || (reports.length > 0 && Boolean(itemsError))
 
   const sourceCount = new Set(items.map((item) => item.source)).size
   const averageScore = items.length
@@ -28,8 +29,24 @@ export function LandingPage() {
 
   return (
     <section className="mx-auto max-w-7xl px-5 pb-16 pt-14 sm:px-8 sm:pb-20 sm:pt-20">
+      {archiveDown && (
+        <div className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
+          <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+          <span>{reportsError ?? itemsError ?? 'The archive is unavailable.'}</span>
+          <Button
+            className="ml-auto"
+            variant="outline"
+            size="sm"
+            onClick={() => (reportsError ? retryReports() : retryItem())}
+          >
+            <RefreshCw aria-hidden="true" />
+            Try again
+          </Button>
+        </div>
+      )}
+
       <div className="grid items-center gap-12 grid-cols-[minmax(0,1fr)] lg:grid-cols-[1.02fr_0.98fr] lg:gap-16">
-        <BlurFade direction="up" duration={0.55} className="min-w-0">
+        <BlurFade direction="up" duration={0.4} className="min-w-0">
           <div>
             <Badge variant="outline" className="border-mint/25 bg-[#e9f7f3] px-3 py-1.5 text-[#146c63]">
               <ShieldCheck aria-hidden="true" />
@@ -75,24 +92,26 @@ export function LandingPage() {
         </BlurFade>
       </div>
 
-      <div className="mt-16 grid grid-cols-2 border-y border-border py-7 sm:grid-cols-4 sm:py-8">
-        {[
-          { label: 'Reports archived', value: reports.length, decimals: 0 },
-          { label: 'Findings in this brief', value: items.length, decimals: 0 },
-          { label: 'Sources represented', value: sourceCount, decimals: 0 },
-          { label: 'Average relevance', value: averageScore, decimals: 1 },
-        ].map((stat, index) => (
-          <div
-            key={stat.label}
-            className={`px-4 py-4 sm:px-7 sm:py-0 ${index > 0 ? 'sm:border-l sm:border-border' : ''} ${index === 1 ? 'border-l border-border' : ''} ${index >= 2 ? 'border-t border-border sm:border-t-0' : ''}`}
-          >
-            <NumberTicker value={stat.value} decimalPlaces={stat.decimals} className="font-display text-3xl font-medium tracking-[-0.03em] text-ink sm:text-4xl" />
-            <p className="mt-1.5 text-sm text-muted-foreground">{stat.label}</p>
-          </div>
-        ))}
-      </div>
+      {!archiveDown && (
+        <div className="mt-16 grid grid-cols-2 border-y border-border py-7 sm:grid-cols-4 sm:py-8">
+          {[
+            { label: 'Reports archived', value: reports.length, decimals: 0 },
+            { label: 'Findings in this brief', value: items.length, decimals: 0 },
+            { label: 'Sources represented', value: sourceCount, decimals: 0 },
+            { label: 'Average relevance', value: averageScore, decimals: 1 },
+          ].map((stat, index) => (
+            <div
+              key={stat.label}
+              className={`px-4 py-4 sm:px-7 sm:py-0 ${index > 0 ? 'sm:border-l sm:border-border' : ''} ${index === 1 ? 'border-l border-border' : ''} ${index >= 2 ? 'border-t border-border sm:border-t-0' : ''}`}
+            >
+              <NumberTicker value={stat.value} decimalPlaces={stat.decimals} className="font-display text-3xl font-medium tracking-[-0.03em] text-ink sm:text-4xl" />
+              <p className="mt-1.5 text-sm text-muted-foreground">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
-      {latest && (
+      {!archiveDown && latest && (
         <div className="mt-8 rounded-2xl border border-border bg-white/70 px-6 py-5 text-sm text-muted-foreground sm:flex sm:items-center sm:justify-between">
           <p>
             Inside this week: <span className="font-medium text-ink">{briefTitle(latest.subject)}</span>

@@ -1,4 +1,3 @@
-import { CircleAlert } from 'lucide-react'
 import { useClerk } from '@clerk/react'
 
 import { Library } from '@/components/library'
@@ -46,19 +45,13 @@ export function LibraryPage({ signedIn, library }: { signedIn: boolean; library:
         </p>
       </div>
 
-      {library.error && (
-        <p className="mb-6 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-5 text-sm text-destructive" role="alert">
-          <CircleAlert className="mr-2 inline size-4" aria-hidden="true" />
-          {library.error}
-        </p>
-      )}
-
       <Library
         entries={library.entries}
         onToggle={library.togglePaper}
         onNote={library.saveNote}
         loading={library.loading}
         error={library.error}
+        reload={library.reload}
       />
     </section>
   )

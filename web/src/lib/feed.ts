@@ -1,4 +1,4 @@
-import type { ReportItem } from '@/lib/report'
+import type { ReportItem } from './report.ts'
 
 export type FeedSection = 'all' | 'top' | 'tool' | 'worth'
 export type FeedView = 'all' | 'read_later' | 'important'

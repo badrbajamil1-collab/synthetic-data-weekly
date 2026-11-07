@@ -89,6 +89,23 @@ export interface LibraryBundle {
   error: string | null
   togglePaper: (itemId: string, field: 'read_later' | 'important') => Promise<void>
   saveNote: (itemId: string, note: string) => Promise<void>
+  reload: () => void
+}
+
+/** Archive-wide topic and source counts behind the Feed page's **My topics** panel. */
+export interface ArchiveCounts {
+  topics: Array<{ label: string; count: number }>
+  sources: Array<{ label: string; count: number }>
+}
+
+export async function fetchArchiveCounts(): Promise<ArchiveCounts | null> {
+  try {
+    const response = await fetch('/api/archive/counts', { headers: { Accept: 'application/json' } })
+    if (!response.ok) return null
+    return (await response.json()) as ArchiveCounts
+  } catch {
+    return null
+  }
 }
 
 async function toggleFollow(method: 'PUT' | 'DELETE', follow: TopicFollow): Promise<TopicFollow[]> {

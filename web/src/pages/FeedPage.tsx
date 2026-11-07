@@ -1,12 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CalendarDays, CircleAlert, RefreshCw, Sparkles } from 'lucide-react'
 
 import { FeedFilterBar, FeedList, FeedSidebar } from '@/components/feed-panel'
 import { TopicPanel, type TopicCount } from '@/components/topic-panel'
-import { WeekShape } from '@/components/week-shape'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import { type LibraryBundle } from '@/lib/api'
+import { fetchArchiveCounts, type LibraryBundle, type ArchiveCounts } from '@/lib/api'
 import { filterItems, sectionCounts, type FeedFilters, type FeedView } from '@/lib/feed'
 import { briefTitle, formatDate } from '@/lib/report'
 import { useReport, useReports } from '@/lib/use-report'
@@ -39,7 +38,14 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
 
   const savedById = library.savedById
   const feedItems = useMemo(
-    () => filterItems(items, filters, savedById).filter((item) => matchesFollows(item, follows)),
+    () => {
+      const filtered = filterItems(items, filters, savedById)
+      // Spec: with nothing followed the whole brief shows, next to the
+      // pick-topics prompt — never an empty page (matchesFollows of an empty
+      // list would exclude everything).
+      if (follows.length === 0) return filtered
+      return filtered.filter((item) => matchesFollows(item, follows))
+    },
     [items, filters, savedById, follows],
   )
   const totals = sectionCounts(items)
@@ -55,10 +61,33 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
     filters.view !== 'all',
   ].filter(Boolean).length
 
-  const counts = useMemo<TopicCount[]>(() => ([
-    ...topicCounts(items).map((row) => ({ kind: 'topic' as TopicKind, label: row.label, count: row.count })),
-    ...sourceCounts(items).map((row) => ({ kind: 'source' as TopicKind, label: row.label, count: row.count })),
-  ]), [items])
+  // Spec: My topics lists every topic and source seen in the ARCHIVE, not just
+  // the picked week — so a follow made in an earlier week is still visible and
+  // unfollowable. Falls back to the current week's counts if the endpoint is
+  // unavailable; never blocks the panel.
+  const [archiveCounts, setArchiveCounts] = useState<ArchiveCounts | null>(null)
+  useEffect(() => {
+    let active = true
+    void fetchArchiveCounts().then((counts) => {
+      if (active) setArchiveCounts(counts)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const counts = useMemo<TopicCount[]>(() => {
+    if (archiveCounts) {
+      return [
+        ...archiveCounts.topics.map((row) => ({ kind: 'topic' as TopicKind, label: row.label, count: row.count })),
+        ...archiveCounts.sources.map((row) => ({ kind: 'source' as TopicKind, label: row.label, count: row.count })),
+      ]
+    }
+    return [
+      ...topicCounts(items).map((row) => ({ kind: 'topic' as TopicKind, label: row.label, count: row.count })),
+      ...sourceCounts(items).map((row) => ({ kind: 'source' as TopicKind, label: row.label, count: row.count })),
+    ]
+  }, [archiveCounts, items])
 
   if (!signedIn) {
     return (
@@ -100,6 +129,15 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
             <div role="status" aria-live="polite" className="space-y-8">
               <Skeleton className="h-40 w-full rounded-3xl" />
               <div className="space-y-5"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
+            </div>
+          )}
+
+          {!reportsLoading && !reportsError && reports.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
+              <p className="font-medium">The pipeline has not published a brief yet.</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Once a report runs, your feed shows it here. In the meantime the archive stays empty.
+              </p>
             </div>
           )}
 
@@ -176,16 +214,14 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                     />
                   ) : (
                     <div className="rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
-                      <p className="mt-3 font-medium">No new items under these filters.</p>
+                      <p className="mt-3 font-medium">
+                        {follows.length > 0 ? 'Nothing followed matches these filters this week.' : 'Nothing matches these filters.'}
+                      </p>
                       <p className="mt-1 text-sm text-muted-foreground">Try a different week or section, star more topics, or clear the filters.</p>
                       <Button className="mt-5" variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>Clear filters</Button>
                     </div>
                   )}
                 </div>
-              </div>
-
-              <div className="mt-14">
-                <WeekShape items={items} />
               </div>
             </>
           )}
