@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Badr Bajamil", email = "badrbajamil1@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
     "feedparser>=6.0.14",
     "httpx>=0.28.1",
