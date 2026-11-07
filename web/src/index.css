@@ -1,0 +1,118 @@
+@import "tailwindcss";
+@import "@clerk/ui/themes/shadcn.css";
+
+@theme inline {
+  --color-background: #f3f6fa;
+  --color-foreground: #102a43;
+  --color-paper: #f3f6fa;
+  --color-ink: #102a43;
+  --color-primary: #4f46e5;
+  --color-primary-foreground: #ffffff;
+  --color-signal: #4f46e5;
+  --color-secondary: #e7edf4;
+  --color-secondary-foreground: #334e68;
+  --color-muted: #e7edf4;
+  --color-muted-foreground: #52667a;
+  --color-border: #d6e0ea;
+  --color-input: #d6e0ea;
+  --color-ring: #4f46e5;
+  --color-destructive: #b83b5e;
+  --color-warm: #b83b5e;
+  --color-mint: #0b6f6b;
+  --font-display: "IBM Plex Serif", "Georgia", serif;
+  --font-body: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  --font-sans: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  --font-mono: "IBM Plex Mono", "Consolas", monospace;
+}
+
+/*
+ * Bare shadcn design tokens. The Clerk shadcn theme
+ * (@clerk/ui/themes/shadcn) resolves its modal colors from these exact
+ * variables (var(--card), var(--primary), var(--muted), ...). Without them
+ * the sign-in modal renders with no background at all. Values mirror the
+ * @theme inline palette below.
+ */
+:root {
+  --background: #f3f6fa;
+  --foreground: #102a43;
+  --card: #ffffff;
+  --card-foreground: #102a43;
+  --popover: #ffffff;
+  --popover-foreground: #102a43;
+  --primary: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #e7edf4;
+  --secondary-foreground: #334e68;
+  --muted: #e7edf4;
+  --muted-foreground: #52667a;
+  --accent: #e7edf4;
+  --accent-foreground: #102a43;
+  --destructive: #b83b5e;
+  --destructive-foreground: #ffffff;
+  --border: #d6e0ea;
+  --input: #d6e0ea;
+  --ring: #4f46e5;
+}
+
+:root {
+  color-scheme: light;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-body);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 96px;
+}
+
+@media (pointer: fine) {
+  html {
+    overscroll-behavior: none;
+  }
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--color-background);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+::selection {
+  background: #dcdfff;
+  color: #102a43;
+}
+
+#root {
+  min-height: 100svh;
+}
+
+.signal-grid {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
