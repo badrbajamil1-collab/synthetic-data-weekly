@@ -184,14 +184,14 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
         topMargin=MARGIN,
         bottomMargin=52,
         title=subject_line(report),
-        author="Synthetic Data Research Agent",
+        author="Well7 Research Lab",
     )
     frame = Frame(MARGIN, 52, WIDTH, letter[1] - MARGIN - 52, id="body", showBoundary=0)
     doc.addPageTemplates([PageTemplate(id="page", frames=[frame], onPage=_footer)])
 
     story: List[Any] = []
 
-    story.append(Paragraph("SYNTHETIC DATA WEEKLY", STYLE["kicker"]))
+    story.append(Paragraph("WELL7 RESEARCH LAB · SYNTHETIC DATA WEEKLY", STYLE["kicker"]))
     story.append(
         Paragraph(f"Week of {escape(format_week(report['week_start'], report['week_end']))}", STYLE["title"])
     )

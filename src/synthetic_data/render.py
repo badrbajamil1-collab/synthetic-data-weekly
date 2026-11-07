@@ -45,6 +45,8 @@ def render_markdown(report: Dict[str, Any]) -> str:
     lines: List[str] = []
     lines.append(f"**Subject:** {subject_line(report)}")
     lines.append("")
+    lines.append("*Well7 Research Lab · Privacy-first tabular and time-series synthetic data research.*")
+    lines.append("")
     lines.append("## Trend of the week")
     lines.append("")
     lines.append(report["trend"].strip())
@@ -104,7 +106,7 @@ HTML_TEMPLATE = Template(
 
   <tr><td style="padding-bottom:8px;">
     <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;">
-      Synthetic Data Weekly
+      Well7 Research Lab · Synthetic Data Weekly
     </div>
     <h1 style="margin:6px 0 0;font-size:24px;line-height:1.25;color:#111827;">
       Week of {{ week }}
