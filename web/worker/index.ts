@@ -81,8 +81,12 @@ async function listNotes(env: Env, userId: string): Promise<Array<{ id: string; 
   return results
 }
 
+async function adminDeleteReport(env: Env, reportId: string): Promise<void> {
+  await env.DB.prepare('DELETE FROM items WHERE report_id = ?').bind(reportId).run()
+  await env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(reportId).run()
+}
+
 export default {
-  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     await runWeeklyPipeline(env, 'cron', new Date(controller.scheduledTime))
   },
 
@@ -117,6 +121,13 @@ export default {
         'SELECT id, title, url, source, published, score, well7_fit, reason, summary, section, position FROM items WHERE report_id = ? ORDER BY section, position'
       ).bind(itemsMatch[1]).all()
       return json({ items: results })
+    }
+
+    // Admin only — maker can purge a bad report while keeping history intact.
+    const reportDelMatch = path.match(/^\/api\/reports\/([^/]+)$/)
+    if (reportDelMatch && method === 'DELETE' && viewer?.isAdmin === true) {
+      await adminDeleteReport(env, reportDelMatch[1])
+      return json({ deleted: true, id: reportDelMatch[1] })
     }
 
     const pdfMatch = path.match(/^\/api\/reports\/([^/]+)\/pdf$/)
