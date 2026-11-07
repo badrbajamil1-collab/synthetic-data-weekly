@@ -1,8 +1,21 @@
 # Weekly Synthetic Data Research Agent
 
+![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
+![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
+![selftest](https://img.shields.io/badge/selftest-234%20checks%20passing-brightgreen)
+[![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
+
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
 arXiv, Google News, research blogs, Reddit, Hacker News and GitHub (27 HTTP requests
 per run) — then renders a weekly report for the Well7 team.
+
+**Two versions live in this repo:**
+
+- **`main` (this branch)** — the Python agent: collectors → LangGraph pipeline →
+  Markdown/HTML/PDF report → email. The source of truth.
+- **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + React archive/view
+  of the same weekly report, with its own JS pipeline inside the Worker.
 
 **The collection half is automated. Ranking, summarising and sending are not.**
 `main.py` collects, dedupes, filters against history and prints/saves raw items.
@@ -14,9 +27,38 @@ Everything after that is a script you run by hand, with a human writing
 - What works, what does not, what is next: [`docs/one-page-note.md`](docs/one-page-note.md)
 - Everything produced so far: [`progress/README.md`](progress/README.md)
 
+## Sample output
+
+From [`progress/week-2026-11-06/report.md`](progress/week-2026-11-06/report.md)
+(subject `Synthetic Data Weekly — Week of 31 Oct – 6 Nov 2026`, emailed as HTML
+with the PDF attached):
+
+> **1. [nathanielkang/CrossSynth](https://github.com/nathanielkang/CrossSynth)**
+> *GitHub · 31 Oct 2026*
+> When sites train generators on uneven shards, the synthetic union can keep the
+> counts and still miss the joints. CrossSynth is a federated tabular
+> synthesizer. Each party trains a local diffusion model under differential
+> privacy.
+>
+> **2. [Sejal116/federated-hospitals-simulation](https://github.com/Sejal116/federated-hospitals-simulation)**
+> *GitHub · 4 Nov 2026*
+> A small experiment on how hospitals can train a shared medical AI model
+> without sharing patient data — comparing single-hospital, pooled and
+> federated training, then testing what privacy noise costs in accuracy and
+> whether membership inference can tell who was in the training data.
+>
+> **3. [opendp/opendp](https://github.com/opendp/opendp) (447★)**
+> *GitHub · 4 Nov 2026*
+> The OpenDP Library is a modular collection of statistical algorithms that
+> adhere to the definition of differential privacy, implemented in Rust with
+> Python and R bindings.
+
+Every link in that report was verified HTTP 200 before being included; dates are
+checked against the week window by `verify_report.py`.
+
 ## Requirements
 
-- Python 3.13
+- Python 3.11+ (the project's venv uses 3.13)
 - [uv](https://docs.astral.sh/uv/) (recommended) or plain pip
 - Windows PowerShell 5.1 is what this was built on; nothing is Windows-specific
   except the notes below about `python` not being on `PATH`.

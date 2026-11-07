@@ -23,6 +23,11 @@ __pycache__/
 Thumbs.db
 .DS_Store
 
+# agent tooling — local, not part of the deliverable
+.agents/
+skills-lock.json
+.wrangler/
+
 # ---------------------------------------------------------------------------
 # Media and page renders. The unrelated experiments that used to produce these
 # lived in this folder until 2026-11-04 and now sit in

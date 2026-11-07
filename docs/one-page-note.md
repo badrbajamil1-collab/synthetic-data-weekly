@@ -133,3 +133,24 @@ be a historical artefact and editing it after the fact would fake the process.
   "read 3 to 5 introductions to synthetic data". Nothing in the repo records which
   five, or what each one contributed. Unlike the source list, this cannot be
   reconstructed honestly after the fact; it needs the reader to supply the list.
+
+## Update — 2026-11-07
+
+- **`well7_fit` is now the primary sort key** (was `score`). The rubric expanded
+  to Well7's vocabulary (CTGAN/TVAE/CopulaGAN, ε-DP/DP-SGD, MIA/Anonymeter,
+  SDV/OpenDP, PDPL/EU AI Act, FITS/CrossSynth), `RUBRIC_VERSION` bumped to
+  `2026-11-07.1`, so `score_cache.json` is invalidated — the next real run
+  re-scores all items (~15 model calls). Over 218 scored rows, 123 carry a
+  `well7_fit` of 1, so the reordering is real, not cosmetic.
+- **The 2026-11-06 week was regenerated offline** (`--no-llm`) after OpenRouter's
+  free tier hit `429 free-models-per-day`. The 7 picks are Well7-relevant
+  (9s–10s), but their prose is **extractive**, not written summaries — the trend
+  paragraph even contains a stray web sentence. Re-running `write_report.py`
+  without `--no-llm` once quota exists replaces it.
+- **A degraded ranking can no longer be published by the Worker.**
+  `web/worker/pipeline/guard.ts` (on the `web` branch) blocks the report INSERT
+  when all score batches fail or >10% of items are unscored — this was the
+  failure mode that produced the all-score-1 week on 6 Nov.
+- **Repo split for GitHub:** `main` is the Python agent; the `web` branch carries
+  the Cloudflare Workers/D1/React view. The Worker's silent score-1 fallback is
+  documented at `web/worker/pipeline/rank.ts:58` (guarded by `guard.ts` now).
