@@ -12,7 +12,7 @@ per run) — then renders a weekly report for the Well7 team.
 
 **Two versions live in this repo:**
 
-- **`main` (this branch)** — the Python agent: collectors → LangGraph pipeline →
+- **`main`** — the Python agent: collectors → LangGraph pipeline →
   Markdown/HTML/PDF report → email. The source of truth.
 - **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + React archive/view
   of the same weekly report, with its own JS pipeline inside the Worker.
@@ -71,7 +71,9 @@ read.
 
 From [`progress/week-2026-11-06/report.md`](progress/week-2026-11-06/report.md)
 (subject `Synthetic Data Weekly — Week of 31 Oct – 6 Nov 2026`, emailed as HTML
-with the PDF attached):
+with the PDF attached). The excerpt trims the `(stars: N)` suffixes that report
+still carries; the collector stopped writing them into titles on 2026-11-06, so
+newer renders show a clean repo name.
 
 > **1. [nathanielkang/CrossSynth](https://github.com/nathanielkang/CrossSynth)**
 > *GitHub · 31 Oct 2026*
