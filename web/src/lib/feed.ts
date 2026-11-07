@@ -21,6 +21,7 @@ export interface Topic {
 }
 
 type Taggable = Pick<ReportItem, 'title' | 'summary' | 'reason'>
+export type { Taggable }
 
 // Heuristic key words, matched against title, summary and reason. Edit this list to change them.
 export const TOPICS: Topic[] = [

@@ -1,7 +1,11 @@
+import { type TopicFollow } from '@/lib/topics'
+
 export interface Me {
   user_id: string
   email: string
   isAdmin: boolean
+  /** Followed topics and sources; the feed filters on first paint. */
+  topics?: TopicFollow[]
 }
 
 export interface PaperState {
@@ -69,4 +73,68 @@ export async function saveState(itemId: string, patch: Partial<Pick<PaperState, 
 
 export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Try again in a moment.'
+}
+
+export interface UserNote {
+  id: string
+  body: string
+  created_at: string
+}
+
+/** The signed-in per-person state the App shell owns and every page consumes. */
+export interface LibraryBundle {
+  entries: LibraryEntry[]
+  savedById: Map<string, LibraryEntry>
+  loading: boolean
+  error: string | null
+  togglePaper: (itemId: string, field: 'read_later' | 'important') => Promise<void>
+  saveNote: (itemId: string, note: string) => Promise<void>
+}
+
+async function toggleFollow(method: 'PUT' | 'DELETE', follow: TopicFollow): Promise<TopicFollow[]> {
+  const response = await fetch('/api/my/topics', {
+    method,
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify(follow),
+  })
+  if (!response.ok) {
+    throw new Error(`Could not update your follows (${response.status}). Try again in a moment.`)
+  }
+  return (await response.json() as { topics: TopicFollow[] }).topics
+}
+
+export function putTopic(follow: TopicFollow): Promise<TopicFollow[]> {
+  return toggleFollow('PUT', follow)
+}
+
+export function deleteTopic(follow: TopicFollow): Promise<TopicFollow[]> {
+  return toggleFollow('DELETE', follow)
+}
+
+export async function fetchMyNotes(): Promise<UserNote[]> {
+  const data = await getJson<{ notes: UserNote[] }>('/api/my/notes')
+  return data?.notes ?? []
+}
+
+export async function addMyNote(body: string): Promise<UserNote> {
+  const response = await fetch('/api/my/notes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ body }),
+  })
+  if (!response.ok) {
+    throw new Error(`Could not save the note (${response.status}). Try again in a moment.`)
+  }
+  return (await response.json() as { note: UserNote }).note
+}
+
+export async function deleteMyNote(id: string): Promise<UserNote[]> {
+  const response = await fetch(`/api/my/notes/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { Accept: 'application/json', ...(await authHeaders()) },
+  })
+  if (!response.ok) {
+    throw new Error(`Could not delete the note (${response.status}). Try again in a moment.`)
+  }
+  return (await response.json() as { notes: UserNote[] }).notes
 }
