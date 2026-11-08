@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
 
+import { EditorialTakeaway } from '@/components/editorial-takeaway'
 import { FeedFilterBar, FeedList, KeywordStrip } from '@/components/feed-panel'
 import { NewsList } from '@/components/news-list'
-import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type LibraryBundle } from '@/lib/api'
@@ -105,17 +105,17 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
 
       {!loading && !reportsLoading && report && (
         <div className="min-w-0">
-          <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
+          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
             <div>
-              <h1 className="max-w-3xl text-balance font-display text-4xl font-medium leading-tight tracking-[-0.03em] text-ink sm:text-5xl">
+              <h1 className="max-w-3xl text-balance font-display text-2xl font-medium leading-tight tracking-[-0.025em] text-ink sm:text-3xl">
                 {briefTitle(report.subject)}
               </h1>
-              <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground sm:text-sm">
                 <CalendarDays className="size-4" aria-hidden="true" />
                 Week ending {formatDate(report.week_end)}
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" asChild>
                 <Link to="/studio">Search a topic live</Link>
               </Button>
@@ -131,32 +131,18 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
           </div>
 
           {report.trend && (
-            <BlurFade inView duration={0.35}>
-              <div className="mt-10 grid gap-4 border-y border-border/80 py-7 md:grid-cols-[180px_1fr] md:gap-10">
-                <div>
-                  <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    The editorial read
-                  </h2>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    Pattern across this week
-                  </p>
-                </div>
-                <p className="max-w-[68ch] font-display text-xl leading-8 text-ink/90 sm:text-2xl sm:leading-9">
-                  {report.trend}
-                </p>
-              </div>
-            </BlurFade>
+            <EditorialTakeaway text={report.trend} label="Weekly takeaway" />
           )}
 
           <KeywordStrip counts={keywords} active={filters.keyword} onToggle={toggleKeyword} follows={follows} onFollow={onFollow} />
 
-          <div className="mt-12">
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="mt-8">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <h2 className="text-balance font-display text-3xl font-medium tracking-[-0.025em] text-ink">
+                <h2 className="text-balance font-display text-2xl font-medium tracking-[-0.02em] text-ink">
                   Inside this brief
                 </h2>
-                <p className="mt-1.5 text-sm text-muted-foreground">
+                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
                   Filter by topic or section, expand any paper to read the full summary, or save items to your library.
                 </p>
               </div>

@@ -8,6 +8,7 @@ import {
   Square,
 } from 'lucide-react'
 
+import { EditorialTakeaway } from '@/components/editorial-takeaway'
 import { FilterChip } from '@/components/filter-chip'
 import { FollowToggle } from '@/components/follow-toggle'
 import { PaperActions } from '@/components/paper-actions'
@@ -516,13 +517,8 @@ export function StudioPage({
       <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_260px]">
         <div className="min-w-0">
           {trendText && (
-            <div className="mb-8 border-y border-border/80 py-6">
-              <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Key takeaway
-              </p>
-              <p className="mt-2 max-w-[68ch] font-display text-xl leading-8 text-ink/90">
-                {trendText}
-              </p>
+            <div className="mb-6">
+              <EditorialTakeaway text={trendText} label="Key takeaway" />
             </div>
           )}
 
