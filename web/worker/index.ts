@@ -87,6 +87,7 @@ async function adminDeleteReport(env: Env, reportId: string): Promise<void> {
 }
 
 export default {
+  async scheduled(controller: ScheduledController, env: Env): Promise<void> {
     await runWeeklyPipeline(env, 'cron', new Date(controller.scheduledTime))
   },
 
@@ -123,9 +124,11 @@ export default {
       return json({ items: results })
     }
 
-    // Admin only — maker can purge a bad report while keeping history intact.
+    // Admin only — a maker can purge a bad report while keeping history intact.
     const reportDelMatch = path.match(/^\/api\/reports\/([^/]+)$/)
-    if (reportDelMatch && method === 'DELETE' && viewer?.isAdmin === true) {
+    if (reportDelMatch && method === 'DELETE') {
+      const deleter = await currentViewer(request, env)
+      if (deleter?.isAdmin !== true) return json({ error: 'admin sign-in required' }, 403)
       await adminDeleteReport(env, reportDelMatch[1])
       return json({ deleted: true, id: reportDelMatch[1] })
     }

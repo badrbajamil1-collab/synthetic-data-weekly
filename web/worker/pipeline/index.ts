@@ -121,7 +121,7 @@ async function produceReport(env: PipelineEnv): Promise<{ reportId: string; warn
         normalizeUrl(section.item.url),
         section.item.source,
         section.item.published,
-        section.item.score,
+        section.item.well7_fit,
         section.item.well7_fit,
         section.item.reason,
         section.summary.summary,
