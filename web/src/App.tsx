@@ -153,10 +153,21 @@ export default function App() {
 
   async function toggleFollow(kind: TopicKind, value: string, next: boolean) {
     setFollowError(null)
+    // Optimistic: the star and the feed narrow on the same frame as the click,
+    // so a slow Worker round-trip never reads as "the star does nothing".
+    const before = topics
+    setTopics(
+      sortFollows(
+        next
+          ? [...before.filter((follow) => !(follow.kind === kind && follow.value === value)), { kind, value }]
+          : before.filter((follow) => !(follow.kind === kind && follow.value === value)),
+      ),
+    )
     try {
       const updated = next ? await putTopic({ kind, value }) : await deleteTopic({ kind, value })
       setTopics(sortFollows(updated))
     } catch (error) {
+      setTopics(before)
       setFollowError(errorText(error))
     }
   }

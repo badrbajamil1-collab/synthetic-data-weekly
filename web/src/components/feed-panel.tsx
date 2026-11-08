@@ -38,7 +38,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
     <aside aria-label="Your feed" className="order-last mb-12 lg:order-none lg:sticky lg:top-28 lg:mb-0 lg:self-start">
       <h3 className="font-display text-2xl font-medium tracking-[-0.02em]">Your feed</h3>
 
-      <nav aria-label="Views" className="mt-5 flex flex-col gap-1">
+      <nav aria-label="Views" className="mt-5 flex flex-wrap gap-2">
         {(Object.keys(VIEW_LABELS) as FeedView[]).map((key) => {
           const active = view === key
           return (
@@ -48,15 +48,17 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
               aria-pressed={active}
               onClick={() => onView(key)}
               className={cn(
-                'flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 text-left text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                active ? 'bg-ink text-white' : 'text-ink/80 hover:bg-secondary/70 hover:text-ink',
+                'inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                active
+                  ? 'border-ink bg-ink text-white'
+                  : 'border-border bg-white text-ink/80 hover:border-primary/40 hover:text-primary',
               )}
             >
               {VIEW_LABELS[key]}
               <span
                 className={cn(
-                  'rounded-full px-2 py-0.5 text-xs leading-none',
-                  active ? 'bg-white/20' : 'bg-secondary text-muted-foreground',
+                  'rounded-full px-1.5 py-px text-[11px] leading-4 tabular-nums',
+                  active ? 'bg-white/20 text-white' : 'bg-secondary text-muted-foreground',
                 )}
               >
                 {viewCounts[key]}
@@ -67,7 +69,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
       </nav>
 
       <h4 className="mt-10 text-sm font-semibold text-muted-foreground">Weeks</h4>
-      <ul className="mt-3 flex flex-col gap-1">
+      <ul className="mt-3 flex flex-wrap gap-2">
         {reports.map((report) => {
           const active = report.id === selectedId
           return (
@@ -77,8 +79,10 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
                 aria-pressed={active}
                 onClick={() => onSelectWeek(report.id)}
                 className={cn(
-                  'w-full rounded-xl px-3.5 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  active ? 'bg-primary/10 font-semibold text-primary' : 'text-ink/80 hover:bg-secondary/70 hover:text-ink',
+                  'inline-flex rounded-full border px-3.5 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  active
+                    ? 'border-primary/40 bg-primary/10 font-semibold text-primary'
+                    : 'border-border bg-white text-ink/80 hover:border-primary/40 hover:text-primary',
                 )}
               >
                 Week ending {formatDate(report.week_end, 'short')}

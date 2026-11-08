@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, CircleAlert, RefreshCw, Sparkles } from 'lucide-react'
+import { CalendarDays, CircleAlert, RefreshCw, Sparkles, X } from 'lucide-react'
 
 import { FeedFilterBar, FeedList, FeedSidebar } from '@/components/feed-panel'
 import { TopicPanel, type TopicCount } from '@/components/topic-panel'
@@ -37,29 +37,35 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
   const [filters, setFilters] = useState<FeedFilters>(emptyFilters)
 
   const savedById = library.savedById
+  // The week narrowed to the starred topics and sources. Every number on the
+  // page (the list, the section chips, the view counts) is derived from this,
+  // so starring a topic visibly changes the whole page rather than only the
+  // rows below the fold.
+  const followedItems = useMemo(() => {
+    if (follows.length === 0) return items
+    return items.filter((item) => matchesFollows(item, follows))
+  }, [items, follows])
+
   const feedItems = useMemo(
-    () => {
-      const filtered = filterItems(items, filters, savedById)
-      // Spec: with nothing followed the whole brief shows, next to the
-      // pick-topics prompt — never an empty page (matchesFollows of an empty
-      // list would exclude everything).
-      if (follows.length === 0) return filtered
-      return filtered.filter((item) => matchesFollows(item, follows))
-    },
-    [items, filters, savedById, follows],
+    () => filterItems(followedItems, filters, savedById),
+    [followedItems, filters, savedById],
   )
-  const totals = sectionCounts(items)
+  const totals = useMemo(() => sectionCounts(followedItems), [followedItems])
   const viewCounts = useMemo<Record<FeedView, number>>(() => ({
-    all: items.length,
-    read_later: items.filter((item) => savedById.get(item.id)?.read_later === 1).length,
-    important: items.filter((item) => savedById.get(item.id)?.important === 1).length,
-  }), [items, savedById])
+    all: followedItems.length,
+    read_later: followedItems.filter((item) => savedById.get(item.id)?.read_later === 1).length,
+    important: followedItems.filter((item) => savedById.get(item.id)?.important === 1).length,
+  }), [followedItems, savedById])
   const activeFilters = [
     filters.query.trim() !== '',
     filters.section !== 'all',
     filters.keyword !== null,
     filters.view !== 'all',
   ].filter(Boolean).length
+
+  function toggleKeyword(label: string) {
+    setFilters((current) => ({ ...current, keyword: current.keyword === label ? null : label }))
+  }
 
   // Spec: My topics lists every topic and source seen in the ARCHIVE, not just
   // the picked week — so a follow made in an earlier week is still visible and
@@ -104,7 +110,7 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
 
   return (
     <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
-      <div className={report ? 'lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-16' : undefined}>
+      <div className={report ? 'flex flex-col lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-16' : undefined}>
         <FeedSidebar
           reports={reports}
           selectedId={weekId}
@@ -170,14 +176,32 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                   </p>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {follows.length === 0 ? 'Showing everything until you pick topics.' : `Filtered to ${follows.length} followed ${follows.length === 1 ? 'item' : 'items'}.`}
+                  {follows.length === 0
+                    ? `Showing all ${items.length} ${items.length === 1 ? 'item' : 'items'} until you star a topic.`
+                    : `${followedItems.length} of ${items.length} ${items.length === 1 ? 'item matches' : 'items match'} your ${follows.length} starred ${follows.length === 1 ? 'topic' : 'topics'}.`}
                 </p>
               </div>
 
-              {follows.length === 0 && (
+              {follows.length === 0 ? (
                 <div className="mt-6 rounded-2xl border border-primary/25 bg-[#eef7f5] p-4 text-sm text-ink/80">
                   <Sparkles className="mr-2 inline size-4 text-primary" aria-hidden="true" />
                   Star a few topics below (or on any chip) and your feed narrows to them.
+                </div>
+              ) : (
+                <div className="mt-6 flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-muted-foreground">Only showing</span>
+                  {follows.map((follow) => (
+                    <button
+                      key={`${follow.kind}:${follow.value}`}
+                      type="button"
+                      onClick={() => onFollow(follow.kind, follow.value, false)}
+                      title={`Stop following ${follow.value}`}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary transition-colors hover:border-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      {follow.kind === 'source' ? `${follow.value} (source)` : follow.value}
+                      <X className="size-3" aria-hidden="true" />
+                    </button>
+                  ))}
                 </div>
               )}
 
@@ -206,8 +230,8 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                       items={feedItems}
                       saved={savedById}
                       signedIn
-                      active={null}
-                      onKeyword={() => undefined}
+                      active={filters.keyword}
+                      onKeyword={toggleKeyword}
                       onToggle={library.togglePaper}
                       follows={follows}
                       onFollow={onFollow}
