@@ -1,5 +1,8 @@
-import { Star } from 'lucide-react'
+import { useState } from 'react'
+import { Plus, Star } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
+import { TOPICS } from '@/lib/feed'
 import { cn } from '@/lib/utils'
 import { sameSource, type TopicFollow, type TopicKind } from '@/lib/topics'
 
@@ -15,37 +18,111 @@ interface TopicPanelProps {
   onToggle: (kind: TopicKind, value: string, next: boolean) => void | Promise<void>
 }
 
+const DEFAULT_SOURCES = ['arXiv', 'GitHub', 'Hacker News', 'Google News', 'Reddit', 'Research Blogs']
+
 /**
- * The Feed page's **My topics** manager (spec): every topic and source seen in
- * the archive, with counts, and a toggle for each.
- *
- * The whole row is the control, not just the 14px star — a star-only hit target
- * reads as "the star does nothing" when the click lands a few pixels off. The
- * row is a single button (no nested buttons) so keyboard and screen-reader
- * users get the same target: aria-pressed states the follow, and the star is
- * decorative.
+ * The Feed page's **My topics** manager: displays all 20 synthetic-data topics,
+ * any custom topics the user has added, and all sources, plus an input to follow
+ * any custom keyword.
  */
 export function TopicPanel({ follows, counts, onToggle }: TopicPanelProps) {
-  return (
-    <div className="rounded-[24px] border border-border bg-white/70 p-6">
-      <h3 className="font-display text-lg font-semibold tracking-[-0.02em]">My topics</h3>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Star what you want in your feed. Everything shows until you star something.
-      </p>
+  const [customTopic, setCustomTopic] = useState('')
 
-      <div className="mt-5 space-y-5">
-        {(['topic', 'source'] as TopicKind[]).map((kind) => {
-          const rows = counts.filter((row) => row.kind === kind)
-          if (rows.length === 0) return null
-          return (
-            <div key={kind} className="grid gap-2 sm:grid-cols-2">
-              <h4 className="col-span-full text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                {kind === 'topic' ? 'Topics' : 'Sources'}
-              </h4>
+  // Merge the 20 standard TOPICS + any archive counts + any custom followed topics
+  const topicMap = new Map<string, number>()
+  for (const t of TOPICS) {
+    topicMap.set(t.label, 0)
+  }
+  for (const row of counts) {
+    if (row.kind === 'topic') {
+      topicMap.set(row.label, row.count)
+    }
+  }
+  for (const follow of follows) {
+    if (follow.kind === 'topic' && !topicMap.has(follow.value)) {
+      topicMap.set(follow.value, 0)
+    }
+  }
+
+  const allTopics: TopicCount[] = [...topicMap.entries()]
+    .map(([label, count]) => ({ kind: 'topic' as TopicKind, label, count }))
+    .sort((a, b) => {
+      const aFollowed = follows.some((f) => f.kind === 'topic' && f.value === a.label) ? 1 : 0
+      const bFollowed = follows.some((f) => f.kind === 'topic' && f.value === b.label) ? 1 : 0
+      return bFollowed - aFollowed || b.count - a.count || a.label.localeCompare(b.label)
+    })
+
+  // Merge standard sources + archive sources
+  const sourceMap = new Map<string, { label: string; count: number }>()
+  for (const s of DEFAULT_SOURCES) {
+    sourceMap.set(s.toLowerCase(), { label: s, count: 0 })
+  }
+  for (const row of counts) {
+    if (row.kind === 'source') {
+      const key = row.label.toLowerCase()
+      const existing = sourceMap.get(key)
+      sourceMap.set(key, { label: existing?.label ?? row.label, count: row.count })
+    }
+  }
+  const allSources: TopicCount[] = [...sourceMap.values()]
+    .map((s) => ({ kind: 'source' as TopicKind, label: s.label, count: s.count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+
+  function handleAddCustom(event: React.FormEvent) {
+    event.preventDefault()
+    const trimmed = customTopic.trim()
+    if (!trimmed) return
+    void onToggle('topic', trimmed, true)
+    setCustomTopic('')
+  }
+
+  return (
+    <div className="rounded-2xl border border-border/75 bg-white p-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+        <div>
+          <h3 className="font-display text-lg font-medium tracking-[-0.02em] text-ink">
+            My topics & sources
+          </h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Star any topic or source to personalize your feed, or add your own custom keyword.
+          </p>
+        </div>
+
+        <form onSubmit={handleAddCustom} className="flex items-center gap-2">
+          <input
+            type="text"
+            value={customTopic}
+            onChange={(event) => setCustomTopic(event.target.value)}
+            placeholder="Add custom topic (e.g. EHR, SQL)…"
+            maxLength={80}
+            className="h-9 w-56 rounded-xl border border-border/80 bg-background/50 px-3 text-xs text-ink placeholder:text-muted-foreground focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+          <Button type="submit" size="sm" variant="outline" disabled={!customTopic.trim()}>
+            <Plus className="size-3.5" aria-hidden="true" />
+            Follow
+          </Button>
+        </form>
+      </div>
+
+      <div className="mt-6 space-y-6">
+        {(
+          [
+            { kind: 'topic' as TopicKind, title: `Topics (${allTopics.length})`, rows: allTopics },
+            { kind: 'source' as TopicKind, title: `Sources (${allSources.length})`, rows: allSources },
+          ] as const
+        ).map(({ kind, title, rows }) => (
+          <div key={kind}>
+            <h4 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {title}
+            </h4>
+            <div className="mt-2.5 flex flex-wrap gap-2">
               {rows.map((row) => {
-                const stored = follows.find((follow) =>
-                  follow.kind === row.kind
-                  && (row.kind === 'source' ? sameSource(follow.value, row.label) : follow.value === row.label),
+                const stored = follows.find(
+                  (follow) =>
+                    follow.kind === row.kind &&
+                    (row.kind === 'source'
+                      ? sameSource(follow.value, row.label)
+                      : follow.value.toLowerCase() === row.label.toLowerCase()),
                 )
                 const followed = stored !== undefined
                 return (
@@ -54,29 +131,34 @@ export function TopicPanel({ follows, counts, onToggle }: TopicPanelProps) {
                     type="button"
                     aria-pressed={followed}
                     aria-label={followed ? `Stop following ${row.label}` : `Follow ${row.label} in your feed`}
-                    title={followed ? 'Stop following' : 'Follow in your feed'}
+                    title={followed ? 'Click to unfollow' : 'Click to follow in your feed'}
                     onClick={() => void onToggle(row.kind, stored?.value ?? row.label, !followed)}
                     className={cn(
-                      'flex items-center justify-between gap-3 rounded-full border px-3.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      'inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       followed
                         ? 'border-primary/45 bg-primary/10 text-primary'
-                        : 'border-border bg-white text-ink hover:border-primary/40 hover:text-primary',
+                        : 'border-border/75 bg-white text-ink/80 hover:border-primary/35 hover:text-primary',
                     )}
                   >
-                    <span className="min-w-0 truncate text-sm">
-                      {row.label}
-                      <span className="ml-2 text-xs tabular-nums text-muted-foreground">{row.count}</span>
-                    </span>
+                    <span>{row.label}</span>
+                    {row.count > 0 && (
+                      <span className="text-[11px] tabular-nums text-muted-foreground">
+                        {row.count}
+                      </span>
+                    )}
                     <Star
-                      className={cn('size-3.5 shrink-0', followed ? 'fill-current text-primary' : 'text-muted-foreground/60')}
+                      className={cn(
+                        'size-3 shrink-0',
+                        followed ? 'fill-current text-amber-500' : 'text-muted-foreground/50',
+                      )}
                       aria-hidden="true"
                     />
                   </button>
                 )
               })}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     </div>
   )

@@ -5,7 +5,7 @@ import { FollowToggle } from '@/components/follow-toggle'
 import { PaperActions } from '@/components/paper-actions'
 import { ReportItemRow } from '@/components/report-item'
 import { Button } from '@/components/ui/button'
-import type { LibraryEntry } from '@/lib/api'
+import type { LibraryEntry, SavableItemMeta } from '@/lib/api'
 import { topicsFor, type FeedSection, type FeedView } from '@/lib/feed'
 import { formatDate, type Report, type ReportItem } from '@/lib/report'
 import { Link } from '@/lib/router'
@@ -219,7 +219,7 @@ interface FeedListProps {
   signedIn: boolean
   active: string | null
   onKeyword: (label: string) => void
-  onToggle: (itemId: string, field: 'read_later' | 'important') => void
+  onToggle: (itemId: string, field: 'read_later' | 'important', itemMeta?: SavableItemMeta) => void
   /** When provided, topic chips carry follow stars. */
   follows?: TopicFollow[]
   onFollow?: (kind: TopicKind, label: string, next: boolean) => void
@@ -227,7 +227,7 @@ interface FeedListProps {
 
 export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle, follows, onFollow }: FeedListProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3.5">
       {items.map((item, index) => {
         const state = saved.get(item.id)
         const topics = topicsFor(item)
@@ -262,7 +262,7 @@ export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle, 
               <PaperActions
                 readLater={state?.read_later === 1}
                 important={state?.important === 1}
-                onToggle={(field) => onToggle(item.id, field)}
+                onToggle={(field) => onToggle(item.id, field, item)}
               />
             ) : undefined}
           />

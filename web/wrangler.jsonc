@@ -13,7 +13,7 @@
   },
   "vars": {
     "OPENROUTER_MODEL": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "ADMIN_EMAILS": "badrbajamil1@gmail.com"
+    "ADMIN_EMAILS": "badrbajamil1@gmail.com,coolbadrtv1@gmail.com"
   },
   "d1_databases": [
     {

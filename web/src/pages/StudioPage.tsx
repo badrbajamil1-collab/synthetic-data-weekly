@@ -10,6 +10,7 @@ import {
 
 import { FilterChip } from '@/components/filter-chip'
 import { FollowToggle } from '@/components/follow-toggle'
+import { PaperActions } from '@/components/paper-actions'
 import { PipelineStepper, type StepperNodeId } from '@/components/pipeline-stepper'
 import { ReportItemRow } from '@/components/report-item'
 import { Button } from '@/components/ui/button'
@@ -63,6 +64,15 @@ function nextNodeAfter(node: StepperNodeId): StepperNodeId | null {
   return NODE_ORDER[index + 1]
 }
 
+function stableItemId(url: string): string {
+  let hash = 2166136261
+  for (let i = 0; i < url.length; i++) {
+    hash ^= url.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return `live-${(hash >>> 0).toString(16).padStart(8, '0')}`
+}
+
 interface StudioPageProps {
   initialQuery?: string
   signedIn: boolean
@@ -78,6 +88,7 @@ export function StudioPage({
   signedIn,
   isAdmin,
   onSignIn,
+  library,
   follows,
   onFollow,
 }: StudioPageProps) {
@@ -235,7 +246,7 @@ export function StudioPage({
       }
       setStatus('failed')
       setActiveNode(null)
-      setError(err instanceof Error ? err.message : 'Live research run failed.')
+      setError(err instanceof Error ? err.message : 'Live search failed.')
     }
   }
 
@@ -248,7 +259,7 @@ export function StudioPage({
   const displayItems = useMemo<ReportItem[]>(() => {
     if (sections.length > 0) {
       return sections.map((entry, idx) => ({
-        id: `${entry.item.url}-${idx}`,
+        id: stableItemId(entry.item.url),
         title: entry.item.title,
         url: entry.item.url,
         source: entry.item.source,
@@ -263,7 +274,7 @@ export function StudioPage({
     }
     if (scoredItems.length > 0) {
       return scoredItems.map((item, idx) => ({
-        id: `${item.url}-${idx}`,
+        id: stableItemId(item.url),
         title: item.title,
         url: item.url,
         source: item.source,
@@ -277,14 +288,14 @@ export function StudioPage({
       }))
     }
     return cleanItems.map((item, idx) => ({
-      id: `${item.url}-${idx}`,
+      id: stableItemId(item.url),
       title: item.title,
       url: item.url,
       source: item.source,
       published: item.published,
       score: 0,
       well7_fit: null,
-      reason: 'Collected and deduplicated — waiting for ranker…',
+      reason: '',
       summary: item.snippet,
       section: 'top',
       position: idx + 1,
@@ -298,14 +309,13 @@ export function StudioPage({
 
   return (
     <section className="mx-auto max-w-7xl px-5 pb-20 pt-10 sm:px-8 sm:pt-14">
-      {/* Quiet Editorial Header & Search Controls */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-medium tracking-[-0.03em] text-ink sm:text-4xl">
-            Live research studio
+            Live topic search
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Run the 6-node LangGraph.js pipeline across live sources and inspect each stage as it finishes.
+            Search across arXiv, GitHub, Hacker News, Google News, Reddit, and research blogs for recent synthetic-data papers and tools.
           </p>
         </div>
 
@@ -319,7 +329,7 @@ export function StudioPage({
                 mode === 'query' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-ink',
               )}
             >
-              Interactive query
+              Topic search
             </button>
             <button
               type="button"
@@ -351,7 +361,7 @@ export function StudioPage({
             placeholder={
               mode === 'weekly'
                 ? 'Full weekly brief across all synthetic-data sources (optional focus topic)…'
-                : 'Enter a research focus (e.g. tabular differential privacy, clinical EHR, time series)…'
+                : 'Search a topic (e.g. tabular differential privacy, clinical EHR, time series)…'
             }
             className="h-12 w-full rounded-xl border border-border/90 bg-white pl-11 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
@@ -366,7 +376,7 @@ export function StudioPage({
             className="h-12 rounded-xl border-destructive/40 px-6 text-destructive hover:bg-destructive/5"
           >
             <Square className="size-3.5 fill-current" aria-hidden="true" />
-            Stop run
+            Stop
           </Button>
         ) : (
           <Button
@@ -378,17 +388,17 @@ export function StudioPage({
             <Play className="size-3.5 fill-current" aria-hidden="true" />
             {signedIn
               ? mode === 'weekly'
-                ? 'Stream weekly brief'
-                : 'Run live check'
-              : 'Sign in to run live check'}
+                ? 'Publish weekly brief'
+                : 'Search now'
+              : 'Sign in to search'}
           </Button>
         )}
       </form>
 
-      {/* Quiet Focus & Scope Controls */}
+      {/* Focus & Scope Controls */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-4 text-xs">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-muted-foreground">Focus:</span>
+          <span className="mr-1 text-muted-foreground">Popular:</span>
           {PRESET_QUERIES.map((preset) => {
             const active = query.toLowerCase() === preset.query.toLowerCase()
             return (
@@ -415,7 +425,6 @@ export function StudioPage({
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          {/* Window selector */}
           <div className="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-white p-0.5 font-mono text-[11px]">
             {WINDOW_OPTIONS.map((opt) => (
               <button
@@ -434,7 +443,6 @@ export function StudioPage({
             ))}
           </div>
 
-          {/* Compact Source Toggles */}
           <div className="flex flex-wrap items-center gap-1">
             {SOURCE_OPTIONS.map((source) => {
               const checked = selectedSources.includes(source.id)
@@ -459,26 +467,28 @@ export function StudioPage({
         </div>
       </div>
 
-      {/* Stepper Rail */}
-      <div className="mt-6">
-        <PipelineStepper
-          status={status}
-          activeNode={activeNode}
-          completedNodes={completedNodes}
-          sourceStats={sourceStats}
-          cleanStats={cleanStats}
-          scoredCount={scoredItems.length}
-          fetchedCount={sections.length}
-          sectionCount={sections.length}
-          reportId={reportId}
-        />
-      </div>
+      {/* Progress Rail — shown only while searching or viewing a run */}
+      {status !== 'idle' && (
+        <div className="mt-6">
+          <PipelineStepper
+            status={status}
+            activeNode={activeNode}
+            completedNodes={completedNodes}
+            sourceStats={sourceStats}
+            cleanStats={cleanStats}
+            scoredCount={scoredItems.length}
+            fetchedCount={sections.length}
+            sectionCount={sections.length}
+            reportId={reportId}
+          />
+        </div>
+      )}
 
       {error && (
         <div className="mt-6 flex items-start gap-3 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
           <CircleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
           <div>
-            <p className="font-semibold">Run did not complete</p>
+            <p className="font-semibold">Search did not complete</p>
             <p className="mt-0.5">{error}</p>
           </div>
         </div>
@@ -486,7 +496,7 @@ export function StudioPage({
 
       {warnings.length > 0 && (
         <div className="mt-4 rounded-xl border border-amber-300/80 bg-amber-50/70 px-4 py-2.5 text-xs text-amber-900">
-          <span className="font-medium">Pipeline notes: </span>
+          <span className="font-medium">Note: </span>
           {warnings.join(' · ')}
         </div>
       )}
@@ -494,7 +504,7 @@ export function StudioPage({
       {reportId && (
         <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/8 px-5 py-3.5 text-sm text-emerald-950">
           <span>
-            Published weekly brief <strong>{reportId}</strong> to the Cloudflare D1 archive.
+            Published weekly brief <strong>{reportId}</strong> to the archive.
           </span>
           <Button size="sm" variant="outline" onClick={() => navigate(`/brief/${reportId}`)}>
             Open weekly brief
@@ -503,12 +513,12 @@ export function StudioPage({
         </div>
       )}
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_260px]">
         <div className="min-w-0">
           {trendText && (
             <div className="mb-8 border-y border-border/80 py-6">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                Live synthesis
+                Key takeaway
               </p>
               <p className="mt-2 max-w-[68ch] font-display text-xl leading-8 text-ink/90">
                 {trendText}
@@ -517,14 +527,10 @@ export function StudioPage({
           )}
 
           {filteredItems.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="font-display text-2xl font-medium text-ink">
-                  {sections.length > 0
-                    ? `Curated findings (${filteredItems.length})`
-                    : scoredItems.length > 0
-                      ? `Ranked candidates (${filteredItems.length})`
-                      : `Discovered candidates (${filteredItems.length})`}
+                  Results ({filteredItems.length})
                 </h2>
                 {keywordFilter && (
                   <Button variant="ghost" size="sm" onClick={() => setKeywordFilter(null)}>
@@ -535,6 +541,7 @@ export function StudioPage({
 
               {filteredItems.map((item, idx) => {
                 const itemTopics = topicsFor(item)
+                const savedState = library.savedById.get(item.id)
                 return (
                   <ReportItemRow
                     key={item.id}
@@ -575,6 +582,15 @@ export function StudioPage({
                         />
                       ) : undefined
                     }
+                    actions={
+                      signedIn ? (
+                        <PaperActions
+                          readLater={savedState?.read_later === 1}
+                          important={savedState?.important === 1}
+                          onToggle={(field) => void library.togglePaper(item.id, field, item)}
+                        />
+                      ) : undefined
+                    }
                   />
                 )
               })}
@@ -583,26 +599,26 @@ export function StudioPage({
             <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-14 text-center">
               <h2 className="font-display text-2xl font-medium text-ink">
                 {status === 'running'
-                  ? 'Collecting and deduplicating live sources…'
-                  : 'Run a live topic check or select a saved session'}
+                  ? 'Searching live sources…'
+                  : 'Search any topic or select a recent search'}
               </h2>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
                 {status === 'running'
-                  ? 'Discovered papers and repositories appear here as soon as the Clean node finishes.'
-                  : 'Choose a focus preset above or enter any query to run the pipeline on demand.'}
+                  ? 'Papers and repositories appear here as soon as they are collected.'
+                  : 'Pick a popular focus chip above or enter a keyword to search across sources.'}
               </p>
             </div>
           )}
         </div>
 
-        {/* Recent D1 Checkpointed Sessions */}
-        <aside aria-label="Recent research sessions">
+        {/* Recent Searches */}
+        <aside aria-label="Recent searches">
           <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Recent sessions
+            Recent searches
           </h3>
           {sessions.length === 0 ? (
             <p className="mt-3 text-xs text-muted-foreground">
-              No live sessions recorded yet.
+              No recent searches yet.
             </p>
           ) : (
             <ul className="mt-3 divide-y divide-border/70 rounded-2xl border border-border/75 bg-white">
@@ -627,7 +643,7 @@ export function StudioPage({
                             selected ? 'font-semibold text-primary' : 'font-medium text-ink',
                           )}
                         >
-                          {session.query || (session.mode === 'weekly' ? 'Weekly brief run' : 'All synthetic data')}
+                          {session.query || (session.mode === 'weekly' ? 'Weekly brief' : 'All synthetic data')}
                         </span>
                         <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
                           {session.days}d

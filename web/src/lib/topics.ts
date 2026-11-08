@@ -39,14 +39,19 @@ export function sortFollows(follows: TopicFollow[]): TopicFollow[] {
 
 /**
  * An item is in my feed iff any of its topic labels is followed as a topic,
- * or its source is followed as a source (spec `2026-11-06-pages-and-feed-design.md`).
+ * or a custom topic keyword appears in its text, or its source is followed.
  */
 export function matchesFollows(item: Pick<ReportLike, 'source'> & Taggable, follows: TopicFollow[]): boolean {
-  return follows.some((follow) =>
-    follow.kind === 'source'
-      ? sameSource(item.source, follow.value)
-      : topicsFor(item).includes(follow.value),
-  )
+  const itemTopics = topicsFor(item)
+  const fullText = `${item.title} ${item.summary ?? ''} ${item.reason ?? ''}`.toLowerCase()
+  return follows.some((follow) => {
+    if (follow.kind === 'source') {
+      return sameSource(item.source, follow.value)
+    }
+    if (itemTopics.includes(follow.value)) return true
+    const needle = follow.value.trim().toLowerCase()
+    return needle.length >= 2 && fullText.includes(needle)
+  })
 }
 
 type ReportLike = { source: string }

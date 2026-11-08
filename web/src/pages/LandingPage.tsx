@@ -57,10 +57,10 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
               Privacy-first synthetic data intelligence, live & weekly.
             </h1>
             <p className="mt-6 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
-              Run an on-demand LangGraph.js research check across arXiv, GitHub, Hacker News, and lab blogs right now — or read the curated weekly brief for Well7 Research Lab.
+              Search live across arXiv, GitHub, Hacker News, and research blogs for new papers and open-source tools — or read the curated weekly brief for Well7 Research Lab.
             </p>
 
-            {/* Quick Live Check Bar */}
+            {/* Quick Live Search Bar */}
             <form
               onSubmit={(event) => {
                 event.preventDefault()
@@ -74,12 +74,12 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
                   type="search"
                   value={quickQuery}
                   onChange={(event) => setQuickQuery(event.target.value)}
-                  placeholder="Check a topic live (e.g. clinical tabular privacy)…"
+                  placeholder="Search a topic live (e.g. clinical tabular privacy)…"
                   className="h-11 w-full rounded-xl bg-transparent pl-10 pr-3 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none"
                 />
               </div>
               <Button type="submit" variant="ink" className="h-11 rounded-xl px-5">
-                Check live now
+                Search live
               </Button>
             </form>
 
@@ -115,7 +115,7 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
         </BlurFade>
 
         <BlurFade direction="left" delay={0.1} duration={0.5} className="min-w-0">
-          <SignalVisual itemCount={items.length} sourceCount={sourceCount} averageScore={averageScore} />
+          <SignalVisual items={items} reportId={latest?.id} weekEnd={latest?.week_end} />
         </BlurFade>
       </div>
 

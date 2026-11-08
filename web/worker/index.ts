@@ -1,4 +1,4 @@
-import { currentViewer, type AuthEnv, type Viewer } from './auth.ts'
+import { authFailureReason, currentViewer, type AuthEnv, type Viewer } from './auth.ts'
 import { executeResearchGraph, runWeeklyPipeline, type PipelineEnv } from './pipeline/index.ts'
 import { sanitizeCollectOptions } from './pipeline/sources.ts'
 import { bearerToken, tokenMatches } from './pipeline/token.ts'
@@ -34,10 +34,61 @@ interface StateBody {
   read_later?: boolean
   important?: boolean
   note?: string
+  item?: {
+    title?: string
+    url?: string
+    source?: string
+    published?: string
+    score?: number
+    well7_fit?: number | null
+    reason?: string
+    summary?: string
+    section?: string
+  }
 }
 
 async function putState(env: Env, userId: string, itemId: string, body: StateBody): Promise<Response> {
-  const item = await env.DB.prepare('SELECT id FROM items WHERE id = ?').bind(itemId).first()
+  let item = await env.DB.prepare('SELECT id FROM items WHERE id = ?').bind(itemId).first()
+  if (!item && body.item?.title && body.item?.url) {
+    const latestReport = await env.DB.prepare(
+      'SELECT id FROM reports ORDER BY week_end DESC LIMIT 1',
+    ).first<{ id: string }>()
+    const reportId = latestReport?.id ?? `week-${new Date().toISOString().slice(0, 10)}`
+    if (!latestReport) {
+      await env.DB.prepare(
+        'INSERT INTO reports (id, week_end, subject, trend, created_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING',
+      )
+        .bind(
+          reportId,
+          new Date().toISOString().slice(0, 10),
+          'Synthetic Data Weekly',
+          '',
+          new Date().toISOString(),
+        )
+        .run()
+    }
+    await env.DB.prepare(
+      `INSERT INTO items (id, report_id, title, url, source, published, score, well7_fit, reason, summary, section, position)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO NOTHING`,
+    )
+      .bind(
+        itemId,
+        reportId,
+        body.item.title,
+        body.item.url,
+        body.item.source ?? 'web',
+        body.item.published ?? new Date().toISOString().slice(0, 10),
+        Number(body.item.score ?? 7),
+        body.item.well7_fit ?? Number(body.item.score ?? 7),
+        body.item.reason ?? '',
+        body.item.summary ?? '',
+        body.item.section ?? 'top',
+        99,
+      )
+      .run()
+    item = { id: itemId }
+  }
   if (!item) return json({ error: 'item not found' }, 404)
 
   const current = await env.DB.prepare(
@@ -388,7 +439,13 @@ export default {
     // pipeline trigger, a matching CRON_RUN_TOKEN secret.
     if (path === '/api/me' || path.startsWith('/api/my/')) {
       const viewer = await currentViewer(request, env)
-      if (!viewer) return json({ error: 'sign in required' }, 401)
+      if (!viewer) {
+        const reason = authFailureReason(request) ?? 'unknown'
+        return new Response(JSON.stringify({ error: 'sign in required', reason }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json', 'X-Auth-Error': reason },
+        })
+      }
 
       if (viewer.email) await upsertUser(env, viewer)
 

@@ -15,6 +15,7 @@ import {
   type LibraryBundle,
   type LibraryEntry,
   type Me,
+  type SavableItemMeta,
 } from '@/lib/api'
 import { Link, useRoute } from '@/lib/router'
 import { sortFollows, sameSource, type TopicFollow, type TopicKind } from '@/lib/topics'
@@ -68,7 +69,7 @@ function NavLink({ to, active, highlight, className, children, onClick }: NavLin
 }
 
 const ROUTE_TITLES: Array<[RegExp, string]> = [
-  [/^\/studio/, 'Live Research Studio'],
+  [/^\/studio/, 'Live Search'],
   [/^\/feed/, 'Your feed'],
   [/^\/library/, 'Your library'],
   [/^\/archive/, 'Archive'],
@@ -102,11 +103,8 @@ export default function App() {
   const getTokenRef = useRef(getToken)
   useEffect(() => {
     getTokenRef.current = getToken
+    setApiTokenGetter((opts) => getTokenRef.current(opts))
   }, [getToken])
-
-  useEffect(() => {
-    setApiTokenGetter(() => getTokenRef.current())
-  }, [])
 
   const loadLibrary = useCallback(async () => {
     setLibraryLoading(true)
@@ -196,19 +194,68 @@ export default function App() {
     }
   }
 
-  const togglePaper = useCallback(async (itemId: string, field: 'read_later' | 'important') => {
-    const current = library.find((entry) => entry.id === itemId)
-    setLibraryError(null)
-    try {
-      await saveState(itemId, {
-        read_later: field === 'read_later' ? current?.read_later !== 1 : current?.read_later === 1,
-        important: field === 'important' ? current?.important !== 1 : current?.important === 1,
+  const togglePaper = useCallback(
+    async (itemId: string, field: 'read_later' | 'important', itemMeta?: SavableItemMeta) => {
+      setLibraryError(null)
+      const before = library
+      const current = before.find((entry) => entry.id === itemId)
+      const nextReadLater = field === 'read_later' ? current?.read_later !== 1 : current?.read_later === 1
+      const nextImportant = field === 'important' ? current?.important !== 1 : current?.important === 1
+      const nowIso = new Date().toISOString()
+
+      // Instant optimistic update so the button reacts immediately on click
+      setLibrary((prev) => {
+        const existing = prev.find((entry) => entry.id === itemId)
+        if (!nextReadLater && !nextImportant && !existing?.note) {
+          return prev.filter((entry) => entry.id !== itemId)
+        }
+        if (existing) {
+          return prev.map((entry) =>
+            entry.id === itemId
+              ? {
+                  ...entry,
+                  read_later: nextReadLater ? 1 : 0,
+                  important: nextImportant ? 1 : 0,
+                  updated_at: nowIso,
+                }
+              : entry,
+          )
+        }
+        return [
+          {
+            id: itemId,
+            title: itemMeta?.title ?? 'Saved item',
+            url: itemMeta?.url ?? '',
+            source: itemMeta?.source ?? 'web',
+            published: itemMeta?.published ?? nowIso.slice(0, 10),
+            score: Number(itemMeta?.score ?? 7),
+            reason: itemMeta?.reason ?? '',
+            summary: itemMeta?.summary ?? '',
+            section: itemMeta?.section ?? 'top',
+            week_end: nowIso.slice(0, 10),
+            read_later: nextReadLater ? 1 : 0,
+            important: nextImportant ? 1 : 0,
+            note: '',
+            updated_at: nowIso,
+          },
+          ...prev,
+        ]
       })
-      await loadLibrary()
-    } catch (error) {
-      setLibraryError(errorText(error))
-    }
-  }, [library, loadLibrary])
+
+      try {
+        await saveState(itemId, {
+          read_later: nextReadLater,
+          important: nextImportant,
+          item: itemMeta,
+        })
+        await loadLibrary()
+      } catch (error) {
+        setLibrary(before)
+        setLibraryError(errorText(error))
+      }
+    },
+    [library, loadLibrary],
+  )
 
   const saveNote = useCallback(async (itemId: string, note: string) => {
     setLibraryError(null)
@@ -277,14 +324,14 @@ export default function App() {
 
   const navLinks: Array<{ to: string; label: string; highlight?: boolean }> = signedIn
     ? [
-        { to: '/studio', label: 'Live Check', highlight: true },
+        { to: '/studio', label: 'Live Search', highlight: true },
         { to: '/feed', label: 'Feed' },
         { to: '/brief', label: 'Brief' },
         { to: '/library', label: 'Library' },
         { to: '/archive', label: 'Archive' },
       ]
     : [
-        { to: '/studio', label: 'Live Check', highlight: true },
+        { to: '/studio', label: 'Live Search', highlight: true },
         { to: '/brief', label: 'Brief' },
         { to: '/archive', label: 'Archive' },
       ]
@@ -503,7 +550,7 @@ export default function App() {
             <BrandMark className="size-6 shrink-0" />
             <span className="font-medium text-ink" translate="no">Well7 Research Lab</span>
           </div>
-          <p>Well7 Research Lab · Live LangGraph.js Research Studio & Weekly Archive.</p>
+          <p>Well7 Research Lab · Synthetic Data Weekly & Live Topic Search.</p>
         </div>
       </footer>
     </div>

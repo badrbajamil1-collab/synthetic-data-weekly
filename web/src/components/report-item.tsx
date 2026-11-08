@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
-import { ArrowUpRight } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { ArrowUpRight, ChevronDown, ChevronUp } from 'lucide-react'
 
 import { formatDate, sourceLabel, type ReportItem as ReportItemData } from '@/lib/report'
 import { cn } from '@/lib/utils'
@@ -20,14 +20,17 @@ const SECTION_LABELS: Record<string, { label: string; className: string }> = {
 }
 
 export function ReportItemRow({ item, rank, tags, actions, followControl }: ReportItemProps) {
+  const [expanded, setExpanded] = useState(false)
   const sectionMeta = SECTION_LABELS[item.section] ?? SECTION_LABELS.top
   const fitScore = item.well7_fit ?? item.score
+  const summaryText = item.summary || 'The source summary is not available in this archive entry.'
+  const hasMoreContent = summaryText.length > 160 || Boolean(item.reason)
 
   return (
-    <article className="group rounded-2xl border border-border/75 bg-white p-5 transition-colors hover:border-border sm:p-6">
-      {/* Quiet single-line metadata header */}
+    <article className="group rounded-2xl border border-border/75 bg-white px-5 py-4 transition-colors hover:border-border sm:px-6 sm:py-5">
+      {/* Compact single-line metadata header */}
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-mono text-muted-foreground/70 tabular-nums">
             {String(rank).padStart(2, '0')}
           </span>
@@ -51,17 +54,12 @@ export function ReportItemRow({ item, rank, tags, actions, followControl }: Repo
             <span className="text-muted-foreground">
               Fit <strong className="font-semibold text-ink">{fitScore}</strong>/10
             </span>
-            {item.well7_fit !== null && item.score !== item.well7_fit && (
-              <span className="text-muted-foreground/75">
-                Rel {item.score}/10
-              </span>
-            )}
           </div>
         )}
       </div>
 
       {/* Title */}
-      <h3 className="mt-2.5 max-w-[68ch] break-words text-balance font-display text-xl font-medium leading-snug tracking-[-0.015em] text-ink sm:text-2xl">
+      <h3 className="mt-1.5 max-w-[68ch] break-words text-balance font-display text-lg font-medium leading-snug tracking-[-0.015em] text-ink sm:text-xl">
         <a
           href={item.url}
           target="_blank"
@@ -70,29 +68,54 @@ export function ReportItemRow({ item, rank, tags, actions, followControl }: Repo
         >
           {item.title}
           <ArrowUpRight
-            className="mb-1 ml-1 inline size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-primary"
+            className="mb-0.5 ml-1 inline size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-primary"
             aria-hidden="true"
           />
           <span className="sr-only"> (opens in a new tab)</span>
         </a>
       </h3>
 
-      {/* Summary */}
-      <p className="mt-2.5 max-w-[70ch] break-words text-[15px] leading-7 text-ink/80">
-        {item.summary || 'The source summary is not available in this archive entry.'}
+      {/* Compact 2-line preview by default; full text on click */}
+      <p
+        className={cn(
+          'mt-2 max-w-[72ch] break-words text-sm leading-6 text-ink/80',
+          !expanded && 'line-clamp-2',
+        )}
+      >
+        {summaryText}
       </p>
 
-      {/* Quiet 1px hairline Well7 note — no nested box */}
-      {item.reason && (
-        <p className="mt-3.5 max-w-[68ch] border-l border-border pl-3.5 text-sm leading-6 text-muted-foreground">
-          <span className="font-medium text-ink/85">Well7 rationale: </span>
+      {expanded && item.reason && (
+        <p className="mt-3 max-w-[68ch] border-l border-border pl-3.5 text-xs leading-5 text-muted-foreground">
+          <span className="font-medium text-ink/85">Why it matters: </span>
           {item.reason}
         </p>
       )}
 
+      {hasMoreContent && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((prev) => !prev)}
+          className="mt-1.5 inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {expanded ? (
+            <>
+              Show less
+              <ChevronUp className="size-3.5" aria-hidden="true" />
+            </>
+          ) : (
+            <>
+              Read more
+              <ChevronDown className="size-3.5" aria-hidden="true" />
+            </>
+          )}
+        </button>
+      )}
+
       {/* Footer row: topic pills & actions */}
       {(tags || actions) && (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 pt-1">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2.5 border-t border-border/50 pt-3">
           {tags ? <div className="flex flex-wrap gap-1.5">{tags}</div> : <div />}
           {actions ? <div>{actions}</div> : null}
         </div>

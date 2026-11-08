@@ -33,8 +33,23 @@ export interface LibraryEntry {
   updated_at: string
 }
 
+export interface SavableItemMeta {
+  title?: string
+  url?: string
+  source?: string
+  published?: string
+  score?: number
+  well7_fit?: number | null
+  reason?: string
+  summary?: string
+  section?: string
+}
+
 export async function getJson<T>(path: string): Promise<T | null> {
-  const response = await fetch(path, { headers: { Accept: 'application/json', ...(await authHeaders()) } })
+  let response = await fetch(path, { headers: { Accept: 'application/json', ...(await authHeaders()) } })
+  if (response.status === 401 && apiTokenGetter) {
+    response = await fetch(path, { headers: { Accept: 'application/json', ...(await authHeaders(true)) } })
+  }
   if (response.status === 401) {
     throw new Error('Your session was not accepted. Sign in again to load this.')
   }
@@ -47,28 +62,38 @@ export async function getJson<T>(path: string): Promise<T | null> {
  * token and the Worker verifies it against the Clerk secret key. Set once from
  * App via setApiTokenGetter.
  */
-let apiTokenGetter: (() => Promise<string | null>) | null = null
+let apiTokenGetter: ((options?: { skipCache?: boolean }) => Promise<string | null>) | null = null
 
-export function setApiTokenGetter(getter: () => Promise<string | null>): void {
+export function setApiTokenGetter(getter: (options?: { skipCache?: boolean }) => Promise<string | null>): void {
   apiTokenGetter = getter
 }
 
-export async function authHeaders(): Promise<Record<string, string>> {
+export async function authHeaders(skipCache = false): Promise<Record<string, string>> {
   if (!apiTokenGetter) return {}
   try {
-    const token = await apiTokenGetter()
+    const token = await apiTokenGetter(skipCache ? { skipCache: true } : undefined)
     return token ? { Authorization: `Bearer ${token}` } : {}
   } catch {
     return {}
   }
 }
 
-export async function saveState(itemId: string, patch: Partial<Pick<PaperState, 'read_later' | 'important' | 'note'>>): Promise<PaperState> {
-  const response = await fetch(`/api/my/items/${encodeURIComponent(itemId)}`, {
+export async function saveState(
+  itemId: string,
+  patch: Partial<Pick<PaperState, 'read_later' | 'important' | 'note'>> & { item?: SavableItemMeta },
+): Promise<PaperState> {
+  let response = await fetch(`/api/my/items/${encodeURIComponent(itemId)}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(patch),
   })
+  if (response.status === 401 && apiTokenGetter) {
+    response = await fetch(`/api/my/items/${encodeURIComponent(itemId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders(true)) },
+      body: JSON.stringify(patch),
+    })
+  }
   if (!response.ok) throw new Error(`Could not save (${response.status}). Try again in a moment.`)
   return (await response.json()) as PaperState
 }
@@ -89,7 +114,7 @@ export interface LibraryBundle {
   savedById: Map<string, LibraryEntry>
   loading: boolean
   error: string | null
-  togglePaper: (itemId: string, field: 'read_later' | 'important') => Promise<void>
+  togglePaper: (itemId: string, field: 'read_later' | 'important', itemMeta?: SavableItemMeta) => Promise<void>
   saveNote: (itemId: string, note: string) => Promise<void>
   reload: () => void
 }
@@ -111,11 +136,18 @@ export async function fetchArchiveCounts(): Promise<ArchiveCounts | null> {
 }
 
 async function toggleFollow(method: 'PUT' | 'DELETE', follow: TopicFollow): Promise<TopicFollow[]> {
-  const response = await fetch('/api/my/topics', {
-    method,
+  let response = await fetch('/api/my/topics', {
+    method: 'PUT' === method ? 'PUT' : 'DELETE',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders()) },
     body: JSON.stringify(follow),
   })
+  if (response.status === 401 && apiTokenGetter) {
+    response = await fetch('/api/my/topics', {
+      method: 'PUT' === method ? 'PUT' : 'DELETE',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders(true)) },
+      body: JSON.stringify(follow),
+    })
+  }
   if (!response.ok) {
     throw new Error(`Could not update your follows (${response.status}). Try again in a moment.`)
   }

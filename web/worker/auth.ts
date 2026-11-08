@@ -15,23 +15,57 @@ export interface Viewer {
 }
 
 /**
+ * Clerk session tokens live 60 s; `iat`/`nbf`/`exp` are checked against the
+ * Worker clock. Clerk's 5 s default rejects tokens whenever the edge clock and
+ * Clerk's issuer drift by a few seconds ("token-iat-in-the-future"), so allow
+ * a modest, documented skew.
+ */
+const CLOCK_SKEW_MS = 30_000
+
+/**
+ * Last verification failure reason per request (a Clerk reason code such as
+ * `token-expired` or `jwk-kid-mismatch`, never token contents). Surfaced as the
+ * `X-Auth-Error` response header so a 401 is diagnosable from the browser.
+ */
+const failureReasons = new WeakMap<Request, string>()
+
+export function authFailureReason(request: Request): string | undefined {
+  return failureReasons.get(request)
+}
+
+/**
  * Verifies the Clerk session JWT the SPA sends as `Authorization: Bearer <token>`.
  * Fail-closed: without CLERK_SECRET_KEY, or on any verification error, there is
  * no signed-in viewer. No cookies, no Cloudflare Access.
  */
 export async function currentViewer(request: Request, env: AuthEnv): Promise<Viewer | null> {
-  if (!env.CLERK_SECRET_KEY) return null
+  if (!env.CLERK_SECRET_KEY) {
+    failureReasons.set(request, 'server-missing-secret')
+    return null
+  }
   const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
-  if (!token) return null
+  if (!token) {
+    failureReasons.set(request, 'no-token')
+    return null
+  }
 
   let verified: VerifiedSessionToken
   try {
-    verified = (await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY })) as VerifiedSessionToken
-  } catch {
+    verified = (await verifyToken(token, {
+      secretKey: env.CLERK_SECRET_KEY,
+      clockSkewInMs: CLOCK_SKEW_MS,
+    })) as VerifiedSessionToken
+  } catch (error) {
+    const reason = (error as { reason?: string })?.reason ?? 'verify-failed'
+    failureReasons.set(request, reason)
+    console.warn('clerk verifyToken failed:', reason)
     return null
   }
   const userId = userIdFromVerification(verified)
-  if (!userId) return null
+  if (!userId) {
+    failureReasons.set(request, 'no-sub')
+    return null
+  }
 
   // One Clerk Backend API call per signed-in request for the email: required for
   // the admin allow-list and the display label, and it doubles as the identity
