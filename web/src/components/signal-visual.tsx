@@ -1,6 +1,3 @@
-import { ShieldCheck } from 'lucide-react'
-
-import { Badge } from '@/components/ui/badge'
 import { NumberTicker } from '@/components/ui/number-ticker'
 
 interface SignalVisualProps {
@@ -9,132 +6,92 @@ interface SignalVisualProps {
   averageScore: number
 }
 
+/**
+ * Quiet editorial schematic of the LangGraph.js research pipeline.
+ * Uses flat hairline geometry and generous whitespace — zero nested cards.
+ */
 export function SignalVisual({ itemCount, sourceCount, averageScore }: SignalVisualProps) {
+  const stages = [
+    {
+      step: '01',
+      title: 'Multi-source collection',
+      detail: 'arXiv · GitHub · Hacker News · Google News · Reddit · Lab RSS',
+      meta: `${sourceCount || 6} active sources`,
+      accent: false,
+    },
+    {
+      step: '02',
+      title: 'Well7 rubric & deduplication',
+      detail: 'Tabular & time-series fidelity, formal DP (ε, δ), non-trivial repositories',
+      meta: 'LangGraph.js StateGraph',
+      accent: false,
+    },
+    {
+      step: '03',
+      title: 'Citation-guarded synthesis',
+      detail: 'Full-text extraction with numeric claim verification against source abstracts',
+      meta: `${itemCount || 7} curated findings`,
+      accent: true,
+    },
+  ]
+
   return (
-    <div className="relative overflow-hidden rounded-[24px] border border-border bg-white/95 p-6 text-ink shadow-[0_4px_24px_-6px_rgba(16,42,67,0.06)] sm:p-7">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 border-b border-border pb-4">
-        <div className="flex items-center gap-2.5 text-sm font-semibold tracking-[-0.01em] text-ink">
-          <span className="size-2 rounded-full bg-mint" aria-hidden="true" />
-          Research Ingestion & Curation Flow
-        </div>
-        <Badge variant="outline" className="border-mint/30 bg-[#e6f4f1] font-mono text-[11px] font-medium text-mint">
-          Weekly pipeline
-        </Badge>
+    <div className="rounded-2xl border border-border/80 bg-white p-6 sm:p-8">
+      <div className="flex items-baseline justify-between gap-4 border-b border-border/70 pb-4">
+        <span className="font-mono text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Pipeline architecture
+        </span>
+        <span className="font-mono text-xs text-muted-foreground">
+          collect → clean → rank → fetch → summarise
+        </span>
       </div>
 
-      {/* 3-Stage Pipeline Schematic */}
-      <div className="mt-5 grid grid-cols-1 items-stretch gap-2.5 sm:grid-cols-[1fr_auto_1.05fr_auto_1.15fr]">
-        {/* Stage 1: Ingest */}
-        <div className="flex flex-col justify-between rounded-xl border border-border bg-[#fafbfc] p-3.5">
-          <div className="mb-2 flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <span>1. Ingest</span>
-            <span>{sourceCount || 4} sources</span>
-          </div>
-          <div className="space-y-1 text-xs">
-            <div className="flex items-center justify-between border-b border-dashed border-border/80 pb-1 text-ink">
-              <span>GitHub</span>
-              <span className="rounded bg-[#edf2f7] px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">3</span>
+      {/* Hairline schematic flow — no nested boxes */}
+      <ol className="relative mt-6 space-y-6 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-border">
+        {stages.map((stage) => (
+          <li key={stage.step} className="relative flex items-start justify-between gap-4 pl-8">
+            <span
+              className={`absolute left-0 top-1 grid size-6 place-items-center rounded-full border text-[11px] font-mono ${
+                stage.accent
+                  ? 'border-primary bg-primary text-white font-semibold'
+                  : 'border-border bg-white text-muted-foreground'
+              }`}
+              aria-hidden="true"
+            >
+              {stage.step}
+            </span>
+            <div className="min-w-0">
+              <p className="font-medium text-sm text-ink">{stage.title}</p>
+              <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{stage.detail}</p>
             </div>
-            <div className="flex items-center justify-between border-b border-dashed border-border/80 pb-1 text-ink">
-              <span>arXiv</span>
-              <span className="rounded bg-[#edf2f7] px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">2</span>
-            </div>
-            <div className="flex items-center justify-between border-b border-dashed border-border/80 pb-1 text-ink">
-              <span>HackerNews</span>
-              <span className="rounded bg-[#edf2f7] px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">1</span>
-            </div>
-            <div className="flex items-center justify-between text-ink">
-              <span>Industry</span>
-              <span className="rounded bg-[#edf2f7] px-1.5 py-0.5 font-mono text-[10.5px] text-muted-foreground">1</span>
-            </div>
-          </div>
-        </div>
+            <span
+              className={`shrink-0 font-mono text-xs tabular-nums ${
+                stage.accent ? 'font-semibold text-primary' : 'text-muted-foreground'
+              }`}
+            >
+              {stage.meta}
+            </span>
+          </li>
+        ))}
+      </ol>
 
-        {/* Connector 1 */}
-        <div className="hidden flex-col items-center justify-center font-mono text-[9px] uppercase tracking-wider text-muted-foreground sm:flex">
-          <span>Scan</span>
-          <svg viewBox="0 0 24 24" className="size-4 stroke-muted-foreground stroke-2" fill="none">
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
+      {/* Single quiet footer metric line */}
+      <div className="mt-7 flex flex-wrap items-baseline justify-between gap-4 border-t border-border/70 pt-5">
+        <div>
+          <span className="text-xs text-muted-foreground">Current brief signal quality</span>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Every number in the brief is checked against the source text before publication.
+          </p>
         </div>
-
-        {/* Stage 2: Well7 Rubric Filter */}
-        <div className="flex flex-col justify-between rounded-xl border border-indigo-200 bg-[#eef2ff] p-3.5">
-          <div className="mb-2 flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-wider text-indigo-700">
-            <span>2. Screen</span>
-            <span>Rubric</span>
-          </div>
-          <div className="space-y-1 text-xs font-medium text-indigo-900">
-            <div className="flex items-center gap-1.5 py-0.5">
-              <span className="text-indigo-600">✓</span> Tabular & Series
-            </div>
-            <div className="flex items-center gap-1.5 py-0.5">
-              <span className="text-indigo-600">✓</span> Formal DP (ε, δ)
-            </div>
-            <div className="flex items-center gap-1.5 py-0.5">
-              <span className="text-indigo-600">✓</span> Non-trivial repo
-            </div>
-            <div className="flex items-center gap-1.5 py-0.5">
-              <span className="text-indigo-600">✓</span> Extractive audit
-            </div>
-          </div>
-        </div>
-
-        {/* Connector 2 */}
-        <div className="hidden flex-col items-center justify-center font-mono text-[9px] uppercase tracking-wider text-muted-foreground sm:flex">
-          <span>Rank</span>
-          <svg viewBox="0 0 24 24" className="size-4 stroke-muted-foreground stroke-2" fill="none">
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </div>
-
-        {/* Stage 3: Curated Brief */}
-        <div className="flex flex-col justify-between rounded-xl border border-[#a4d8cf] bg-[#e6f4f1] p-3.5">
-          <div className="mb-2 flex items-center justify-between font-mono text-[10px] font-semibold uppercase tracking-wider text-mint">
-            <span>3. Brief</span>
-            <span>{itemCount || 7} curated</span>
-          </div>
-          <div>
-            <div className="flex items-baseline gap-1">
-              <NumberTicker
-                value={averageScore}
-                decimalPlaces={1}
-                className="font-display text-3xl font-semibold leading-none text-ink"
-              />
-              <span className="text-xs text-muted-foreground">/ 10</span>
-            </div>
-            <p className="mt-1 text-[11px] font-semibold text-mint">
-              9.3 Well7 Fit avg
-            </p>
-            <div className="mt-1.5 border-t border-dashed border-[#a4d8cf] pt-1 text-[11px] text-muted-foreground">
-              6 Top · 1 Tool · 1 Worth
-            </div>
-          </div>
+        <div className="flex items-baseline gap-1.5">
+          <NumberTicker
+            value={averageScore}
+            decimalPlaces={1}
+            className="font-display text-2xl font-medium tracking-[-0.02em] text-ink tabular-nums"
+          />
+          <span className="font-mono text-xs text-muted-foreground">/ 10 avg fit</span>
         </div>
       </div>
-
-      {/* Summary Metrics */}
-      <div className="mt-5 grid grid-cols-3 gap-2.5 border-t border-border pt-4">
-        <div className="rounded-lg border border-border bg-[#fafbfc] px-3 py-2.5">
-          <NumberTicker value={itemCount} className="font-display text-lg font-semibold text-ink sm:text-xl" />
-          <span className="mt-0.5 block text-[11px] text-muted-foreground">Findings curated</span>
-        </div>
-        <div className="rounded-lg border border-border bg-[#fafbfc] px-3 py-2.5">
-          <span className="font-display text-lg font-semibold text-ink sm:text-xl">100%</span>
-          <span className="mt-0.5 block text-[11px] text-muted-foreground">Citation-verified</span>
-        </div>
-        <div className="rounded-lg border border-border bg-[#fafbfc] px-3 py-2.5">
-          <span className="font-display text-lg font-semibold text-ink sm:text-xl">0</span>
-          <span className="mt-0.5 block text-[11px] text-muted-foreground">Unverified hype</span>
-        </div>
-      </div>
-
-      {/* Grounding note */}
-      <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <ShieldCheck className="size-3.5 shrink-0 text-mint" aria-hidden="true" />
-        <span>Numbers checked against source text; candidates ranked by privacy & tabular substance.</span>
-      </p>
     </div>
   )
 }

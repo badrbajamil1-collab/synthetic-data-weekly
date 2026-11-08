@@ -1,14 +1,12 @@
 import { useState } from 'react'
-import { ArrowDownToLine, ArrowRight, CircleAlert, Clock3, Radio, RefreshCw, Search, ShieldCheck } from 'lucide-react'
+import { ArrowDownToLine, ArrowRight, CircleAlert, RefreshCw, Search } from 'lucide-react'
 import { useAuth, useClerk } from '@clerk/react'
 
-import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { NumberTicker } from '@/components/ui/number-ticker'
 import { SignalVisual } from '@/components/signal-visual'
 import { navigate } from '@/lib/router'
-import { briefTitle } from '@/lib/report'
 import { useReport, useReports } from '@/lib/use-report'
 
 interface LandingPageProps {
@@ -35,7 +33,7 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-5 pb-16 pt-12 sm:px-8 sm:pb-20 sm:pt-16">
+    <section className="mx-auto max-w-7xl px-5 pb-20 pt-14 sm:px-8 sm:pb-24 sm:pt-20">
       {archiveDown && (
         <div className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
           <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
@@ -52,25 +50,14 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
         </div>
       )}
 
-      <div className="grid items-center gap-12 grid-cols-[minmax(0,1fr)] lg:grid-cols-[1.04fr_0.96fr] lg:gap-16">
+      <div className="grid items-center gap-12 grid-cols-[minmax(0,1fr)] lg:grid-cols-[1.06fr_0.94fr] lg:gap-16">
         <BlurFade direction="up" duration={0.4} className="min-w-0">
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="border-mint/25 bg-[#e9f7f3] px-3 py-1.5 text-[#146c63]">
-                <ShieldCheck aria-hidden="true" />
-                Numbers checked against their sources
-              </Badge>
-              <Badge variant="outline" className="border-primary/25 bg-primary/8 px-3 py-1.5 text-primary">
-                <Radio className="size-3.5 text-emerald-500" aria-hidden="true" />
-                Live LangGraph.js Engine
-              </Badge>
-            </div>
-
-            <h1 className="mt-6 max-w-2xl text-balance font-display text-[clamp(2.6rem,5.5vw,4.75rem)] font-medium leading-[1.02] tracking-[-0.04em] text-ink">
+            <h1 className="max-w-2xl text-balance font-display text-[clamp(2.5rem,5vw,4.35rem)] font-medium leading-[1.04] tracking-[-0.035em] text-ink">
               Privacy-first synthetic data intelligence, live & weekly.
             </h1>
-            <p className="mt-6 max-w-xl text-lg leading-8 text-muted-foreground">
-              Run an on-demand LangGraph.js research check across arXiv, GitHub, Hacker News, and lab blogs right now — or browse the curated weekly brief for Well7 Research Lab.
+            <p className="mt-6 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
+              Run an on-demand LangGraph.js research check across arXiv, GitHub, Hacker News, and lab blogs right now — or read the curated weekly brief for Well7 Research Lab.
             </p>
 
             {/* Quick Live Check Bar */}
@@ -79,7 +66,7 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
                 event.preventDefault()
                 openStudioWith(quickQuery)
               }}
-              className="mt-7 flex max-w-xl flex-col gap-2.5 rounded-2xl border border-border bg-white p-2 shadow-sm sm:flex-row"
+              className="mt-8 flex max-w-xl flex-col gap-2 rounded-2xl border border-border/90 bg-white p-2 sm:flex-row"
             >
               <div className="relative flex-1">
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -92,8 +79,7 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
                 />
               </div>
               <Button type="submit" variant="ink" className="h-11 rounded-xl px-5">
-                <Radio className="size-3.5 text-emerald-400" aria-hidden="true" />
-                Check Live Now
+                Check live now
               </Button>
             </form>
 
@@ -125,20 +111,16 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
                 </Button>
               )}
             </div>
-            <p className="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock3 className="size-4" aria-hidden="true" />
-              On-demand checks anytime · Full brief archived every Saturday
-            </p>
           </div>
         </BlurFade>
 
-        <BlurFade direction="left" delay={0.12} duration={0.6} className="min-w-0">
+        <BlurFade direction="left" delay={0.1} duration={0.5} className="min-w-0">
           <SignalVisual itemCount={items.length} sourceCount={sourceCount} averageScore={averageScore} />
         </BlurFade>
       </div>
 
       {!archiveDown && (
-        <div className="mt-16 grid grid-cols-2 rounded-2xl border border-border/80 bg-white py-6 shadow-2xs sm:grid-cols-4 sm:py-7">
+        <div className="mt-16 grid grid-cols-2 border-t border-border/80 pt-10 sm:grid-cols-4">
           {[
             { label: 'Reports archived', value: reports.length, decimals: 0 },
             { label: 'Findings in this brief', value: items.length, decimals: 0 },
@@ -147,31 +129,12 @@ export function LandingPage({ onLaunchStudio }: LandingPageProps) {
           ].map((stat, index) => (
             <div
               key={stat.label}
-              className={`px-5 py-3 sm:px-7 sm:py-0 ${index > 0 ? 'sm:border-l sm:border-border' : ''} ${index === 1 ? 'border-l border-border' : ''} ${index >= 2 ? 'border-t border-border sm:border-t-0' : ''}`}
+              className={`py-3 sm:py-0 ${index > 0 ? 'sm:border-l sm:border-border/70 sm:pl-8' : ''} ${index === 1 ? 'border-l border-border/70 pl-5' : ''} ${index >= 2 ? 'border-t border-border/70 pt-5 sm:border-t-0 sm:pt-0' : ''} ${index === 3 ? 'pl-5' : ''}`}
             >
-              <NumberTicker value={stat.value} decimalPlaces={stat.decimals} className="font-display text-3xl font-medium tracking-[-0.03em] text-ink sm:text-4xl" />
-              <p className="mt-1.5 text-sm text-muted-foreground">{stat.label}</p>
+              <NumberTicker value={stat.value} decimalPlaces={stat.decimals} className="font-display text-3xl font-medium tracking-[-0.03em] text-ink tabular-nums sm:text-4xl" />
+              <p className="mt-1 text-sm text-muted-foreground">{stat.label}</p>
             </div>
           ))}
-        </div>
-      )}
-
-      {!archiveDown && latest && (
-        <div className="mt-8 rounded-2xl border border-border/80 bg-white px-6 py-5 text-sm text-muted-foreground shadow-2xs sm:flex sm:items-center sm:justify-between">
-          <p>
-            Latest weekly brief: <span className="font-semibold text-ink">{briefTitle(latest.subject)}</span>
-            {' '}— {items.length} findings checked across {sourceCount} sources.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2 sm:mt-0">
-            <Button variant="outline" size="sm" onClick={() => navigate('/studio')}>
-              <Radio className="size-3.5 text-emerald-500" aria-hidden="true" />
-              Live Studio
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate(`/brief/${latest.id}`)}>
-              Open the brief
-              <ArrowRight aria-hidden="true" />
-            </Button>
-          </div>
         </div>
       )}
     </section>

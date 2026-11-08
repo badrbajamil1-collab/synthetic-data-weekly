@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { UserButton, useAuth, useClerk } from '@clerk/react'
-import { CircleAlert, Menu, Radio, X } from 'lucide-react'
+import { CircleAlert, Menu, X } from 'lucide-react'
 
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
@@ -47,16 +47,21 @@ function NavLink({ to, active, highlight, className, children, onClick }: NavLin
       aria-current={active ? 'page' : undefined}
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
+        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active
-          ? 'bg-white/15 text-white font-semibold'
+          ? 'bg-primary/10 font-medium text-primary'
           : highlight
-            ? 'border border-indigo-400/35 bg-indigo-500/15 text-indigo-100 hover:bg-indigo-500/25 hover:text-white'
-            : 'text-slate-300 hover:bg-white/10 hover:text-white',
+            ? 'font-medium text-ink hover:bg-secondary hover:text-primary'
+            : 'text-muted-foreground hover:bg-secondary/70 hover:text-ink',
         className,
       )}
     >
-      {highlight && <Radio className="size-3.5 text-emerald-400" aria-hidden="true" />}
+      {highlight && (
+        <span
+          className="size-1.5 rounded-full bg-emerald-500"
+          aria-hidden="true"
+        />
+      )}
       {children}
     </Link>
   )
@@ -301,24 +306,24 @@ export default function App() {
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-50 border-b border-slate-800/90 bg-[#0b1220]/95 text-white backdrop-blur-xl">
-        <div className="mx-auto flex h-[74px] max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link to={signedIn ? '/library' : '/'} className="flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:gap-3">
-            <BrandMark className="size-10 shrink-0 sm:size-11" />
+      <header className="sticky top-0 z-50 border-b border-border/80 bg-white/95 text-ink backdrop-blur-md">
+        <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-5 sm:px-8">
+          <Link to={signedIn ? '/library' : '/'} className="flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3">
+            <BrandMark className="size-9 shrink-0" />
             <span className="whitespace-nowrap">
-              <span className="block font-display text-base font-semibold leading-tight text-white sm:text-lg" translate="no">Well7 Research Lab</span>
-              <span className="hidden text-xs text-slate-400 sm:block">Synthetic Data Intelligence</span>
+              <span className="block font-display text-base font-medium leading-tight text-ink sm:text-lg" translate="no">Well7 Research Lab</span>
+              <span className="hidden text-xs text-muted-foreground sm:block">Synthetic Data Weekly</span>
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-1.5 md:flex" aria-label="Main navigation">
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Main navigation">
             {navLinks.map((link) => (
               <NavLink key={link.to} to={link.to} active={active(link.to)} highlight={link.highlight}>
                 {link.label}
               </NavLink>
             ))}
             {signedIn && me?.email && (
-              <span className="ml-2 hidden max-w-44 truncate text-xs text-slate-400 lg:block">{me.email}</span>
+              <span className="ml-2 hidden max-w-44 truncate text-xs text-muted-foreground lg:block">{me.email}</span>
             )}
             <div className="ml-2 flex items-center gap-2">
               {signedIn ? (
@@ -328,14 +333,13 @@ export default function App() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="text-slate-300 hover:bg-white/10 hover:text-white"
                     onClick={() => clerk.openSignUp()}
                   >
                     Sign up
                   </Button>
                   <Button
                     size="sm"
-                    className="bg-indigo-600 text-white hover:bg-indigo-500"
+                    variant="ink"
                     onClick={() => clerk.openSignIn()}
                   >
                     Sign in
@@ -353,15 +357,15 @@ export default function App() {
               aria-controls="mobile-navigation"
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               onClick={() => setMenuOpen((open) => !open)}
-              className="grid size-10 place-items-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:border-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+              className="grid size-9 place-items-center rounded-full border border-border bg-white text-ink transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {menuOpen ? <X className="size-5" aria-hidden="true" /> : <Menu className="size-5" aria-hidden="true" />}
+              {menuOpen ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
             </button>
           </div>
         </div>
 
         {menuOpen && (
-          <div id="mobile-navigation" className="border-t border-slate-800 bg-[#0b1220] px-5 pb-5 pt-3 md:hidden">
+          <div id="mobile-navigation" className="border-t border-border/80 bg-white px-5 pb-5 pt-3 md:hidden">
             <nav className="flex flex-col gap-1" aria-label="Mobile navigation">
               {navLinks.map((link) => (
                 <NavLink
@@ -379,14 +383,15 @@ export default function App() {
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1 border-slate-700 bg-slate-900 text-white hover:bg-slate-800"
+                    className="flex-1"
                     onClick={() => { setMenuOpen(false); clerk.openSignUp() }}
                   >
                     Sign up
                   </Button>
                   <Button
                     size="sm"
-                    className="flex-1 bg-indigo-600 text-white hover:bg-indigo-500"
+                    variant="ink"
+                    className="flex-1"
                     onClick={() => { setMenuOpen(false); clerk.openSignIn() }}
                   >
                     Sign in
@@ -492,11 +497,11 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-border bg-white/80">
+      <footer className="border-t border-border/80 bg-white/80">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div className="flex items-center gap-2.5">
             <BrandMark className="size-6 shrink-0" />
-            <span className="font-semibold text-ink" translate="no">Well7 Research Lab</span>
+            <span className="font-medium text-ink" translate="no">Well7 Research Lab</span>
           </div>
           <p>Well7 Research Lab · Live LangGraph.js Research Studio & Weekly Archive.</p>
         </div>

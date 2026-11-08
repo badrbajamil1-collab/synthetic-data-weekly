@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, CalendarDays, CircleAlert, FileText, Radio, RefreshCw } from 'lucide-react'
+import { CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
 
 import { FeedFilterBar, FeedList, KeywordStrip } from '@/components/feed-panel'
 import { NewsList } from '@/components/news-list'
 import { WeekShape } from '@/components/week-shape'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type LibraryBundle } from '@/lib/api'
 import { chipScopes, filterItems, keywordCounts, sectionCounts, type FeedFilters } from '@/lib/feed'
@@ -54,7 +53,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
+    <section className="mx-auto max-w-7xl px-5 pb-20 pt-10 sm:px-8 sm:pt-14">
       {reportsError && (
         <div className="mb-8 flex flex-col items-start gap-4 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-5 text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
           <span className="flex items-start gap-3">
@@ -68,7 +67,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
       {(loading || reportsLoading) && (
         <div role="status" aria-live="polite" aria-label="Loading the brief…" className="space-y-8">
           <Skeleton className="h-12 w-full max-w-2xl" />
-          <Skeleton className="h-40 w-full rounded-3xl" />
+          <Skeleton className="h-32 w-full rounded-2xl" />
           <div className="space-y-5"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
         </div>
       )}
@@ -109,62 +108,66 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
         <div className="min-w-0">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div>
-              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-primary">Weekly brief</p>
-              <h1 className="mt-2.5 max-w-3xl text-balance font-display text-4xl font-medium leading-tight tracking-[-0.03em] sm:text-5xl">
+              <h1 className="max-w-3xl text-balance font-display text-4xl font-medium leading-tight tracking-[-0.03em] text-ink sm:text-5xl">
                 {briefTitle(report.subject)}
               </h1>
-              <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+              <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                 <CalendarDays className="size-4" aria-hidden="true" />
                 Week ending {formatDate(report.week_end)}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
-              <Button variant="outline" asChild>
-                <Link to="/studio">
-                  <Radio className="size-3.5 text-emerald-500" aria-hidden="true" />
-                  Check a topic live
-                </Link>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/studio">Check a topic live</Link>
               </Button>
               {Boolean(report.has_pdf) && (
-                <Button variant="outline" asChild>
-                  <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener"><FileText aria-hidden="true" />Open the PDF</a>
+                <Button variant="outline" size="sm" asChild>
+                  <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener">
+                    <FileText aria-hidden="true" />
+                    Open PDF
+                  </a>
                 </Button>
               )}
             </div>
           </div>
 
-          <div className="mt-10">
-            <BlurFade inView duration={0.4}>
+          {report.trend && (
+            <BlurFade inView duration={0.35}>
+              <div className="mt-10 grid gap-4 border-y border-border/80 py-7 md:grid-cols-[180px_1fr] md:gap-10">
+                <div>
+                  <h2 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    The editorial read
+                  </h2>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Pattern across this week
+                  </p>
+                </div>
+                <p className="max-w-[68ch] font-display text-xl leading-8 text-ink/90 sm:text-2xl sm:leading-9">
+                  {report.trend}
+                </p>
+              </div>
+            </BlurFade>
+          )}
+
+          <div className="mt-8">
+            <BlurFade inView duration={0.35}>
               <WeekShape items={items} />
             </BlurFade>
           </div>
 
           <KeywordStrip counts={keywords} active={filters.keyword} onToggle={toggleKeyword} follows={follows} onFollow={onFollow} />
 
-          {report.trend && (
-            <BlurFade inView duration={0.4}>
-              <Card className="mt-8 rounded-2xl border border-primary/20 bg-gradient-to-br from-indigo-50/70 via-white to-teal-50/40 shadow-2xs">
-                <CardContent className="grid gap-5 p-6 sm:p-8 md:grid-cols-[190px_1fr] md:gap-10">
-                  <div className="flex items-start gap-3 text-primary">
-                    <BookOpen className="mt-1 size-5 shrink-0" aria-hidden="true" />
-                    <div>
-                      <h2 className="font-semibold text-ink">The editorial read</h2>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">The pattern across this week's selections</p>
-                    </div>
-                  </div>
-                  <p className="max-w-4xl font-display text-xl leading-8 text-ink/90 sm:text-2xl sm:leading-9">{report.trend}</p>
-                </CardContent>
-              </Card>
-            </BlurFade>
-          )}
-
           <div className="mt-14">
-            <BlurFade inView duration={0.4}>
-              <div className="mb-7">
-                <h2 className="text-balance font-display text-3xl font-medium tracking-[-0.025em]">Inside this brief</h2>
-                <p className="mt-2 text-sm text-muted-foreground">Read the source, compare relevance and Well7 fit, follow the evidence.</p>
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-balance font-display text-3xl font-medium tracking-[-0.025em] text-ink">
+                  Inside this brief
+                </h2>
+                <p className="mt-1.5 text-sm text-muted-foreground">
+                  Read the source, compare relevance and Well7 fit, follow the evidence.
+                </p>
               </div>
-            </BlurFade>
+            </div>
 
             <FeedFilterBar
               query={filters.query}
@@ -180,7 +183,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
               <p className="mt-6 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">{library.error}</p>
             )}
 
-            <div className="mt-8">
+            <div className="mt-7">
               {visibleItems.length > 0 ? (
                 <FeedList
                   items={visibleItems}

@@ -1,105 +1,13 @@
 import { FileText } from 'lucide-react'
 
 import { sourceLabel, type ReportItem } from '@/lib/report'
-import { scoreBands, sourceCounts, topicCounts } from '@/lib/topics'
+import { scoreBands, sourceCounts } from '@/lib/topics'
 
 /**
- * The brief page's three static week-shape diagrams (spec `2026-11-06`, "Brief
- * page diagrams"): an importance donut by score band, source bars and topic
- * bars — all computed from the week's items. Pure inline SVG: no chart
- * library, no tooltips, no animation.
+ * Quiet, single-tier summary of the week's signal distribution and sources.
+ * Avoids repeating topic counts (which live interactively in KeywordStrip right
+ * below) and uses crisp HTML/SVG geometry instead of stretched viewBox text.
  */
-
-const DONUT_STROKE: Record<string, string> = {
-  '8–10': 'stroke-primary',
-  '5–7': 'stroke-primary/55',
-  '1–4': 'stroke-muted-foreground/40',
-}
-
-function ImportanceDonut({ items }: { items: ReportItem[] }) {
-  const bands = scoreBands(items.map((item) => item.well7_fit ?? item.score))
-  const total = bands.reduce((sum, band) => sum + band.count, 0)
-  const radius = 40
-  const circumference = 2 * Math.PI * radius
-
-  // Prefix-summed band starts in COUNTS, converted to circumference FRACTIONS
-  // for the dash offset — an offset in path-length units must be a fraction of
-  // the ring, not the count itself.
-  const segments = bands.map((band, index) => ({
-    band,
-    fraction: total > 0 ? band.count / total : 0,
-    startCount: bands.slice(0, index).reduce((sum, earlier) => sum + earlier.count, 0),
-  }))
-
-  return (
-    <figure>
-      <figcaption className="text-sm font-semibold text-muted-foreground">
-        Well7 fit
-        <span className="block font-normal">Importance bands; relevance where a paper is unrated.</span>
-      </figcaption>
-      <div className="mt-3 flex items-center gap-5">
-        <svg viewBox="0 0 120 120" className="size-28 shrink-0" role="img" aria-label={`Importance donut: ${bands.map((band) => `${band.label} ${band.count}`).join(', ')}`}>
-          <circle cx="60" cy="60" r={radius} fill="none" strokeWidth="16" className="stroke-border/60" />
-          {total > 0 && segments.filter((segment) => segment.band.count > 0).map(({ band, fraction, startCount }) => (
-            <circle
-              key={band.label}
-              cx="60"
-              cy="60"
-              r={radius}
-              fill="none"
-              strokeWidth="16"
-              strokeLinecap="butt"
-              className={DONUT_STROKE[band.label]}
-              strokeDasharray={`${Math.max(fraction * circumference - 2, 0)} ${circumference}`}
-              strokeDashoffset={-((startCount / total) * circumference)}
-              transform="rotate(-90 60 60)"
-            />
-          ))}
-          <text x="60" y="65" textAnchor="middle" className="fill-ink font-display text-2xl">{total}</text>
-        </svg>
-        <ul className="space-y-2 text-sm">
-          {bands.map((band) => (
-            <li key={band.label} className="flex items-center gap-2 text-muted-foreground">
-              <span className={`size-2.5 rounded-full ${band.label === '8–10' ? 'bg-primary' : band.label === '5–7' ? 'bg-primary/55' : 'bg-muted-foreground/40'}`} aria-hidden="true" />
-              <span className="font-medium text-ink tabular-nums">{band.count}</span>
-              <span className="tabular-nums">{band.label}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </figure>
-  )
-}
-
-function CountBars({ rows, caption }: { rows: Array<{ label: string; count: number }>; caption: string }) {
-  const max = rows.reduce((best, row) => Math.max(best, row.count), 0)
-  const rowHeight = 24
-  return (
-    <figure>
-      <figcaption className="text-sm font-semibold text-muted-foreground">{caption}</figcaption>
-      <svg
-        viewBox={`0 0 220 ${rows.length * rowHeight}`}
-        className="mt-3 w-full"
-        style={{ height: rows.length * rowHeight + 4 }}
-        role="img"
-        aria-label={`${caption}: ${rows.map((row) => `${row.label} ${row.count}`).join(', ')}`}
-      >
-        {rows.map((row, index) => {
-          const barWidth = max > 0 ? (row.count / max) * 108 : 0
-          const y = index * rowHeight
-          return (
-            <g key={row.label} transform={`translate(0 ${y})`}>
-              <rect x="0" y="5" width={Math.max(barWidth, 4)} height="14" rx="7" className="fill-primary/75" />
-              <text x={Math.max(barWidth, 4) + 8} y="16" fontSize="11" className="fill-ink/80 tabular-nums">{row.count}</text>
-              <text x="122" y="15" fontSize="11" className="fill-muted-foreground">{row.label}</text>
-            </g>
-          )
-        })}
-      </svg>
-    </figure>
-  )
-}
-
 export function WeekShape({ items }: { items: ReportItem[] }) {
   if (items.length === 0) {
     return (
@@ -110,11 +18,99 @@ export function WeekShape({ items }: { items: ReportItem[] }) {
     )
   }
 
+  const bands = scoreBands(items.map((item) => item.well7_fit ?? item.score))
+  const total = bands.reduce((sum, band) => sum + band.count, 0)
+  const sources = sourceCounts(items).map((row) => ({
+    label: sourceLabel(row.label),
+    count: row.count,
+  }))
+  const maxSource = sources.reduce((best, row) => Math.max(best, row.count), 1)
+
+  const bandColors: Record<string, string> = {
+    '8–10': 'bg-primary',
+    '5–7': 'bg-primary/45',
+    '1–4': 'bg-muted-foreground/30',
+  }
+
+  const bandLabels: Record<string, string> = {
+    '8–10': 'High fit (8–10)',
+    '5–7': 'Moderate (5–7)',
+    '1–4': 'Exploratory (1–4)',
+  }
+
   return (
-    <div className="grid gap-8 rounded-[24px] border border-border bg-white/70 p-6 sm:p-8 lg:grid-cols-3 lg:gap-10">
-      <ImportanceDonut items={items} />
-      <CountBars rows={sourceCounts(items).map((row) => ({ ...row, label: sourceLabel(row.label) }))} caption="Sources" />
-      <CountBars rows={topicCounts(items)} caption="Topics" />
+    <div
+      className="grid gap-8 rounded-2xl border border-border/75 bg-white p-6 sm:p-7 md:grid-cols-2 md:gap-12"
+      role="region"
+      aria-label="Weekly signal summary"
+    >
+      {/* Left: Signal Distribution */}
+      <figure className="flex flex-col justify-between">
+        <div className="flex items-baseline justify-between gap-4">
+          <figcaption className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Well7 signal distribution
+          </figcaption>
+          <span className="font-mono text-xs text-muted-foreground tabular-nums">
+            {total} {total === 1 ? 'finding' : 'findings'}
+          </span>
+        </div>
+
+        {/* Proportional segmented bar */}
+        <div
+          className="mt-4 flex h-2.5 w-full overflow-hidden rounded-full bg-secondary p-0.5 gap-0.5"
+          role="img"
+          aria-label={`Well7 fit bands: ${bands.map((b) => `${b.label}: ${b.count}`).join(', ')}`}
+        >
+          {bands
+            .filter((b) => b.count > 0)
+            .map((band) => (
+              <div
+                key={band.label}
+                style={{ width: `${(band.count / Math.max(total, 1)) * 100}%` }}
+                className={`h-full first:rounded-l-full last:rounded-r-full ${bandColors[band.label] ?? 'bg-primary'}`}
+              />
+            ))}
+        </div>
+
+        <ul className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          {bands.map((band) => (
+            <li key={band.label} className="flex items-center gap-2 text-muted-foreground">
+              <span
+                className={`size-2 rounded-full ${bandColors[band.label] ?? 'bg-primary'}`}
+                aria-hidden="true"
+              />
+              <span>{bandLabels[band.label] ?? band.label}</span>
+              <span className="font-mono font-semibold text-ink tabular-nums">{band.count}</span>
+            </li>
+          ))}
+        </ul>
+      </figure>
+
+      {/* Right: Sources */}
+      <figure className="border-t border-border/60 pt-6 md:border-l md:border-t-0 md:pl-10 md:pt-0">
+        <figcaption className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Sources represented
+        </figcaption>
+        <ul className="mt-3.5 space-y-2.5">
+          {sources.map((row) => {
+            const widthPct = Math.max((row.count / maxSource) * 100, 6)
+            return (
+              <li key={row.label} className="grid grid-cols-[110px_1fr_28px] items-center gap-3 text-xs">
+                <span className="truncate font-medium text-ink/85">{row.label}</span>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-secondary">
+                  <div
+                    className="h-full rounded-full bg-primary/70"
+                    style={{ width: `${widthPct}%` }}
+                  />
+                </div>
+                <span className="text-right font-mono text-muted-foreground tabular-nums">
+                  {row.count}
+                </span>
+              </li>
+            )
+          })}
+        </ul>
+      </figure>
     </div>
   )
 }

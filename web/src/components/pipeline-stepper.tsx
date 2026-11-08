@@ -1,14 +1,4 @@
-import {
-  CheckCircle2,
-  CircleDot,
-  Database,
-  FileSearch,
-  Filter,
-  Loader2,
-  Sparkles,
-  Trophy,
-  UploadCloud,
-} from 'lucide-react'
+import { Check, Loader2 } from 'lucide-react'
 
 import type { CleanStatsInfo, SourceStatInfo } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -30,17 +20,19 @@ export interface PipelineStepperProps {
 const NODE_STEPS: Array<{
   id: StepperNodeId
   label: string
-  subtitle: string
-  icon: typeof Database
 }> = [
-  { id: 'collect', label: '1. Collect', subtitle: 'arXiv, HN, GitHub, RSS', icon: Database },
-  { id: 'clean', label: '2. Clean & Dedupe', subtitle: 'Normalize & filter URLs', icon: Filter },
-  { id: 'rank', label: '3. Rank (LLM)', subtitle: 'Score relevance & Well7 fit', icon: Trophy },
-  { id: 'fetch', label: '4. Fetch Text', subtitle: 'Pull full abstracts & pages', icon: FileSearch },
-  { id: 'summarise', label: '5. Summarise', subtitle: 'Citation-guarded synthesis', icon: Sparkles },
-  { id: 'publish', label: '6. Checkpoint', subtitle: 'Persist to Cloudflare D1', icon: UploadCloud },
+  { id: 'collect', label: 'Collect' },
+  { id: 'clean', label: 'Clean' },
+  { id: 'rank', label: 'Rank' },
+  { id: 'fetch', label: 'Fetch' },
+  { id: 'summarise', label: 'Summarise' },
+  { id: 'publish', label: 'Checkpoint' },
 ]
 
+/**
+ * Quiet, single-row progress rail for the 6-node LangGraph.js pipeline.
+ * Avoids nested cards and decorative icon boxes.
+ */
 export function PipelineStepper({
   status,
   activeNode,
@@ -57,101 +49,67 @@ export function PipelineStepper({
       case 'collect': {
         if (!sourceStats.length && !cleanStats) return null
         const total = cleanStats?.raw ?? sourceStats.reduce((sum, s) => sum + s.count, 0)
-        return `${total} raw items`
+        return `${total} raw`
       }
       case 'clean':
         if (!cleanStats) return null
-        return `${cleanStats.fresh} fresh (-${cleanStats.duplicatesRemoved} dup)`
+        return `${cleanStats.fresh} fresh`
       case 'rank':
         return scoredCount > 0 ? `${scoredCount} scored` : null
       case 'fetch':
-        return fetchedCount > 0 ? `${fetchedCount} texts pulled` : null
+        return fetchedCount > 0 ? `${fetchedCount} texts` : null
       case 'summarise':
-        return sectionCount > 0 ? `${sectionCount} guarded summaries` : null
+        return sectionCount > 0 ? `${sectionCount} guarded` : null
       case 'publish':
-        if (reportId) return `Published ${reportId}`
-        return completedNodes.includes('publish') ? 'Saved to D1' : null
+        if (reportId) return reportId
+        return completedNodes.includes('publish') ? 'D1 saved' : null
     }
   }
 
   return (
-    <div className="rounded-2xl border border-border/80 bg-white p-5 shadow-2xs sm:p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/70 pb-4">
-        <div className="flex items-center gap-2.5">
-          <span
-            className={cn(
-              'inline-flex size-2.5 rounded-full',
-              status === 'running' && 'animate-ping bg-primary',
-              status === 'succeeded' && 'bg-emerald-500',
-              status === 'failed' && 'bg-destructive',
-              status === 'idle' && 'bg-muted-foreground/40',
-            )}
-          />
-          <h2 className="font-mono text-xs font-semibold uppercase tracking-wider text-ink">
-            LangGraph.js StateGraph Telemetry
-          </h2>
-        </div>
-        <span className="font-mono text-xs text-muted-foreground">
-          {status === 'running' && activeNode
-            ? `Executing node: ${activeNode}…`
-            : status === 'succeeded'
-              ? 'All graph nodes completed'
-              : status === 'failed'
-                ? 'Run interrupted'
-                : 'Ready to execute'}
-        </span>
-      </div>
-
-      <ol className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
-        {NODE_STEPS.map((step) => {
+    <div className="rounded-2xl border border-border/75 bg-white px-5 py-4 sm:px-6">
+      <ol className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+        {NODE_STEPS.map((step, index) => {
           const done = completedNodes.includes(step.id)
           const active = status === 'running' && activeNode === step.id && !done
           const metric = metricFor(step.id)
-          const Icon = step.icon
 
           return (
             <li
               key={step.id}
-              className={cn(
-                'relative flex flex-col justify-between rounded-xl border p-3.5 transition-all',
-                done && 'border-emerald-500/35 bg-emerald-500/[0.04]',
-                active && 'border-primary bg-primary/[0.06] ring-2 ring-primary/20',
-                !done && !active && 'border-border/70 bg-background/50 opacity-75',
-              )}
+              className="flex items-center justify-between gap-2 border-b border-border/50 pb-2 sm:border-b-0 sm:pb-0"
             >
-              <div>
-                <div className="flex items-center justify-between gap-2">
-                  <span
-                    className={cn(
-                      'grid size-7 place-items-center rounded-lg border',
-                      done && 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700',
-                      active && 'border-primary/30 bg-primary/15 text-primary',
-                      !done && !active && 'border-border bg-white text-muted-foreground',
-                    )}
-                  >
-                    <Icon className="size-3.5" aria-hidden="true" />
-                  </span>
-                  {done ? (
-                    <CheckCircle2 className="size-4 text-emerald-600" aria-label="Completed" />
-                  ) : active ? (
-                    <Loader2 className="size-4 animate-spin text-primary" aria-label="Running" />
-                  ) : (
-                    <CircleDot className="size-4 text-muted-foreground/40" aria-hidden="true" />
+              <div className="flex min-w-0 items-center gap-2">
+                <span
+                  className={cn(
+                    'grid size-5 shrink-0 place-items-center rounded-full font-mono text-[10px] transition-colors',
+                    done && 'bg-emerald-600 text-white',
+                    active && 'bg-primary text-white',
+                    !done && !active && 'border border-border text-muted-foreground',
                   )}
-                </div>
-                <p className="mt-2.5 font-semibold text-xs text-ink">{step.label}</p>
-                <p className="mt-0.5 text-[11px] leading-4 text-muted-foreground">{step.subtitle}</p>
+                >
+                  {done ? (
+                    <Check className="size-3" aria-label="Completed" />
+                  ) : active ? (
+                    <Loader2 className="size-3 animate-spin" aria-label="Running" />
+                  ) : (
+                    index + 1
+                  )}
+                </span>
+                <span
+                  className={cn(
+                    'truncate text-xs',
+                    done || active ? 'font-medium text-ink' : 'text-muted-foreground',
+                  )}
+                >
+                  {step.label}
+                </span>
               </div>
 
               {metric && (
-                <p
-                  className={cn(
-                    'mt-3 rounded-md px-2 py-1 font-mono text-[11px] font-medium tabular-nums',
-                    done ? 'bg-emerald-500/10 text-emerald-800' : 'bg-primary/10 text-primary',
-                  )}
-                >
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
                   {metric}
-                </p>
+                </span>
               )}
             </li>
           )
@@ -159,25 +117,18 @@ export function PipelineStepper({
       </ol>
 
       {sourceStats.length > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3.5">
-          <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Source Collectors:
-          </span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 pt-3 font-mono text-[11px] text-muted-foreground">
+          <span className="uppercase tracking-wider text-muted-foreground/75">Sources</span>
           {sourceStats.map((source) => (
             <span
               key={source.name}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-[11px]',
-                source.error
-                  ? 'border-amber-400/50 bg-amber-50 text-amber-800'
-                  : source.count > 0
-                    ? 'border-border bg-background text-ink'
-                    : 'border-border/60 bg-background/40 text-muted-foreground',
+                'tabular-nums',
+                source.error ? 'text-amber-700' : source.count > 0 ? 'text-ink/80' : 'text-muted-foreground/60',
               )}
               title={source.error ? `${source.name}: ${source.error}` : `${source.durationMs}ms`}
             >
-              <span>{source.name}</span>
-              <span className="font-semibold tabular-nums">{source.count}</span>
+              {source.name} <strong className="font-medium">{source.count}</strong>
             </span>
           ))}
         </div>

@@ -51,10 +51,10 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
               aria-pressed={active}
               onClick={() => onView(key)}
               className={cn(
-                'inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 active
-                  ? 'border-primary bg-primary/12 font-semibold text-primary ring-1 ring-primary/25'
-                  : 'border-border bg-white text-ink/80 hover:border-primary/40 hover:text-primary',
+                  ? 'border-primary/45 bg-primary/10 text-primary'
+                  : 'border-border/80 bg-white text-ink/80 hover:border-primary/35 hover:text-primary',
               )}
             >
               {VIEW_LABELS[key]}
@@ -71,7 +71,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
         })}
       </nav>
 
-      <h4 className="mt-10 text-sm font-semibold text-muted-foreground">Weeks</h4>
+      <h4 className="mt-10 text-xs font-medium uppercase tracking-wider text-muted-foreground">Weeks</h4>
       <ul className="mt-3 flex flex-wrap gap-2">
         {reports.slice(0, MAX_SIDEBAR_WEEKS).map((report) => {
           const active = report.id === selectedId
@@ -84,8 +84,8 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
                 className={cn(
                   'inline-flex cursor-pointer rounded-full border px-3.5 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active
-                    ? 'border-primary/40 bg-primary/10 font-semibold text-primary'
-                    : 'border-border bg-white text-ink/80 hover:border-primary/40 hover:text-primary',
+                    ? 'border-primary/45 bg-primary/10 font-medium text-primary'
+                    : 'border-border/80 bg-white text-ink/80 hover:border-primary/35 hover:text-primary',
                 )}
               >
                 Week ending {formatDate(report.week_end, 'short')}
@@ -98,7 +98,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
       {reports.length > MAX_SIDEBAR_WEEKS && (
         <Link
           to="/archive"
-          className="mt-3 inline-block text-sm font-semibold text-primary underline-offset-4 hover:underline"
+          className="mt-3 inline-block text-sm font-medium text-primary underline-offset-4 hover:underline"
         >
           All {reports.length} weeks in the archive
         </Link>
@@ -127,8 +127,8 @@ export function FeedFilterBar({
   onClear,
 }: FeedFilterBarProps) {
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-border/80 bg-white p-4 shadow-2xs">
-      <label className="relative block">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+      <label className="relative block flex-1 lg:max-w-md">
         <span className="sr-only">Search this brief</span>
         <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <input
@@ -137,13 +137,13 @@ export function FeedFilterBar({
           value={query}
           autoComplete="off"
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="Filter items in this brief (e.g. privacy, tabular, evaluation)…"
-          className="w-full rounded-xl border border-border bg-background/60 py-2.5 pl-10 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="Filter items in this brief (e.g. privacy, tabular)…"
+          className="h-10 w-full rounded-xl border border-border/80 bg-white pl-10 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="group" aria-label="Section" className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div role="group" aria-label="Section" className="flex flex-wrap gap-1.5">
           {SECTION_OPTIONS.map((option) => (
             <FilterChip
               key={option.value}
@@ -156,7 +156,7 @@ export function FeedFilterBar({
         </div>
         {activeFilters > 0 && (
           <Button variant="ghost" size="sm" onClick={onClear}>
-            Clear filters ({activeFilters})
+            Clear ({activeFilters})
           </Button>
         )}
       </div>
@@ -177,22 +177,22 @@ export function KeywordStrip({ counts, active, onToggle, follows, onFollow }: Ke
   if (counts.length === 0) return null
 
   return (
-    <div className="mt-10 rounded-2xl border border-border/80 bg-white/90 p-5 shadow-2xs">
+    <div className="mt-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Key words this week {onFollow ? '· Click label to filter, ★ to follow in your feed' : '· Click to filter'}
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Key words this week {onFollow ? '· Select label to filter, ★ to follow' : '· Select to filter'}
         </p>
         {active && (
           <button
             type="button"
             onClick={() => onToggle(active)}
-            className="cursor-pointer text-xs font-semibold text-primary hover:underline"
+            className="cursor-pointer text-xs font-medium text-primary hover:underline"
           >
             Clear "{active}" filter
           </button>
         )}
       </div>
-      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
         {counts.map((keyword) => (
           <FilterChip
             key={keyword.label}
