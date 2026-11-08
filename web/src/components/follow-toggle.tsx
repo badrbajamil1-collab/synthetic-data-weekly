@@ -21,13 +21,18 @@ export function FollowToggle({ kind, value, followed, onToggle }: FollowTogglePr
       aria-pressed={followed}
       aria-label={followed ? `Stop following ${value}` : `Follow ${value} in your feed`}
       title={followed ? 'Stop following' : 'Follow in your feed'}
-      onClick={() => void onToggle(kind, value, !followed)}
+      onClick={(event) => {
+        event.stopPropagation()
+        void onToggle(kind, value, !followed)
+      }}
       className={cn(
-        'grid size-5 shrink-0 place-items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        followed ? 'text-primary hover:text-primary/80' : 'text-muted-foreground/60 hover:text-primary',
+        'grid size-7 shrink-0 cursor-pointer place-items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-90',
+        followed
+          ? 'border-amber-400/60 bg-amber-50 text-amber-600 shadow-2xs hover:bg-amber-100'
+          : 'border-transparent text-muted-foreground/70 hover:border-border hover:bg-white hover:text-amber-600',
       )}
     >
-      <Star className={cn('size-3.5', followed && 'fill-current')} aria-hidden="true" />
+      <Star className={cn('size-3.5 transition-transform', followed && 'scale-110 fill-current')} aria-hidden="true" />
     </button>
   )
 }
