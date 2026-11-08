@@ -42,3 +42,7 @@ skills-lock.json
 page_*.png
 progress/review/pdf-pages/
 .env.bak
+
+.dev.vars*
+!.dev.vars.example
+!.env.example
