@@ -21,7 +21,7 @@ export function sortFollows(follows: TopicFollow[]): TopicFollow[] {
 export function matchesFollows(item: Pick<ReportLike, 'source'> & Taggable, follows: TopicFollow[]): boolean {
   return follows.some((follow) =>
     follow.kind === 'source'
-      ? item.source === follow.value
+      ? sameSource(item.source, follow.value)
       : topicsFor(item).includes(follow.value),
   )
 }
@@ -54,12 +54,34 @@ export function scoreBands(scores: Array<number | null | undefined>): ScoreBand[
   return bands
 }
 
+/**
+ * Counts by source, merged case-insensitively.
+ *
+ * `items.source` holds whichever label the collector wrote — "GitHub" from one
+ * run, "github" from another — so grouping on the raw string split one source
+ * into two rows, and starring one missed the other. The label kept for display
+ * prefers the cased spelling ("GitHub" over "github").
+ */
 export function sourceCounts(items: Array<{ source: string }>): Array<{ label: string; count: number }> {
-  const counts = new Map<string, number>()
-  for (const item of items) counts.set(item.source, (counts.get(item.source) ?? 0) + 1)
-  return [...counts]
-    .map(([label, count]) => ({ label, count }))
-    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+  const groups = new Map<string, { label: string; count: number }>()
+  for (const item of items) {
+    const raw = (item.source ?? '').trim()
+    if (!raw) continue
+    const key = raw.toLowerCase()
+    const group = groups.get(key)
+    if (!group) {
+      groups.set(key, { label: raw, count: 1 })
+      continue
+    }
+    group.count += 1
+    if (!/[A-Z]/.test(group.label) && /[A-Z]/.test(raw)) group.label = raw
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+}
+
+/** Two source labels that name the same source, ignoring case and padding. */
+export function sameSource(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
 }
 
 export function topicCounts(items: Taggable[]): Array<{ label: string; count: number }> {

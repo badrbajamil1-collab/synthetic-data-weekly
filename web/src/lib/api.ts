@@ -35,7 +35,11 @@ export interface LibraryEntry {
 
 export async function getJson<T>(path: string): Promise<T | null> {
   const response = await fetch(path, { headers: { Accept: 'application/json', ...(await authHeaders()) } })
-  if (response.status === 401) return null
+  if (response.status === 401) {
+    // Every caller is a private endpoint. The Worker rejecting the token while
+    // Clerk still says signed in is a failure, not "nothing saved yet" (WEB-07).
+    throw new Error('Your session was not accepted. Sign in again to load this.')
+  }
   if (!response.ok) throw new Error(`Request failed (${response.status}). Try again in a moment.`)
   return (await response.json()) as T
 }

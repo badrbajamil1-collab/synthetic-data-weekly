@@ -1,5 +1,6 @@
 import { currentViewer, type AuthEnv, type Viewer } from './auth.ts'
 import { runWeeklyPipeline, type PipelineEnv } from './pipeline/index.ts'
+import { bearerToken, tokenMatches } from './pipeline/token.ts'
 import { sourceCounts, topicCounts } from '../src/lib/topics.ts'
 
 export interface Env extends PipelineEnv, AuthEnv {
@@ -82,8 +83,27 @@ async function listNotes(env: Env, userId: string): Promise<Array<{ id: string; 
 }
 
 async function adminDeleteReport(env: Env, reportId: string): Promise<void> {
+  // user_items points at item ids; without this the personal library keeps
+  // rows for items that no longer exist (they can never join back).
+  await env.DB.prepare(
+    'DELETE FROM user_items WHERE item_id IN (SELECT id FROM items WHERE report_id = ?)',
+  ).bind(reportId).run()
   await env.DB.prepare('DELETE FROM items WHERE report_id = ?').bind(reportId).run()
   await env.DB.prepare('DELETE FROM reports WHERE id = ?').bind(reportId).run()
+}
+
+type PipelineAuth = 'token' | 'clerk'
+
+/**
+ * Who is allowed to start or probe a pipeline run: the CRON_RUN_TOKEN bearer
+ * secret (checked first — it costs no network round-trip) or a signed-in Clerk
+ * admin. Fail-closed: no secret and no admin means no run.
+ */
+async function pipelineAuth(request: Request, env: Env): Promise<PipelineAuth | null> {
+  const presented = bearerToken(request.headers.get('Authorization'))
+  if (presented && tokenMatches(presented, env.CRON_RUN_TOKEN)) return 'token'
+  const viewer = await currentViewer(request, env)
+  return viewer?.isAdmin === true ? 'clerk' : null
 }
 
 export default {
@@ -266,23 +286,21 @@ export default {
     }
 
     if (path === '/api/pipeline/run' && method === 'POST') {
-      const bearer = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
-      const viewer = await currentViewer(request, env)
-      if (viewer?.isAdmin !== true && !(typeof env.CRON_RUN_TOKEN === 'string' && env.CRON_RUN_TOKEN.length > 0
-        && bearer.length > 20 && timingSafeEqual(bearer, env.CRON_RUN_TOKEN))) {
-        return json({ error: 'admin sign-in or bearer token required' }, 403)
-      }
+      const via = await pipelineAuth(request, env)
+      if (!via) return json({ error: 'admin sign-in or bearer token required' }, 403)
       const result = await runWeeklyPipeline(env, 'manual', new Date())
       return json(result, result.status === 'succeeded' ? 200 : 500)
+    }
+
+    // Cheap "will my credentials be accepted?" probe: answers without running
+    // anything, so a cron or a terminal script can be wired up without
+    // guessing, and a bad token is a 403 here rather than a wasted run.
+    if (path === '/api/pipeline/auth' && method === 'GET') {
+      const via = await pipelineAuth(request, env)
+      if (!via) return json({ error: 'admin sign-in or bearer token required' }, 403)
+      return json({ ok: true, via })
     }
 
     return new Response(null, { status: 404 })
   },
 } satisfies ExportedHandler<Env>
-
-function timingSafeEqual(actual: string, expected: string): boolean {
-  if (actual.length !== expected.length) return false
-  let mismatch = 0
-  for (let i = 0; i < expected.length; i++) mismatch |= actual.charCodeAt(i) ^ expected.charCodeAt(i)
-  return mismatch === 0
-}

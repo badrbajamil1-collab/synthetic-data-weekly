@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button'
 import type { LibraryEntry } from '@/lib/api'
 import { topicsFor, type FeedSection, type FeedView } from '@/lib/feed'
 import { formatDate, type Report, type ReportItem } from '@/lib/report'
-import type { TopicFollow, TopicKind } from '@/lib/topics'
+import { Link } from '@/lib/router'
+import { sameSource, type TopicFollow, type TopicKind } from '@/lib/topics'
 import { cn } from '@/lib/utils'
 
 const VIEW_LABELS: Record<FeedView, string> = {
@@ -23,6 +24,10 @@ const SECTION_OPTIONS: Array<{ value: FeedSection; label: string }> = [
   { value: 'tool', label: 'Tools' },
   { value: 'worth', label: 'Worth a look' },
 ]
+
+/** A weekly archive grows forever; the sticky rail shows the recent run and
+ *  links out, so it cannot push "Your feed" off the bottom of the viewport. */
+const MAX_SIDEBAR_WEEKS = 6
 
 interface FeedSidebarProps {
   reports: Report[]
@@ -70,7 +75,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
 
       <h4 className="mt-10 text-sm font-semibold text-muted-foreground">Weeks</h4>
       <ul className="mt-3 flex flex-wrap gap-2">
-        {reports.map((report) => {
+        {reports.slice(0, MAX_SIDEBAR_WEEKS).map((report) => {
           const active = report.id === selectedId
           return (
             <li key={report.id}>
@@ -91,6 +96,15 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
           )
         })}
       </ul>
+
+      {reports.length > MAX_SIDEBAR_WEEKS && (
+        <Link
+          to="/archive"
+          className="mt-3 inline-block text-sm font-semibold text-primary underline-offset-4 hover:underline"
+        >
+          All {reports.length} weeks in the archive
+        </Link>
+      )}
     </aside>
   )
 }
@@ -238,7 +252,7 @@ export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle, 
               <FollowToggle
                 kind="source"
                 value={item.source}
-                followed={follows?.some((follow) => follow.kind === 'source' && follow.value === item.source) ?? false}
+                followed={follows?.some((follow) => follow.kind === 'source' && sameSource(follow.value, item.source)) ?? false}
                 onToggle={(kind, value, next) => onFollow(kind, value, next)}
               />
             ) : undefined}

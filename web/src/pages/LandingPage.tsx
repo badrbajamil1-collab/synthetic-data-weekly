@@ -1,5 +1,5 @@
 import { ArrowDownToLine, ArrowRight, CircleAlert, Clock3, RefreshCw, ShieldCheck } from 'lucide-react'
-import { useClerk } from '@clerk/react'
+import { useAuth, useClerk } from '@clerk/react'
 
 import { Badge } from '@/components/ui/badge'
 import { BlurFade } from '@/components/ui/blur-fade'
@@ -17,6 +17,9 @@ import { useReport, useReports } from '@/lib/use-report'
  */
 export function LandingPage() {
   const clerk = useClerk()
+  // A signed-in reader was still offered "Sign in to your feed", which opened the
+  // sign-in modal for an account that is already signed in (WEB-04).
+  const { isSignedIn } = useAuth()
   const { reports, error: reportsError, retry: retryReports } = useReports()
   const latest = reports[0] ?? null
   const { items, error: itemsError, retry: retryItem } = useReport(latest?.id ?? null)
@@ -59,14 +62,21 @@ export function LandingPage() {
               A weekly brief for the Well7 Research Lab team: tabular and time-series synthesis, formal privacy guarantees, and the evaluation work behind them — selected from the noise around generated data.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Button size="lg" variant="ink" onClick={() => clerk.openSignIn()}>
-                Sign in to your feed
-                <ArrowRight aria-hidden="true" />
-              </Button>
+              {isSignedIn ? (
+                <Button size="lg" variant="ink" onClick={() => navigate('/feed')}>
+                  Go to your feed
+                  <ArrowRight aria-hidden="true" />
+                </Button>
+              ) : (
+                <Button size="lg" variant="ink" onClick={() => clerk.openSignIn()}>
+                  Sign in to your feed
+                  <ArrowRight aria-hidden="true" />
+                </Button>
+              )}
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => (latest ? navigate(`/brief/${latest.id}`) : clerk.openSignIn())}
+                onClick={() => (latest ? navigate(`/brief/${latest.id}`) : undefined)}
                 disabled={!latest}
               >
                 Read the latest brief

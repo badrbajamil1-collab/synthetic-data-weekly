@@ -6,7 +6,7 @@ import { TopicPanel, type TopicCount } from '@/components/topic-panel'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { fetchArchiveCounts, type LibraryBundle, type ArchiveCounts } from '@/lib/api'
-import { filterItems, sectionCounts, type FeedFilters, type FeedView } from '@/lib/feed'
+import { chipScopes, filterItems, sectionCounts, type FeedFilters, type FeedView } from '@/lib/feed'
 import { briefTitle, formatDate } from '@/lib/report'
 import { useReport, useReports } from '@/lib/use-report'
 import { matchesFollows, sourceCounts, topicCounts, type TopicFollow, type TopicKind } from '@/lib/topics'
@@ -50,12 +50,19 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
     () => filterItems(followedItems, filters, savedById),
     [followedItems, filters, savedById],
   )
-  const totals = useMemo(() => sectionCounts(followedItems), [followedItems])
+  // Every count on the page describes what the same click would produce, so a
+  // search or a section filter cannot leave a chip reading "3" beside an empty
+  // list (WEB-10).
+  const scopes = useMemo(
+    () => chipScopes(followedItems, filters, savedById),
+    [followedItems, filters, savedById],
+  )
+  const totals = useMemo(() => sectionCounts(scopes.section), [scopes])
   const viewCounts = useMemo<Record<FeedView, number>>(() => ({
-    all: followedItems.length,
-    read_later: followedItems.filter((item) => savedById.get(item.id)?.read_later === 1).length,
-    important: followedItems.filter((item) => savedById.get(item.id)?.important === 1).length,
-  }), [followedItems, savedById])
+    all: scopes.view.length,
+    read_later: scopes.view.filter((item) => savedById.get(item.id)?.read_later === 1).length,
+    important: scopes.view.filter((item) => savedById.get(item.id)?.important === 1).length,
+  }), [scopes, savedById])
   const activeFilters = [
     filters.query.trim() !== '',
     filters.section !== 'all',
@@ -175,7 +182,7 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                     Week ending {formatDate(report.week_end)}
                   </p>
                 </div>
-                <p className="text-sm text-muted-foreground">
+                <p role="status" className="text-sm text-muted-foreground sm:text-right">
                   {follows.length === 0
                     ? `Showing all ${items.length} ${items.length === 1 ? 'item' : 'items'} until you star a topic.`
                     : `${followedItems.length} of ${items.length} ${items.length === 1 ? 'item matches' : 'items match'} your ${follows.length} starred ${follows.length === 1 ? 'topic' : 'topics'}.`}
@@ -205,11 +212,18 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                 </div>
               )}
 
-              <div className="mt-8">
-                <TopicPanel follows={follows} counts={counts} onToggle={onFollow} />
-              </div>
+              {/* Onboarding vs steady state: with nothing starred the picker
+                  belongs next to the prompt that sends you to it; once you
+                  have follows it drops below the list, so starring visibly
+                  changes the rows right under the cursor instead of pushing
+                  them further down the page. */}
+              {follows.length === 0 && (
+                <div className="mt-8">
+                  <TopicPanel follows={follows} counts={counts} onToggle={onFollow} />
+                </div>
+              )}
 
-              <div className="mt-12">
+              <div className="mt-10">
                 <FeedFilterBar
                   query={filters.query}
                   onQuery={(query) => setFilters((current) => ({ ...current, query }))}
@@ -247,6 +261,12 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                   )}
                 </div>
               </div>
+
+              {follows.length > 0 && (
+                <div className="mt-14">
+                  <TopicPanel follows={follows} counts={counts} onToggle={onFollow} />
+                </div>
+              )}
             </>
           )}
         </div>

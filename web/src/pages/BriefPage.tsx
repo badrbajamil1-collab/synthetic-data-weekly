@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type LibraryBundle } from '@/lib/api'
-import { filterItems, keywordCounts, sectionCounts, type FeedFilters } from '@/lib/feed'
+import { chipScopes, filterItems, keywordCounts, sectionCounts, type FeedFilters } from '@/lib/feed'
 import { briefTitle, formatDate } from '@/lib/report'
 import { Link, navigate } from '@/lib/router'
 import { useReport, useReports } from '@/lib/use-report'
@@ -45,8 +45,9 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
 
   const savedById = library.savedById
   const visibleItems = filterItems(items, filters, savedById)
-  const keywords = keywordCounts(items)
-  const totals = sectionCounts(items)
+  const scopes = chipScopes(items, filters, savedById)
+  const keywords = keywordCounts(scopes.keyword)
+  const totals = sectionCounts(scopes.section)
   const activeFilters = [
     filters.query.trim() !== '',
     filters.section !== 'all',
@@ -125,7 +126,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
             </div>
             {Boolean(report.has_pdf) && (
               <Button variant="outline" asChild>
-                <a href={`/api/reports/${report.id}/pdf`}><FileText aria-hidden="true" />Open the PDF</a>
+                <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener"><FileText aria-hidden="true" />Open the PDF</a>
               </Button>
             )}
           </div>

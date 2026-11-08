@@ -1,5 +1,7 @@
 import { createClerkClient, verifyToken } from '@clerk/backend'
 
+import { userIdFromVerification, type VerifiedSessionToken } from './claims.ts'
+
 export interface AuthEnv {
   CLERK_SECRET_KEY?: string
   ADMIN_EMAILS?: string
@@ -12,10 +14,6 @@ export interface Viewer {
   isAdmin: boolean
 }
 
-interface ClerkJwt {
-  sub?: string
-}
-
 /**
  * Verifies the Clerk session JWT the SPA sends as `Authorization: Bearer <token>`.
  * Fail-closed: without CLERK_SECRET_KEY, or on any verification error, there is
@@ -26,13 +24,13 @@ export async function currentViewer(request: Request, env: AuthEnv): Promise<Vie
   const token = (request.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
   if (!token) return null
 
-  let payload: ClerkJwt
+  let verified: VerifiedSessionToken
   try {
-    payload = (await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY })) as ClerkJwt
+    verified = (await verifyToken(token, { secretKey: env.CLERK_SECRET_KEY })) as VerifiedSessionToken
   } catch {
     return null
   }
-  const userId = typeof payload.sub === 'string' ? payload.sub : ''
+  const userId = userIdFromVerification(verified)
   if (!userId) return null
 
   // One Clerk Backend API call per signed-in request for the email: required for

@@ -26,7 +26,7 @@ export async function runWeeklyPipeline(
   env: PipelineEnv,
   trigger: PipelineTrigger,
   scheduledFor: Date,
-): Promise<{ id: string; status: 'failed' | 'succeeded'; reportId?: string; error?: string }> {
+): Promise<{ id: string; status: 'failed' | 'succeeded'; reportId?: string; error?: string; warnings?: string }> {
   const id = crypto.randomUUID()
   await env.DB.prepare(
     'INSERT INTO pipeline_runs (id, trigger, scheduled_for, started_at, status) VALUES (?, ?, ?, ?, ?)',
@@ -37,9 +37,9 @@ export async function runWeeklyPipeline(
   try {
     const result = await produceReport(env)
     await env.DB.prepare('UPDATE pipeline_runs SET status = ?, error = ?, finished_at = ? WHERE id = ?')
-      .bind('succeeded', result.warnings || null, new Date().toISOString(), id)
+      .bind('succeeded', result.warnings ? `warnings: ${result.warnings}` : null, new Date().toISOString(), id)
       .run()
-    return { id, status: 'succeeded', reportId: result.reportId, error: result.warnings || undefined }
+    return { id, status: 'succeeded', reportId: result.reportId, warnings: result.warnings || undefined }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await env.DB.prepare('UPDATE pipeline_runs SET status = ?, error = ?, finished_at = ? WHERE id = ?')

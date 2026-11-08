@@ -71,6 +71,27 @@ export function sectionCounts(items: ReportItem[]): Record<FeedSection, number> 
   return counts
 }
 
+/**
+ * The item lists behind the chip counts on a filtered page.
+ *
+ * Each chip set ignores its own dimension — selecting "Tools" must not make the
+ * Tools chip read 0 — and honours everything else, including the search text.
+ * Counting the untouched week instead left "Worth a look 1" next to an empty
+ * result list, because the count ignored the filter that caused the emptiness.
+ */
+export function chipScopes(
+  items: ReportItem[],
+  filters: FeedFilters,
+  saved: Map<string, SavedState>,
+): { section: ReportItem[], keyword: ReportItem[], view: ReportItem[] } {
+  const withoutView: FeedFilters = { ...filters, view: 'all' }
+  return {
+    section: filterItems(items, { ...withoutView, section: 'all' }, saved),
+    keyword: filterItems(items, { ...withoutView, keyword: null }, saved),
+    view: filterItems(items, withoutView, saved),
+  }
+}
+
 export function filterItems(items: ReportItem[], filters: FeedFilters, saved: Map<string, SavedState>): ReportItem[] {
   const query = filters.query.trim().toLowerCase()
   return items

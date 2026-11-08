@@ -1,7 +1,7 @@
 import { Star } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
-import type { TopicFollow, TopicKind } from '@/lib/topics'
+import { sameSource, type TopicFollow, type TopicKind } from '@/lib/topics'
 
 export interface TopicCount {
   kind: TopicKind
@@ -30,7 +30,7 @@ export function TopicPanel({ follows, counts, onToggle }: TopicPanelProps) {
     <div className="rounded-[24px] border border-border bg-white/70 p-6">
       <h3 className="font-display text-lg font-semibold tracking-[-0.02em]">My topics</h3>
       <p className="mt-1 text-sm text-muted-foreground">
-        Star what you want in your feed. Everything is listed below otherwise.
+        Star what you want in your feed. Everything shows until you star something.
       </p>
 
       <div className="mt-5 space-y-5">
@@ -43,7 +43,11 @@ export function TopicPanel({ follows, counts, onToggle }: TopicPanelProps) {
                 {kind === 'topic' ? 'Topics' : 'Sources'}
               </h4>
               {rows.map((row) => {
-                const followed = follows.some((follow) => follow.kind === row.kind && follow.value === row.label)
+                const stored = follows.find((follow) =>
+                  follow.kind === row.kind
+                  && (row.kind === 'source' ? sameSource(follow.value, row.label) : follow.value === row.label),
+                )
+                const followed = stored !== undefined
                 return (
                   <button
                     key={`${row.kind}:${row.label}`}
@@ -51,7 +55,7 @@ export function TopicPanel({ follows, counts, onToggle }: TopicPanelProps) {
                     aria-pressed={followed}
                     aria-label={followed ? `Stop following ${row.label}` : `Follow ${row.label} in your feed`}
                     title={followed ? 'Stop following' : 'Follow in your feed'}
-                    onClick={() => void onToggle(row.kind, row.label, !followed)}
+                    onClick={() => void onToggle(row.kind, stored?.value ?? row.label, !followed)}
                     className={cn(
                       'flex items-center justify-between gap-3 rounded-full border px-3.5 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       followed
