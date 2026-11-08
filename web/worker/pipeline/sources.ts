@@ -8,9 +8,35 @@ export interface RawItem {
   snippet: string
 }
 
+export type SourceFamily = 'arxiv' | 'hn' | 'github' | 'news' | 'reddit' | 'blogs'
+
+export const ALL_SOURCE_FAMILIES: readonly SourceFamily[] = [
+  'arxiv',
+  'hn',
+  'github',
+  'news',
+  'reddit',
+  'blogs',
+]
+
+export interface CollectOptions {
+  query?: string
+  sourceFamilies?: SourceFamily[]
+}
+
 export interface SourceResult {
   name: string
+  family: SourceFamily
   items: RawItem[]
+  durationMs: number
+  error: string | null
+}
+
+export interface SourceStat {
+  name: string
+  family: SourceFamily
+  count: number
+  durationMs: number
   error: string | null
 }
 
@@ -22,6 +48,35 @@ const parser = new XMLParser({
   attributeNamePrefix: '@_',
   removeNSPrefix: true,
 })
+
+export function sanitizeCollectOptions(input?: {
+  query?: unknown
+  days?: unknown
+  sourceFamilies?: unknown
+}): { query: string; days: number; sourceFamilies: SourceFamily[] } {
+  const rawQuery = typeof input?.query === 'string' ? input.query.trim().slice(0, 140) : ''
+  const parsedDays = typeof input?.days === 'number' ? input.days : Number(input?.days)
+  const days = Number.isFinite(parsedDays) ? Math.min(30, Math.max(1, Math.round(parsedDays))) : 7
+
+  const validSet = new Set<string>(ALL_SOURCE_FAMILIES)
+  const requested = Array.isArray(input?.sourceFamilies)
+    ? input.sourceFamilies.filter((item): item is SourceFamily => typeof item === 'string' && validSet.has(item))
+    : []
+  const sourceFamilies = requested.length > 0 ? [...new Set(requested)] : [...ALL_SOURCE_FAMILIES]
+
+  return { query: rawQuery, days, sourceFamilies }
+}
+
+function queryMatchesText(text: string, customQuery: string): boolean {
+  if (!customQuery) return true
+  const tokens = customQuery
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 2)
+  if (tokens.length === 0) return true
+  const lower = text.toLowerCase()
+  return tokens.some((token) => lower.includes(token))
+}
 
 function textOf(value: unknown): string {
   if (value == null) return ''
@@ -81,7 +136,15 @@ function withinWindow(published: string, since: Date): boolean {
   return Number.isFinite(time) && time >= since.getTime()
 }
 
-async function feed(name: string, url: string, keywordFilter: boolean, since: Date): Promise<SourceResult> {
+async function feed(
+  name: string,
+  family: SourceFamily,
+  url: string,
+  keywordFilter: boolean,
+  since: Date,
+  customQuery = '',
+): Promise<SourceResult> {
+  const start = Date.now()
   try {
     const response = await fetchWithTimeout(url)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -94,24 +157,37 @@ async function feed(name: string, url: string, keywordFilter: boolean, since: Da
       const snippet = stripHtml(textOf(entry.summary ?? entry.description ?? entry.content ?? '')).slice(0, 1200)
       if (!title || !link) continue
       if (!withinWindow(published, since)) continue
-      if (keywordFilter && !KEYWORDS.test(`${title} ${snippet}`)) continue
+      const combined = `${title} ${snippet}`
+      if (keywordFilter && !KEYWORDS.test(combined) && !queryMatchesText(combined, customQuery)) continue
+      if (customQuery && keywordFilter && !queryMatchesText(combined, customQuery)) continue
       items.push({ title, url: link, source: name, published: new Date(published).toISOString(), snippet })
     }
-    return { name, items, error: null }
+    return { name, family, items, durationMs: Date.now() - start, error: null }
   } catch (error) {
-    return { name, items: [], error: error instanceof Error ? error.message : String(error) }
+    return {
+      name,
+      family,
+      items: [],
+      durationMs: Date.now() - start,
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
-async function arxiv(since: Date): Promise<SourceResult> {
-  const query = encodeURIComponent('all:"synthetic data"')
+async function arxiv(since: Date, customQuery = ''): Promise<SourceResult> {
+  const terms = customQuery
+    ? `all:"synthetic data" AND all:${customQuery}`
+    : 'all:"synthetic data"'
+  const query = encodeURIComponent(terms)
   const url = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&max_results=25`
-  return feed('arXiv', url, false, since)
+  return feed('arXiv', 'arxiv', url, false, since, customQuery)
 }
 
-async function hackerNews(since: Date): Promise<SourceResult> {
+async function hackerNews(since: Date, customQuery = ''): Promise<SourceResult> {
+  const start = Date.now()
   const from = Math.floor(since.getTime() / 1000)
-  const url = `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent('synthetic data')}&tags=story&numericFilters=created_at_i>${from}&hitsPerPage=15`
+  const searchTerms = customQuery ? `synthetic data ${customQuery}` : 'synthetic data'
+  const url = `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(searchTerms)}&tags=story&numericFilters=created_at_i>${from}&hitsPerPage=15`
   try {
     const response = await fetchWithTimeout(url)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -125,15 +201,23 @@ async function hackerNews(since: Date): Promise<SourceResult> {
         published: new Date(String(hit.created_at)).toISOString(),
         snippet: `${hit.points ?? 0} points on Hacker News`,
       }))
-    return { name: 'Hacker News', items, error: null }
+    return { name: 'Hacker News', family: 'hn', items, durationMs: Date.now() - start, error: null }
   } catch (error) {
-    return { name: 'Hacker News', items: [], error: error instanceof Error ? error.message : String(error) }
+    return {
+      name: 'Hacker News',
+      family: 'hn',
+      items: [],
+      durationMs: Date.now() - start,
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
-async function github(since: Date, token: string | undefined): Promise<SourceResult> {
+async function github(since: Date, token: string | undefined, customQuery = ''): Promise<SourceResult> {
+  const start = Date.now()
   const day = since.toISOString().slice(0, 10)
-  const q = encodeURIComponent(`synthetic-data in:name,description,topics pushed:>${day}`)
+  const extra = customQuery ? ` ${customQuery}` : ''
+  const q = encodeURIComponent(`synthetic-data${extra} in:name,description,topics pushed:>${day}`)
   const headers: Record<string, string> = { Accept: 'application/vnd.github+json' }
   if (token) headers.Authorization = `Bearer ${token}`
   try {
@@ -147,27 +231,68 @@ async function github(since: Date, token: string | undefined): Promise<SourceRes
       published: new Date(String(repo.pushed_at)).toISOString(),
       snippet: `${repo.stargazers_count} stars. ${repo.description ?? ''}`.trim(),
     }))
-    return { name: 'GitHub', items, error: null }
+    return { name: 'GitHub', family: 'github', items, durationMs: Date.now() - start, error: null }
   } catch (error) {
-    return { name: 'GitHub', items: [], error: error instanceof Error ? error.message : String(error) }
+    return {
+      name: 'GitHub',
+      family: 'github',
+      items: [],
+      durationMs: Date.now() - start,
+      error: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
-export async function collectAll(since: Date, env: { GITHUB_TOKEN?: string }): Promise<{ items: RawItem[]; sources: SourceResult[] }> {
-  const sources = await Promise.all([
-    arxiv(since),
-    hackerNews(since),
-    github(since, env.GITHUB_TOKEN),
-    feed('Google News', 'https://news.google.com/rss/search?q=%22synthetic+data%22+when:7d&hl=en-US&gl=US&ceid=US:en', false, since),
-    feed('Reddit r/MachineLearning', 'https://www.reddit.com/r/MachineLearning/.rss', true, since),
-    feed('Reddit r/LocalLLaMA', 'https://www.reddit.com/r/LocalLLaMA/.rss', true, since),
-    feed('Hugging Face', 'https://huggingface.co/blog/feed.xml', true, since),
-    feed('Microsoft Research', 'https://www.microsoft.com/en-us/research/feed/', true, since),
-    feed('AWS Machine Learning', 'https://aws.amazon.com/blogs/machine-learning/feed/', true, since),
-    feed('Google Research', 'https://research.google/blog/rss/', true, since),
-    feed('BAIR Berkeley', 'https://bair.berkeley.edu/blog/feed.xml', true, since),
-    feed('Together AI', 'https://www.together.ai/blog/rss.xml', true, since),
-  ])
+export async function collectAll(
+  since: Date,
+  env: { GITHUB_TOKEN?: string },
+  options?: CollectOptions,
+): Promise<{ items: RawItem[]; sources: SourceResult[]; stats: SourceStat[] }> {
+  const customQuery = (options?.query ?? '').trim()
+  const activeFamilies = new Set<SourceFamily>(
+    options?.sourceFamilies && options.sourceFamilies.length > 0
+      ? options.sourceFamilies
+      : ALL_SOURCE_FAMILIES,
+  )
+  const windowDays = Math.max(1, Math.round((Date.now() - since.getTime()) / (24 * 60 * 60 * 1000)))
+  const gnewsQuery = customQuery
+    ? encodeURIComponent(`"synthetic data" ${customQuery} when:${windowDays}d`)
+    : encodeURIComponent(`"synthetic data" when:${windowDays}d`)
+
+  const tasks: Array<Promise<SourceResult>> = []
+  if (activeFamilies.has('arxiv')) tasks.push(arxiv(since, customQuery))
+  if (activeFamilies.has('hn')) tasks.push(hackerNews(since, customQuery))
+  if (activeFamilies.has('github')) tasks.push(github(since, env.GITHUB_TOKEN, customQuery))
+  if (activeFamilies.has('news')) {
+    tasks.push(
+      feed(
+        'Google News',
+        'news',
+        `https://news.google.com/rss/search?q=${gnewsQuery}&hl=en-US&gl=US&ceid=US:en`,
+        false,
+        since,
+        customQuery,
+      ),
+    )
+  }
+  if (activeFamilies.has('reddit')) {
+    tasks.push(
+      feed('Reddit r/MachineLearning', 'reddit', 'https://www.reddit.com/r/MachineLearning/.rss', true, since, customQuery),
+      feed('Reddit r/LocalLLaMA', 'reddit', 'https://www.reddit.com/r/LocalLLaMA/.rss', true, since, customQuery),
+    )
+  }
+  if (activeFamilies.has('blogs')) {
+    tasks.push(
+      feed('Hugging Face', 'blogs', 'https://huggingface.co/blog/feed.xml', true, since, customQuery),
+      feed('Microsoft Research', 'blogs', 'https://www.microsoft.com/en-us/research/feed/', true, since, customQuery),
+      feed('AWS Machine Learning', 'blogs', 'https://aws.amazon.com/blogs/machine-learning/feed/', true, since, customQuery),
+      feed('Google Research', 'blogs', 'https://research.google/blog/rss/', true, since, customQuery),
+      feed('BAIR Berkeley', 'blogs', 'https://bair.berkeley.edu/blog/feed.xml', true, since, customQuery),
+      feed('Together AI', 'blogs', 'https://www.together.ai/blog/rss.xml', true, since, customQuery),
+    )
+  }
+
+  const sources = await Promise.all(tasks)
   const seen = new Set<string>()
   const items: RawItem[] = []
   for (const source of sources) {
@@ -178,7 +303,14 @@ export async function collectAll(since: Date, env: { GITHUB_TOKEN?: string }): P
       items.push(item)
     }
   }
-  return { items, sources }
+  const stats: SourceStat[] = sources.map((s) => ({
+    name: s.name,
+    family: s.family,
+    count: s.items.length,
+    durationMs: s.durationMs,
+    error: s.error,
+  }))
+  return { items, sources, stats }
 }
 
 export function normalizeUrl(raw: string): string {

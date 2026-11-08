@@ -1,5 +1,5 @@
 import { ask, makeModel, parseJson, type LlmEnv } from './llm.ts'
-import { stripHtml, type RawItem } from './sources.ts'
+import { normalizeUrl, stripHtml, type RawItem } from './sources.ts'
 import type { Scored } from './rank.ts'
 
 export type Guard = 'passed' | 'repaired' | 'extractive' | 'skipped'
@@ -8,6 +8,11 @@ export interface Summary {
   summary: string
   origin: 'full text' | 'snippet only'
   guard: Guard
+}
+
+export interface FetchedText {
+  text: string
+  origin: 'full text' | 'snippet only'
 }
 
 const NUMBER = /(?<![\w.])\d+(?:[.,]\d+)*/g
@@ -45,15 +50,40 @@ export async function fetchArticleText(url: string): Promise<string> {
   }
 }
 
+export async function fetchShortlistTexts(items: RawItem[]): Promise<Record<string, FetchedText>> {
+  const entries = await Promise.all(
+    items.map(async (item) => {
+      const key = normalizeUrl(item.url)
+      const fullText = await fetchArticleText(item.url)
+      const origin: FetchedText['origin'] = fullText.length > 200 ? 'full text' : 'snippet only'
+      const text = fullText.length > 200 ? fullText : item.snippet
+      return [key, { text, origin }] as const
+    }),
+  )
+  return Object.fromEntries(entries)
+}
+
 const SYSTEM = `You write short, plain summaries for a research digest.
 Use ONLY the TEXT provided. Never invent numbers, names, organisations or dates.
 No hype. Say what the work is and what it shows, in 2-3 sentences.
 Reply with ONLY JSON: {"summary": "..."}`
 
-export async function summarise(item: RawItem, env: LlmEnv, oneLine: boolean): Promise<Summary> {
-  const fullText = await fetchArticleText(item.url)
-  const text = fullText.length > 200 ? fullText : item.snippet
-  const origin = fullText.length > 200 ? 'full text' : 'snippet only'
+export async function summarise(
+  item: RawItem,
+  env: LlmEnv,
+  oneLine: boolean,
+  preFetched?: FetchedText,
+): Promise<Summary> {
+  let text: string
+  let origin: Summary['origin']
+  if (preFetched) {
+    text = preFetched.text
+    origin = preFetched.origin
+  } else {
+    const fullText = await fetchArticleText(item.url)
+    text = fullText.length > 200 ? fullText : item.snippet
+    origin = fullText.length > 200 ? 'full text' : 'snippet only'
+  }
   const source = `${item.title}\n${text}`
   if (!text.trim()) {
     return { summary: 'No text was available to summarise; see the link.', origin, guard: 'skipped' }
@@ -116,18 +146,37 @@ export interface Section {
   summary: Summary
 }
 
-export async function buildSections(ranked: Scored[], env: LlmEnv): Promise<SummariseStats> {
-  const sorted = [...ranked].sort((a, b) => (b.well7_fit ?? 0) - (a.well7_fit ?? 0) || b.title.localeCompare(a.title))
-  const picks = sorted.slice(0, 6)
-  const rest = sorted.slice(6)
-  const tools = rest.filter((item) => item.source === 'GitHub').slice(0, 5)
-  const worth = rest.filter((item) => item.source !== 'GitHub').slice(0, 5)
+export function selectShortlist(
+  ranked: Scored[],
+  mode: 'query' | 'weekly' = 'weekly',
+): Array<{ section: Section['section']; item: Scored; oneLine: boolean }> {
+  const sorted = [...ranked].sort(
+    (a, b) =>
+      (b.well7_fit ?? 0) - (a.well7_fit ?? 0) ||
+      (b.score ?? 0) - (a.score ?? 0) ||
+      b.title.localeCompare(a.title),
+  )
+  const topCap = mode === 'query' ? 4 : 6
+  const sideCap = mode === 'query' ? 2 : 5
+  const picks = sorted.slice(0, topCap)
+  const rest = sorted.slice(topCap)
+  const tools = rest.filter((item) => item.source === 'GitHub').slice(0, sideCap)
+  const worth = rest.filter((item) => item.source !== 'GitHub').slice(0, sideCap)
 
-  const plan: Array<{ section: Section['section']; item: Scored; oneLine: boolean }> = [
+  return [
     ...picks.map((item) => ({ section: 'top' as const, item, oneLine: false })),
     ...tools.map((item) => ({ section: 'tool' as const, item, oneLine: true })),
     ...worth.map((item) => ({ section: 'worth' as const, item, oneLine: true })),
   ]
+}
+
+export async function buildSections(
+  ranked: Scored[],
+  env: LlmEnv,
+  options?: { mode?: 'query' | 'weekly'; fetchedTexts?: Record<string, FetchedText> },
+): Promise<SummariseStats> {
+  const plan = selectShortlist(ranked, options?.mode ?? 'weekly')
+  const fetchedTexts = options?.fetchedTexts
 
   const out: Section[] = []
   let fallbacks = 0
@@ -136,7 +185,11 @@ export async function buildSections(ranked: Scored[], env: LlmEnv): Promise<Summ
   // under the free model's 20 req/min cap.
   for (let i = 0; i < plan.length; i += 6) {
     const wave = plan.slice(i, i + 6)
-    const results = await Promise.all(wave.map((p) => summarise(p.item, env, p.oneLine)))
+    const results = await Promise.all(
+      wave.map((p) =>
+        summarise(p.item, env, p.oneLine, fetchedTexts?.[normalizeUrl(p.item.url)]),
+      ),
+    )
     wave.forEach((p, index) => {
       const summary = results[index]
       if (summary.guard === 'extractive' || summary.guard === 'skipped') fallbacks += 1
