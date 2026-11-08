@@ -1,14 +1,25 @@
 import { currentViewer, type AuthEnv, type Viewer } from './auth.ts'
-import { runWeeklyPipeline, type PipelineEnv } from './pipeline/index.ts'
+import { executeResearchGraph, runWeeklyPipeline, type PipelineEnv } from './pipeline/index.ts'
+import { sanitizeCollectOptions } from './pipeline/sources.ts'
 import { bearerToken, tokenMatches } from './pipeline/token.ts'
 import { sourceCounts, topicCounts } from '../src/lib/topics.ts'
 
 export interface Env extends PipelineEnv, AuthEnv {
+  DB: D1Database
   BUCKET: R2Bucket
   CRON_RUN_TOKEN?: string
 }
 
 const json = (body: unknown, status = 200) => Response.json(body, { status })
+
+function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
+  if (!raw) return fallback
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
 
 /** users rows are keyed by Clerk user id; email is refreshed on every pass. */
 async function upsertUser(env: Env, viewer: Viewer, now = new Date()): Promise<void> {
@@ -83,8 +94,6 @@ async function listNotes(env: Env, userId: string): Promise<Array<{ id: string; 
 }
 
 async function adminDeleteReport(env: Env, reportId: string): Promise<void> {
-  // user_items points at item ids; without this the personal library keeps
-  // rows for items that no longer exist (they can never join back).
   await env.DB.prepare(
     'DELETE FROM user_items WHERE item_id IN (SELECT id FROM items WHERE report_id = ?)',
   ).bind(reportId).run()
@@ -95,7 +104,7 @@ async function adminDeleteReport(env: Env, reportId: string): Promise<void> {
 type PipelineAuth = 'token' | 'clerk'
 
 /**
- * Who is allowed to start or probe a pipeline run: the CRON_RUN_TOKEN bearer
+ * Who is allowed to start or probe a weekly pipeline run: the CRON_RUN_TOKEN bearer
  * secret (checked first — it costs no network round-trip) or a signed-in Clerk
  * admin. Fail-closed: no secret and no admin means no run.
  */
@@ -104,6 +113,21 @@ async function pipelineAuth(request: Request, env: Env): Promise<PipelineAuth | 
   if (presented && tokenMatches(presented, env.CRON_RUN_TOKEN)) return 'token'
   const viewer = await currentViewer(request, env)
   return viewer?.isAdmin === true ? 'clerk' : null
+}
+
+interface SessionRow {
+  id: string
+  user_id: string | null
+  mode: 'query' | 'weekly'
+  query: string
+  days: number
+  status: 'running' | 'succeeded' | 'failed'
+  current_node: string
+  stats_json: string
+  result_json: string
+  error: string | null
+  created_at: string
+  finished_at: string | null
 }
 
 export default {
@@ -122,7 +146,7 @@ export default {
 
     if (path === '/api/reports' && method === 'GET') {
       const { results } = await env.DB.prepare(
-        'SELECT id, week_end, subject, created_at FROM reports ORDER BY week_end DESC'
+        'SELECT id, week_end, subject, created_at FROM reports ORDER BY week_end DESC',
       ).all()
       return json({ reports: results })
     }
@@ -130,7 +154,7 @@ export default {
     const reportMatch = path.match(/^\/api\/reports\/([^/]+)$/)
     if (reportMatch && method === 'GET') {
       const report = await env.DB.prepare(
-        'SELECT id, week_end, subject, trend, created_at, (pdf_r2_key IS NOT NULL) AS has_pdf FROM reports WHERE id = ?'
+        'SELECT id, week_end, subject, trend, created_at, (pdf_r2_key IS NOT NULL) AS has_pdf FROM reports WHERE id = ?',
       ).bind(reportMatch[1]).first()
       if (!report) return new Response('Not found', { status: 404 })
       return json({ report })
@@ -139,7 +163,7 @@ export default {
     const itemsMatch = path.match(/^\/api\/reports\/([^/]+)\/items$/)
     if (itemsMatch && method === 'GET') {
       const { results } = await env.DB.prepare(
-        'SELECT id, title, url, source, published, score, well7_fit, reason, summary, section, position FROM items WHERE report_id = ? ORDER BY section, position'
+        'SELECT id, title, url, source, published, score, well7_fit, reason, summary, section, position FROM items WHERE report_id = ? ORDER BY section, position',
       ).bind(itemsMatch[1]).all()
       return json({ items: results })
     }
@@ -170,9 +194,184 @@ export default {
 
     if (path === '/api/pipeline/runs' && method === 'GET') {
       const { results } = await env.DB.prepare(
-        'SELECT id, trigger, scheduled_for, started_at, finished_at, status, error FROM pipeline_runs ORDER BY started_at DESC LIMIT 20'
+        'SELECT id, trigger, scheduled_for, started_at, finished_at, status, error FROM pipeline_runs ORDER BY started_at DESC LIMIT 20',
       ).all()
       return json({ runs: results })
+    }
+
+    if (path === '/api/research/sessions' && method === 'GET') {
+      try {
+        const { results } = await env.DB.prepare(
+          `SELECT id, mode, query, days, status, current_node, stats_json, error, created_at, finished_at
+           FROM research_sessions
+           ORDER BY created_at DESC
+           LIMIT 15`,
+        ).all<Omit<SessionRow, 'user_id' | 'result_json'>>()
+        const sessions = results.map((row) => ({
+          id: row.id,
+          mode: row.mode,
+          query: row.query,
+          days: row.days,
+          status: row.status,
+          current_node: row.current_node,
+          stats: safeJsonParse(row.stats_json, {}),
+          error: row.error,
+          created_at: row.created_at,
+          finished_at: row.finished_at,
+        }))
+        return json({ sessions })
+      } catch {
+        return json({ sessions: [] })
+      }
+    }
+
+    const sessionMatch = path.match(/^\/api\/research\/sessions\/([^/]+)$/)
+    if (sessionMatch && method === 'GET') {
+      try {
+        const row = await env.DB.prepare(
+          `SELECT id, mode, query, days, status, current_node, stats_json, result_json, error, created_at, finished_at
+           FROM research_sessions
+           WHERE id = ?`,
+        ).bind(sessionMatch[1]).first<SessionRow>()
+        if (!row) return json({ error: 'session not found' }, 404)
+        return json({
+          session: {
+            id: row.id,
+            mode: row.mode,
+            query: row.query,
+            days: row.days,
+            status: row.status,
+            current_node: row.current_node,
+            stats: safeJsonParse(row.stats_json, {}),
+            result: safeJsonParse(row.result_json, {}),
+            error: row.error,
+            created_at: row.created_at,
+            finished_at: row.finished_at,
+          },
+        })
+      } catch {
+        return json({ error: 'session not found' }, 404)
+      }
+    }
+
+    if (path === '/api/research/stream' && method === 'POST') {
+      const body = (await request.json().catch(() => ({}))) as {
+        mode?: unknown
+        query?: unknown
+        days?: unknown
+        sourceFamilies?: unknown
+      }
+      const mode: 'query' | 'weekly' = body.mode === 'weekly' ? 'weekly' : 'query'
+      const presented = bearerToken(request.headers.get('Authorization'))
+      const hasCronToken = Boolean(presented && tokenMatches(presented, env.CRON_RUN_TOKEN))
+      const viewer = hasCronToken ? null : await currentViewer(request, env)
+
+      if (mode === 'weekly') {
+        if (!hasCronToken && viewer?.isAdmin !== true) {
+          return json({ error: 'admin sign-in or bearer token required for weekly brief runs' }, 403)
+        }
+      } else {
+        if (!hasCronToken && !viewer) {
+          return json({ error: 'Sign in to run a live research check.' }, 401)
+        }
+      }
+
+      if (viewer?.email) await upsertUser(env, viewer)
+
+      const sanitized = sanitizeCollectOptions({
+        query: body.query,
+        days: body.days,
+        sourceFamilies: body.sourceFamilies,
+      })
+      const sessionId = crypto.randomUUID()
+      const encoder = new TextEncoder()
+      const { readable, writable } = new TransformStream()
+      const writer = writable.getWriter()
+
+      const sendEvent = async (event: string, payload: unknown) => {
+        try {
+          await writer.write(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`))
+        } catch {
+          // Client closed stream.
+        }
+      }
+
+      void (async () => {
+        try {
+          await sendEvent('start', {
+            sessionId,
+            mode,
+            query: sanitized.query,
+            days: sanitized.days,
+            sourceFamilies: sanitized.sourceFamilies,
+            startedAt: new Date().toISOString(),
+          })
+
+          const finalState = await executeResearchGraph(
+            env,
+            {
+              sessionId,
+              userId: viewer?.userId ?? null,
+              mode,
+              query: sanitized.query,
+              days: sanitized.days,
+              sourceFamilies: sanitized.sourceFamilies,
+              trigger: 'manual',
+            },
+            async (ev) => {
+              await sendEvent('node', ev)
+            },
+          )
+
+          await sendEvent('done', {
+            id: sessionId,
+            mode,
+            query: finalState.query,
+            days: finalState.days,
+            status: 'succeeded',
+            current_node: 'publish',
+            stats: {
+              sourceStats: finalState.sourceStats,
+              cleanStats: finalState.cleanStats,
+              scoredCount: finalState.scoredItems.length,
+              fetchedCount: Object.keys(finalState.fetchedTexts).length,
+              sectionCount: finalState.sections.length,
+              warnings: finalState.warnings,
+              reportId: finalState.reportId,
+            },
+            result: {
+              sections: finalState.sections,
+              scoredItems: finalState.scoredItems.slice(0, 24),
+              cleanItems: finalState.cleanItems.slice(0, 24),
+              trend: finalState.trend,
+              sourceStats: finalState.sourceStats,
+              cleanStats: finalState.cleanStats,
+              warnings: finalState.warnings,
+              reportId: finalState.reportId,
+            },
+            error: null,
+            created_at: new Date().toISOString(),
+            finished_at: new Date().toISOString(),
+          })
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          await sendEvent('error', { sessionId, error: message })
+        } finally {
+          try {
+            await writer.close()
+          } catch {
+            // Already closed.
+          }
+        }
+      })()
+
+      return new Response(readable, {
+        headers: {
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+        },
+      })
     }
 
     // Archive-wide topic and source counts for the Feed page's **My topics**
@@ -186,9 +385,7 @@ export default {
     }
 
     // Everything below needs either a signed-in Clerk identity or, for the
-    // pipeline trigger, a matching CRON_RUN_TOKEN secret (so a run can be
-    // started by hand from tools). Fail-closed: with no token configured,
-    // only a Clerk admin can trigger.
+    // pipeline trigger, a matching CRON_RUN_TOKEN secret.
     if (path === '/api/me' || path.startsWith('/api/my/')) {
       const viewer = await currentViewer(request, env)
       if (!viewer) return json({ error: 'sign in required' }, 401)
@@ -275,8 +472,6 @@ export default {
         return putState(env, viewer.userId, stateMatch[1], body)
       }
 
-      // Known personal paths with a wrong method answer 405; anything else
-      // under the gate is simply not a route.
       if (path === '/api/my/topics' || path === '/api/my/notes'
         || /^\/api\/my\/notes\/([^/]+)$/.test(path) || /^\/api\/my\/items\/([^/]+)$/.test(path)
         || path === '/api/me') {
@@ -292,9 +487,6 @@ export default {
       return json(result, result.status === 'succeeded' ? 200 : 500)
     }
 
-    // Cheap "will my credentials be accepted?" probe: answers without running
-    // anything, so a cron or a terminal script can be wired up without
-    // guessing, and a bad token is a 403 here rather than a wasted run.
     if (path === '/api/pipeline/auth' && method === 'GET') {
       const via = await pipelineAuth(request, env)
       if (!via) return json({ error: 'admin sign-in or bearer token required' }, 403)

@@ -36,8 +36,6 @@ export interface LibraryEntry {
 export async function getJson<T>(path: string): Promise<T | null> {
   const response = await fetch(path, { headers: { Accept: 'application/json', ...(await authHeaders()) } })
   if (response.status === 401) {
-    // Every caller is a private endpoint. The Worker rejecting the token while
-    // Clerk still says signed in is a failure, not "nothing saved yet" (WEB-07).
     throw new Error('Your session was not accepted. Sign in again to load this.')
   }
   if (!response.ok) throw new Error(`Request failed (${response.status}). Try again in a moment.`)
@@ -158,4 +156,187 @@ export async function deleteMyNote(id: string): Promise<UserNote[]> {
     throw new Error(`Could not delete the note (${response.status}). Try again in a moment.`)
   }
   return (await response.json() as { notes: UserNote[] }).notes
+}
+
+export interface SourceStatInfo {
+  name: string
+  family: string
+  count: number
+  durationMs: number
+  error: string | null
+}
+
+export interface CleanStatsInfo {
+  raw: number
+  fresh: number
+  duplicatesRemoved: number
+  alreadyPublished: number
+}
+
+export interface ResearchSessionSummary {
+  id: string
+  mode: 'query' | 'weekly'
+  query: string
+  days: number
+  status: 'running' | 'succeeded' | 'failed'
+  current_node: string
+  stats: {
+    sourceStats?: SourceStatInfo[]
+    cleanStats?: CleanStatsInfo
+    scoredCount?: number
+    fetchedCount?: number
+    sectionCount?: number
+    warnings?: string[]
+    reportId?: string | null
+  }
+  error: string | null
+  created_at: string
+  finished_at: string | null
+}
+
+export interface StreamedSectionItem {
+  section: 'top' | 'tool' | 'worth'
+  item: {
+    title: string
+    url: string
+    source: string
+    published: string
+    snippet: string
+    score: number
+    well7_fit: number
+    reason: string
+  }
+  summary: {
+    summary: string
+    origin: 'full text' | 'snippet only'
+    guard: 'passed' | 'repaired' | 'extractive' | 'skipped'
+  }
+}
+
+export interface ResearchSessionDetail extends ResearchSessionSummary {
+  result: {
+    sections?: StreamedSectionItem[]
+    scoredItems?: Array<{
+      title: string
+      url: string
+      source: string
+      published: string
+      snippet: string
+      score: number
+      well7_fit: number
+      reason: string
+    }>
+    cleanItems?: Array<{
+      title: string
+      url: string
+      source: string
+      published: string
+      snippet: string
+    }>
+    trend?: string
+    sourceStats?: SourceStatInfo[]
+    cleanStats?: CleanStatsInfo
+    warnings?: string[]
+    reportId?: string | null
+  }
+}
+
+export interface ResearchNodeStreamEvent {
+  sessionId: string
+  node: 'collect' | 'clean' | 'rank' | 'fetch' | 'summarise' | 'publish'
+  status: 'completed'
+  timestamp: string
+  summary: Record<string, unknown>
+  stateSnapshot: ResearchSessionDetail['result']
+}
+
+export async function fetchResearchSessions(): Promise<ResearchSessionSummary[]> {
+  try {
+    const response = await fetch('/api/research/sessions', { headers: { Accept: 'application/json' } })
+    if (!response.ok) return []
+    const data = (await response.json()) as { sessions?: ResearchSessionSummary[] }
+    return data.sessions ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function fetchResearchSession(id: string): Promise<ResearchSessionDetail | null> {
+  try {
+    const response = await fetch(`/api/research/sessions/${encodeURIComponent(id)}`, {
+      headers: { Accept: 'application/json' },
+    })
+    if (!response.ok) return null
+    const data = (await response.json()) as { session?: ResearchSessionDetail }
+    return data.session ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function streamResearchRun(
+  params: {
+    mode?: 'query' | 'weekly'
+    query: string
+    days: number
+    sourceFamilies?: string[]
+  },
+  handlers: {
+    onStart?: (info: { sessionId: string; mode: 'query' | 'weekly'; query: string; days: number }) => void
+    onNode: (event: ResearchNodeStreamEvent) => void
+    onDone: (session: ResearchSessionDetail) => void
+    onError: (message: string) => void
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch('/api/research/stream', {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
+      ...(await authHeaders()),
+    },
+    body: JSON.stringify(params),
+  })
+
+  if (!response.ok) {
+    const errBody = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(errBody?.error ?? `Could not start live research (${response.status}).`)
+  }
+  if (!response.body) {
+    throw new Error('Streaming response body unavailable.')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+
+    for (const block of blocks) {
+      const lines = block.split('\n')
+      let eventType = 'message'
+      let dataText = ''
+      for (const line of lines) {
+        if (line.startsWith('event:')) eventType = line.slice(6).trim()
+        else if (line.startsWith('data:')) dataText += line.slice(5).trim()
+      }
+      if (!dataText) continue
+      try {
+        const parsed = JSON.parse(dataText)
+        if (eventType === 'start') handlers.onStart?.(parsed)
+        else if (eventType === 'node') handlers.onNode(parsed as ResearchNodeStreamEvent)
+        else if (eventType === 'done') handlers.onDone(parsed as ResearchSessionDetail)
+        else if (eventType === 'error') handlers.onError(String(parsed?.error ?? 'Research run failed.'))
+      } catch {
+        // Ignore malformed frame
+      }
+    }
+  }
 }
