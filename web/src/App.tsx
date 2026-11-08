@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { UserButton, useAuth, useClerk } from '@clerk/react'
-import { CircleAlert, Menu, X } from 'lucide-react'
+import { CircleAlert, Menu, Radio, X } from 'lucide-react'
 
 import { BrandMark } from '@/components/brand-mark'
 import { Button } from '@/components/ui/button'
@@ -24,15 +24,8 @@ import { FeedPage } from '@/pages/FeedPage'
 import { LandingPage } from '@/pages/LandingPage'
 import { LibraryPage } from '@/pages/LibraryPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-
-/**
- * Router outlet + header/footer (spec `2026-11-06`, "Components"). The shell
- * owns the signed-in state (identity, follows, library, pipeline run); pages
- * consume it through props.
- */
-
-/** Signed out: logo → /, links Brief + Archive, Sign in / Sign up. */
-/** Signed in: logo → /library, links Feed + Brief + Library + Archive, avatar. */
+import { StudioPage } from '@/pages/StudioPage'
+import { cn } from '@/lib/utils'
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'The archive could not be loaded. Try again.'
@@ -41,29 +34,42 @@ function getErrorMessage(error: unknown) {
 interface NavLinkProps {
   to: string
   active: boolean
+  highlight?: boolean
   className?: string
   children: string
   onClick?: () => void
 }
 
-function NavLink({ to, active, className, children, onClick }: NavLinkProps) {
+function NavLink({ to, active, highlight, className, children, onClick }: NavLinkProps) {
   return (
-    <Button variant="ghost" size="sm" className={className ?? undefined} asChild onClick={onClick}>
-      <Link to={to} aria-current={active ? 'page' : undefined} className={active ? 'bg-secondary/70 text-ink' : undefined}>
-        {children}
-      </Link>
-    </Button>
+    <Link
+      to={to}
+      aria-current={active ? 'page' : undefined}
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400',
+        active
+          ? 'bg-white/15 text-white font-semibold'
+          : highlight
+            ? 'border border-indigo-400/35 bg-indigo-500/15 text-indigo-100 hover:bg-indigo-500/25 hover:text-white'
+            : 'text-slate-300 hover:bg-white/10 hover:text-white',
+        className,
+      )}
+    >
+      {highlight && <Radio className="size-3.5 text-emerald-400" aria-hidden="true" />}
+      {children}
+    </Link>
   )
 }
 
 const ROUTE_TITLES: Array<[RegExp, string]> = [
+  [/^\/studio/, 'Live Research Studio'],
   [/^\/feed/, 'Your feed'],
   [/^\/library/, 'Your library'],
   [/^\/archive/, 'Archive'],
   [/^\/brief/, 'Weekly brief'],
 ]
 
-/** Browser history and tabs can only tell routes apart if the title changes (WEB-09). */
 function pageTitle(route: string): string {
   if (route === '/') return 'Well7 Research Lab — Synthetic Data Weekly'
   const found = ROUTE_TITLES.find(([pattern]) => pattern.test(route))
@@ -84,8 +90,8 @@ export default function App() {
   const [running, setRunning] = useState(false)
   const [pipelineError, setPipelineError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [studioQuerySeed, setStudioQuerySeed] = useState('')
 
-  // Clerk session → every signed-in request carries a fresh session JWT.
   const { getToken, userId, isLoaded } = useAuth()
   const clerk = useClerk()
   const getTokenRef = useRef(getToken)
@@ -110,12 +116,6 @@ export default function App() {
     }
   }, [])
 
-  // /api/me follows the Clerk session: signing in or out re-keys the identity,
-  // re-loads (or clears) the private library and the followed topics. Library
-  // loading is independent of /api/me (the endpoint verifies its own token),
-  // so a failed /api/me never strands the library; it only degrades the
-  // topics/isAdmin extras and surfaces here with a retry — the pages never
-  // mistake it for being signed out.
   useEffect(() => {
     if (!isLoaded) return
     let active = true
@@ -169,15 +169,10 @@ export default function App() {
 
   async function toggleFollow(kind: TopicKind, value: string, next: boolean) {
     setFollowError(null)
-    // Sources are written with whatever casing the collector used ("GitHub" and
-    // "github" are both in the archive), so a follow is matched and removed
-    // case-insensitively — otherwise un-starring one spelling leaves the other.
     const matches = (follow: TopicFollow) =>
       follow.kind === kind && (kind === 'source' ? sameSource(follow.value, value) : follow.value === value)
     const before = topics
     const stored = before.find(matches)
-    // Optimistic: the star and the feed narrow on the same frame as the click,
-    // so a slow Worker round-trip never reads as "the star does nothing".
     setTopics(
       sortFollows(
         next
@@ -251,25 +246,15 @@ export default function App() {
     reload: () => void loadLibrary(),
   }), [library, savedById, libraryLoading, libraryError, togglePaper, saveNote, loadLibrary])
 
-  // Signed-in is Clerk's judgment (userId), not /api/me's success — a failed
-  // identity fetch must not turn a signed-in feed into a sign-in prompt.
   const signedIn = Boolean(userId)
   const active = (path: string) => route === path || (path !== '/' && route.startsWith(path))
   const briefWeek = route.match(/^\/brief\/([^/]+)$/)?.[1]
-  // Only the identity-dependent pages wait for the /api/me handshake; public
-  // routes render immediately with signed-in extras arriving afterwards. Clerk's
-  // own bundle must not gate /brief or /archive: a blocked or slow
-  // *.clerk.accounts.dev would otherwise make the public archive unreadable.
   const needsIdentity = route === '/feed' || route === '/library'
   const identityPending = needsIdentity && (!isLoaded || !sessionChecked)
 
-  // Route change resets the scroll (history.pushState does not) — but not on
-  // first mount, which would fight browser scroll restoration and anchors.
   const firstRouteRef = useRef(true)
   const mainRef = useRef<HTMLElement>(null)
   useEffect(() => {
-    // A banner belongs to the page that raised it: carrying "Could not save"
-    // onto the Archive or the Brief is what made errors feel random (WEB-03).
     /* eslint-disable react/set-state-in-effect */
     setFollowError(null)
     setLibraryError(null)
@@ -282,24 +267,31 @@ export default function App() {
       return
     }
     window.scrollTo(0, 0)
-    // Keyboard and screen-reader users land at the new page's content.
     mainRef.current?.focus({ preventScroll: true })
   }, [route])
 
-  // Below md the four links plus the auth buttons do not fit in one row, and the
-  // header is `overflow-x-clip`, which puts Archive and the user menu off-screen
-  // with no way to reach them (WEB-02). The drawer carries the same links.
-  const navLinks = signedIn
+  const navLinks: Array<{ to: string; label: string; highlight?: boolean }> = signedIn
     ? [
+        { to: '/studio', label: 'Live Check', highlight: true },
         { to: '/feed', label: 'Feed' },
         { to: '/brief', label: 'Brief' },
         { to: '/library', label: 'Library' },
         { to: '/archive', label: 'Archive' },
       ]
     : [
+        { to: '/studio', label: 'Live Check', highlight: true },
         { to: '/brief', label: 'Brief' },
         { to: '/archive', label: 'Archive' },
       ]
+
+  const isKnownRoute =
+    route === '/' ||
+    route === '/studio' ||
+    route === '/brief' ||
+    route.startsWith('/brief/') ||
+    route === '/feed' ||
+    route === '/library' ||
+    route === '/archive'
 
   return (
     <div className="min-h-screen overflow-x-clip bg-background text-ink">
@@ -309,31 +301,48 @@ export default function App() {
       >
         Skip to main content
       </a>
-      <header className="sticky top-0 z-50 border-b border-border/80 bg-background/90 backdrop-blur-xl">
-        <div className="mx-auto flex h-[76px] max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link to={signedIn ? '/library' : '/'} className="flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3">
+      <header className="sticky top-0 z-50 border-b border-slate-800/90 bg-[#0b1220]/95 text-white backdrop-blur-xl">
+        <div className="mx-auto flex h-[74px] max-w-7xl items-center justify-between px-5 sm:px-8">
+          <Link to={signedIn ? '/library' : '/'} className="flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 sm:gap-3">
             <BrandMark className="size-10 shrink-0 sm:size-11" />
             <span className="whitespace-nowrap">
-              <span className="block font-display text-base font-semibold leading-tight sm:text-lg" translate="no">Well7 Research Lab</span>
-              <span className="hidden text-xs text-muted-foreground sm:block">Synthetic Data Weekly</span>
+              <span className="block font-display text-base font-semibold leading-tight text-white sm:text-lg" translate="no">Well7 Research Lab</span>
+              <span className="hidden text-xs text-slate-400 sm:block">Synthetic Data Intelligence</span>
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-2 md:flex" aria-label="Main navigation">
+          <nav className="hidden items-center gap-1.5 md:flex" aria-label="Main navigation">
             {navLinks.map((link) => (
-              <NavLink key={link.to} to={link.to} active={active(link.to)}>{link.label}</NavLink>
+              <NavLink key={link.to} to={link.to} active={active(link.to)} highlight={link.highlight}>
+                {link.label}
+              </NavLink>
             ))}
             {signedIn && me?.email && (
-              <span className="hidden max-w-44 truncate text-xs text-muted-foreground lg:block">{me.email}</span>
+              <span className="ml-2 hidden max-w-44 truncate text-xs text-slate-400 lg:block">{me.email}</span>
             )}
-            {signedIn ? (
-              <UserButton />
-            ) : (
-              <>
-                <Button variant="ghost" size="sm" onClick={() => clerk.openSignUp()}>Sign up</Button>
-                <Button variant="ink" size="sm" onClick={() => clerk.openSignIn()}>Sign in</Button>
-              </>
-            )}
+            <div className="ml-2 flex items-center gap-2">
+              {signedIn ? (
+                <UserButton />
+              ) : (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-300 hover:bg-white/10 hover:text-white"
+                    onClick={() => clerk.openSignUp()}
+                  >
+                    Sign up
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-indigo-600 text-white hover:bg-indigo-500"
+                    onClick={() => clerk.openSignIn()}
+                  >
+                    Sign in
+                  </Button>
+                </>
+              )}
+            </div>
           </nav>
 
           <div className="flex items-center gap-2 md:hidden">
@@ -344,7 +353,7 @@ export default function App() {
               aria-controls="mobile-navigation"
               aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               onClick={() => setMenuOpen((open) => !open)}
-              className="grid size-10 place-items-center rounded-full border border-border bg-white text-ink transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid size-10 place-items-center rounded-full border border-slate-700 bg-slate-900 text-white transition-colors hover:border-indigo-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
             >
               {menuOpen ? <X className="size-5" aria-hidden="true" /> : <Menu className="size-5" aria-hidden="true" />}
             </button>
@@ -352,19 +361,34 @@ export default function App() {
         </div>
 
         {menuOpen && (
-          <div id="mobile-navigation" className="border-t border-border bg-background px-5 pb-5 pt-3 md:hidden">
+          <div id="mobile-navigation" className="border-t border-slate-800 bg-[#0b1220] px-5 pb-5 pt-3 md:hidden">
             <nav className="flex flex-col gap-1" aria-label="Mobile navigation">
               {navLinks.map((link) => (
-                <NavLink key={link.to} to={link.to} active={active(link.to)} className="w-full justify-start">
+                <NavLink
+                  key={link.to}
+                  to={link.to}
+                  active={active(link.to)}
+                  highlight={link.highlight}
+                  className="w-full justify-start"
+                >
                   {link.label}
                 </NavLink>
               ))}
               {!signedIn && (
                 <div className="mt-2 flex gap-2">
-                  <Button variant="outline" size="sm" className="flex-1" onClick={() => { setMenuOpen(false); clerk.openSignUp() }}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 border-slate-700 bg-slate-900 text-white hover:bg-slate-800"
+                    onClick={() => { setMenuOpen(false); clerk.openSignUp() }}
+                  >
                     Sign up
                   </Button>
-                  <Button variant="ink" size="sm" className="flex-1" onClick={() => { setMenuOpen(false); clerk.openSignIn() }}>
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-indigo-600 text-white hover:bg-indigo-500"
+                    onClick={() => { setMenuOpen(false); clerk.openSignIn() }}
+                  >
                     Sign in
                   </Button>
                 </div>
@@ -410,7 +434,19 @@ export default function App() {
 
         {!identityPending && (
           <>
-            {route === '/' && <LandingPage />}
+            {route === '/' && <LandingPage onLaunchStudio={(q) => setStudioQuerySeed(q)} />}
+
+            {route === '/studio' && (
+              <StudioPage
+                initialQuery={studioQuerySeed}
+                signedIn={signedIn}
+                isAdmin={Boolean(me?.isAdmin)}
+                onSignIn={() => clerk.openSignIn()}
+                library={libraryBundle}
+                follows={signedIn ? topics : undefined}
+                onFollow={signedIn ? toggleFollow : undefined}
+              />
+            )}
 
             {route === '/brief' || route.startsWith('/brief/') ? (
               <BriefPage
@@ -442,9 +478,7 @@ export default function App() {
               />
             )}
 
-            {route !== '/' && route !== '/brief' && !route.startsWith('/brief/') && route !== '/feed' && route !== '/library' && route !== '/archive' && (
-              <NotFoundPage />
-            )}
+            {!isKnownRoute && <NotFoundPage />}
           </>
         )}
 
@@ -458,13 +492,13 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-border bg-white/55">
+      <footer className="border-t border-border bg-white/80">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div className="flex items-center gap-2.5">
             <BrandMark className="size-6 shrink-0" />
             <span className="font-semibold text-ink" translate="no">Well7 Research Lab</span>
           </div>
-          <p>Well7 Research Lab · Collected and ranked every Saturday.</p>
+          <p>Well7 Research Lab · Live LangGraph.js Research Studio & Weekly Archive.</p>
         </div>
       </footer>
     </div>

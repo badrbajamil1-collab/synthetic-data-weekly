@@ -2,23 +2,23 @@
 @import "@clerk/ui/themes/shadcn.css";
 
 @theme inline {
-  --color-background: #f3f6fa;
-  --color-foreground: #102a43;
-  --color-paper: #f3f6fa;
-  --color-ink: #102a43;
+  --color-background: #f8fafc;
+  --color-foreground: #0f172a;
+  --color-paper: #f8fafc;
+  --color-ink: #0f172a;
   --color-primary: #4f46e5;
   --color-primary-foreground: #ffffff;
   --color-signal: #4f46e5;
-  --color-secondary: #e7edf4;
-  --color-secondary-foreground: #334e68;
-  --color-muted: #e7edf4;
-  --color-muted-foreground: #52667a;
-  --color-border: #d6e0ea;
-  --color-input: #d6e0ea;
+  --color-secondary: #eef2f6;
+  --color-secondary-foreground: #334155;
+  --color-muted: #eef2f6;
+  --color-muted-foreground: #475569;
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
   --color-ring: #4f46e5;
-  --color-destructive: #b83b5e;
-  --color-warm: #b83b5e;
-  --color-mint: #0b6f6b;
+  --color-destructive: #be123c;
+  --color-warm: #be123c;
+  --color-mint: #0d9488;
   --font-display: "IBM Plex Serif", "Georgia", serif;
   --font-body: "IBM Plex Sans", "Helvetica Neue", sans-serif;
   --font-sans: "IBM Plex Sans", "Helvetica Neue", sans-serif;
@@ -26,31 +26,27 @@
 }
 
 /*
- * Bare shadcn design tokens. The Clerk shadcn theme
- * (@clerk/ui/themes/shadcn) resolves its modal colors from these exact
- * variables (var(--card), var(--primary), var(--muted), ...). Without them
- * the sign-in modal renders with no background at all. Values mirror the
- * @theme inline palette below.
+ * Bare shadcn design tokens for Clerk modal compatibility.
  */
 :root {
-  --background: #f3f6fa;
-  --foreground: #102a43;
+  --background: #f8fafc;
+  --foreground: #0f172a;
   --card: #ffffff;
-  --card-foreground: #102a43;
+  --card-foreground: #0f172a;
   --popover: #ffffff;
-  --popover-foreground: #102a43;
+  --popover-foreground: #0f172a;
   --primary: #4f46e5;
   --primary-foreground: #ffffff;
-  --secondary: #e7edf4;
-  --secondary-foreground: #334e68;
-  --muted: #e7edf4;
-  --muted-foreground: #52667a;
-  --accent: #e7edf4;
-  --accent-foreground: #102a43;
-  --destructive: #b83b5e;
+  --secondary: #eef2f6;
+  --secondary-foreground: #334155;
+  --muted: #eef2f6;
+  --muted-foreground: #475569;
+  --accent: #eef2f6;
+  --accent-foreground: #0f172a;
+  --destructive: #be123c;
   --destructive-foreground: #ffffff;
-  --border: #d6e0ea;
-  --input: #d6e0ea;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
   --ring: #4f46e5;
 }
 
@@ -89,8 +85,8 @@ a {
 }
 
 ::selection {
-  background: #dcdfff;
-  color: #102a43;
+  background: #e0e7ff;
+  color: #0f172a;
 }
 
 #root {
@@ -98,12 +94,20 @@ a {
 }
 
 .signal-grid {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.16) 1px, transparent 1px);
   background-size: 20px 20px;
 }
 
-/* Route change: 200–300 ms fade-and-rise on the incoming page. The global
-   prefers-reduced-motion block above already disables it. */
+.obsidian-surface {
+  background-color: #0b1220;
+  background-image:
+    radial-gradient(at 15% 0%, rgba(79, 70, 229, 0.22) 0px, transparent 50%),
+    radial-gradient(at 85% 100%, rgba(13, 148, 136, 0.16) 0px, transparent 50%),
+    radial-gradient(circle, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 24px 24px;
+}
+
+/* Route change: 220 ms fade-and-rise on the incoming page. */
 .route-in {
   animation: route-in 0.22s ease-out both;
 }

@@ -1,7 +1,6 @@
 import { ArrowUpRight } from 'lucide-react'
 
 import { FilterChip } from '@/components/filter-chip'
-import { FollowToggle } from '@/components/follow-toggle'
 import { topicsFor } from '@/lib/feed'
 import { formatDate, sourceLabel, type ReportItem } from '@/lib/report'
 import type { TopicFollow, TopicKind } from '@/lib/topics'
@@ -29,13 +28,13 @@ export function NewsList({ items, active, onKeyword, follows, onFollow }: NewsLi
         </p>
       </div>
 
-      <ol className="mt-8 divide-y divide-border">
+      <ol className="mt-8 divide-y divide-border rounded-2xl border border-border/80 bg-white px-6 shadow-2xs">
         {newest.map((item) => {
           const topics = topicsFor(item)
           return (
             <li key={item.id} className="grid gap-2 py-5 sm:grid-cols-[150px_minmax(0,1fr)] sm:gap-8">
               <p className="text-sm text-muted-foreground">
-                <span className="block font-medium text-ink/80">{sourceLabel(item.source)}</span>
+                <span className="block font-medium text-ink/85">{sourceLabel(item.source)}</span>
                 {formatDate(item.published, 'short')}
               </p>
               <div className="min-w-0">
@@ -50,19 +49,20 @@ export function NewsList({ items, active, onKeyword, follows, onFollow }: NewsLi
                   <span className="sr-only"> (opens in a new tab)</span>
                 </a>
                 {topics.length > 0 && (
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
                     {topics.map((label) => (
-                      <span key={label} className="inline-flex items-center gap-1">
-                        <FilterChip label={label} active={active === label} onToggle={() => onKeyword(label)} />
-                        {onFollow && (
-                          <FollowToggle
-                            kind="topic"
-                            value={label}
-                            followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === label) ?? false}
-                            onToggle={(kind, value, next) => onFollow(kind, value, next)}
-                          />
-                        )}
-                      </span>
+                      <FilterChip
+                        key={label}
+                        label={label}
+                        active={active === label}
+                        onToggle={() => onKeyword(label)}
+                        followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === label) ?? false}
+                        onFollowToggle={
+                          onFollow
+                            ? (next) => onFollow('topic', label, next)
+                            : undefined
+                        }
+                      />
                     ))}
                   </div>
                 )}

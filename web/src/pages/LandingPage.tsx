@@ -1,4 +1,5 @@
-import { ArrowDownToLine, ArrowRight, CircleAlert, Clock3, RefreshCw, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowDownToLine, ArrowRight, CircleAlert, Clock3, Radio, RefreshCw, Search, ShieldCheck } from 'lucide-react'
 import { useAuth, useClerk } from '@clerk/react'
 
 import { Badge } from '@/components/ui/badge'
@@ -10,28 +11,31 @@ import { navigate } from '@/lib/router'
 import { briefTitle } from '@/lib/report'
 import { useReport, useReports } from '@/lib/use-report'
 
-/**
- * `/` (spec): one screen — hero, a compact "inside this week" card, CTA.
- * No info sections; a signed-in reader still sees the landing (the logo and
- * the Library link are the way home).
- */
-export function LandingPage() {
+interface LandingPageProps {
+  onLaunchStudio?: (query: string) => void
+}
+
+export function LandingPage({ onLaunchStudio }: LandingPageProps) {
   const clerk = useClerk()
-  // A signed-in reader was still offered "Sign in to your feed", which opened the
-  // sign-in modal for an account that is already signed in (WEB-04).
   const { isSignedIn } = useAuth()
   const { reports, error: reportsError, retry: retryReports } = useReports()
   const latest = reports[0] ?? null
   const { items, error: itemsError, retry: retryItem } = useReport(latest?.id ?? null)
   const archiveDown = Boolean(reportsError) || (reports.length > 0 && Boolean(itemsError))
+  const [quickQuery, setQuickQuery] = useState('')
 
   const sourceCount = new Set(items.map((item) => item.source)).size
   const averageScore = items.length
     ? items.reduce((total, item) => total + Number(item.score || 0), 0) / items.length
     : 0
 
+  function openStudioWith(q: string) {
+    if (onLaunchStudio) onLaunchStudio(q)
+    navigate('/studio')
+  }
+
   return (
-    <section className="mx-auto max-w-7xl px-5 pb-16 pt-14 sm:px-8 sm:pb-20 sm:pt-20">
+    <section className="mx-auto max-w-7xl px-5 pb-16 pt-12 sm:px-8 sm:pb-20 sm:pt-16">
       {archiveDown && (
         <div className="mb-8 flex flex-wrap items-center gap-3 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
           <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
@@ -48,31 +52,52 @@ export function LandingPage() {
         </div>
       )}
 
-      <div className="grid items-center gap-12 grid-cols-[minmax(0,1fr)] lg:grid-cols-[1.02fr_0.98fr] lg:gap-16">
+      <div className="grid items-center gap-12 grid-cols-[minmax(0,1fr)] lg:grid-cols-[1.04fr_0.96fr] lg:gap-16">
         <BlurFade direction="up" duration={0.4} className="min-w-0">
           <div>
-            <Badge variant="outline" className="border-mint/25 bg-[#e9f7f3] px-3 py-1.5 text-[#146c63]">
-              <ShieldCheck aria-hidden="true" />
-              Numbers checked against their sources
-            </Badge>
-            <h1 className="mt-6 max-w-2xl text-balance font-display text-[clamp(2.8rem,6vw,5.25rem)] font-medium leading-[0.99] tracking-[-0.045em] text-ink">
-              The week in privacy-first synthetic data.
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline" className="border-mint/25 bg-[#e9f7f3] px-3 py-1.5 text-[#146c63]">
+                <ShieldCheck aria-hidden="true" />
+                Numbers checked against their sources
+              </Badge>
+              <Badge variant="outline" className="border-primary/25 bg-primary/8 px-3 py-1.5 text-primary">
+                <Radio className="size-3.5 text-emerald-500" aria-hidden="true" />
+                Live LangGraph.js Engine
+              </Badge>
+            </div>
+
+            <h1 className="mt-6 max-w-2xl text-balance font-display text-[clamp(2.6rem,5.5vw,4.75rem)] font-medium leading-[1.02] tracking-[-0.04em] text-ink">
+              Privacy-first synthetic data intelligence, live & weekly.
             </h1>
-            <p className="mt-7 max-w-xl text-lg leading-8 text-muted-foreground">
-              A weekly brief for the Well7 Research Lab team: tabular and time-series synthesis, formal privacy guarantees, and the evaluation work behind them — selected from the noise around generated data.
+            <p className="mt-6 max-w-xl text-lg leading-8 text-muted-foreground">
+              Run an on-demand LangGraph.js research check across arXiv, GitHub, Hacker News, and lab blogs right now — or browse the curated weekly brief for Well7 Research Lab.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              {isSignedIn ? (
-                <Button size="lg" variant="ink" onClick={() => navigate('/feed')}>
-                  Go to your feed
-                  <ArrowRight aria-hidden="true" />
-                </Button>
-              ) : (
-                <Button size="lg" variant="ink" onClick={() => clerk.openSignIn()}>
-                  Sign in to your feed
-                  <ArrowRight aria-hidden="true" />
-                </Button>
-              )}
+
+            {/* Quick Live Check Bar */}
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                openStudioWith(quickQuery)
+              }}
+              className="mt-7 flex max-w-xl flex-col gap-2.5 rounded-2xl border border-border bg-white p-2 shadow-sm sm:flex-row"
+            >
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                <input
+                  type="search"
+                  value={quickQuery}
+                  onChange={(event) => setQuickQuery(event.target.value)}
+                  placeholder="Check a topic live (e.g. clinical tabular privacy)…"
+                  className="h-11 w-full rounded-xl bg-transparent pl-10 pr-3 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none"
+                />
+              </div>
+              <Button type="submit" variant="ink" className="h-11 rounded-xl px-5">
+                <Radio className="size-3.5 text-emerald-400" aria-hidden="true" />
+                Check Live Now
+              </Button>
+            </form>
+
+            <div className="mt-6 flex flex-wrap items-center gap-3">
               <Button
                 size="lg"
                 variant="outline"
@@ -80,10 +105,20 @@ export function LandingPage() {
                 disabled={!latest}
               >
                 Read the latest brief
+                <ArrowRight aria-hidden="true" />
               </Button>
+              {isSignedIn ? (
+                <Button size="lg" variant="ghost" onClick={() => navigate('/feed')}>
+                  Open your feed
+                </Button>
+              ) : (
+                <Button size="lg" variant="ghost" onClick={() => clerk.openSignIn()}>
+                  Sign in to follow topics
+                </Button>
+              )}
               {latest?.has_pdf && (
                 <Button size="lg" variant="ghost" asChild>
-                  <a href={`/api/reports/${latest.id}/pdf`}>
+                  <a href={`/api/reports/${latest.id}/pdf`} target="_blank" rel="noopener">
                     <ArrowDownToLine aria-hidden="true" />
                     Download PDF
                   </a>
@@ -92,7 +127,7 @@ export function LandingPage() {
             </div>
             <p className="mt-5 flex items-center gap-2 text-sm text-muted-foreground">
               <Clock3 className="size-4" aria-hidden="true" />
-              New findings every Saturday
+              On-demand checks anytime · Full brief archived every Saturday
             </p>
           </div>
         </BlurFade>
@@ -103,7 +138,7 @@ export function LandingPage() {
       </div>
 
       {!archiveDown && (
-        <div className="mt-16 grid grid-cols-2 border-y border-border py-7 sm:grid-cols-4 sm:py-8">
+        <div className="mt-16 grid grid-cols-2 rounded-2xl border border-border/80 bg-white py-6 shadow-2xs sm:grid-cols-4 sm:py-7">
           {[
             { label: 'Reports archived', value: reports.length, decimals: 0 },
             { label: 'Findings in this brief', value: items.length, decimals: 0 },
@@ -112,7 +147,7 @@ export function LandingPage() {
           ].map((stat, index) => (
             <div
               key={stat.label}
-              className={`px-4 py-4 sm:px-7 sm:py-0 ${index > 0 ? 'sm:border-l sm:border-border' : ''} ${index === 1 ? 'border-l border-border' : ''} ${index >= 2 ? 'border-t border-border sm:border-t-0' : ''}`}
+              className={`px-5 py-3 sm:px-7 sm:py-0 ${index > 0 ? 'sm:border-l sm:border-border' : ''} ${index === 1 ? 'border-l border-border' : ''} ${index >= 2 ? 'border-t border-border sm:border-t-0' : ''}`}
             >
               <NumberTicker value={stat.value} decimalPlaces={stat.decimals} className="font-display text-3xl font-medium tracking-[-0.03em] text-ink sm:text-4xl" />
               <p className="mt-1.5 text-sm text-muted-foreground">{stat.label}</p>
@@ -122,15 +157,21 @@ export function LandingPage() {
       )}
 
       {!archiveDown && latest && (
-        <div className="mt-8 rounded-2xl border border-border bg-white/70 px-6 py-5 text-sm text-muted-foreground sm:flex sm:items-center sm:justify-between">
+        <div className="mt-8 rounded-2xl border border-border/80 bg-white px-6 py-5 text-sm text-muted-foreground shadow-2xs sm:flex sm:items-center sm:justify-between">
           <p>
-            Inside this week: <span className="font-medium text-ink">{briefTitle(latest.subject)}</span>
+            Latest weekly brief: <span className="font-semibold text-ink">{briefTitle(latest.subject)}</span>
             {' '}— {items.length} findings checked across {sourceCount} sources.
           </p>
-          <Button variant="ghost" size="sm" className="mt-2 shrink-0 sm:mt-0" onClick={() => navigate(`/brief/${latest.id}`)}>
-            Open the brief
-            <ArrowRight aria-hidden="true" />
-          </Button>
+          <div className="mt-3 flex flex-wrap gap-2 sm:mt-0">
+            <Button variant="outline" size="sm" onClick={() => navigate('/studio')}>
+              <Radio className="size-3.5 text-emerald-500" aria-hidden="true" />
+              Live Studio
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate(`/brief/${latest.id}`)}>
+              Open the brief
+              <ArrowRight aria-hidden="true" />
+            </Button>
+          </div>
         </div>
       )}
     </section>

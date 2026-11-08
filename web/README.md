@@ -58,7 +58,8 @@ client-side routing dependency.
 
 | Route | Who | What |
 |---|---|---|
-| `/` | public | Landing: hero with static editorial intake schematic, this week's stats, CTAs. |
+| `/` | public | Landing: hero with quick-launch live research bar, static editorial intake schematic, this week's stats, CTAs. |
+| `/studio` | public / signed in | **Live Research Studio**: run an on-demand `@langchain/langgraph` `StateGraph` (`collect → clean → rank → fetch → summarise → publish`) for any topic & time window streamed over SSE, or inspect recent D1-checkpointed sessions. |
 | `/brief` | public | Redirects to the latest brief. |
 | `/brief/<week>` | public | The week's brief: importance donut + source/topic bars (static SVG under the title), the editorial read, ranked items, headlines. A deep link to an unknown week says so and links back to the archive. |
 | `/feed` | signed in | The current brief filtered to the topics and sources I follow, with the **My topics** manager; with zero follows it shows the whole brief plus a pick-topics prompt, never an empty page. |
@@ -73,25 +74,16 @@ the avatar. A route change fades the incoming page in (220 ms, disabled under
 `prefers-reduced-motion`) and resets the scroll to the top. Stars on topic
 chips and source badges follow/unfollow.
 
-## The LangChain.js pipeline
+## The LangGraph.js & LangChain.js pipeline
 
-A second pipeline lives in `web/worker/pipeline/` and runs the weekly
-collect → rank → summarise → report job inside the Worker on the Cron Trigger:
+The edge intelligence pipeline lives in `web/worker/pipeline/` and runs as a `@langchain/langgraph` `StateGraph` (`graph.ts`) powering both interactive topic checks (`POST /api/research/stream` with SSE node updates) and the weekly Cron Trigger:
 
-- `sources.ts` — collectors: arXiv, Hacker News (Algolia), GitHub, Google News,
-  Reddit r/MachineLearning + r/LocalLLaMA, Hugging Face blog, Microsoft/AWS/
-  Google Research, BAIR, Together AI; URL normalisation + cross-source dedupe.
-- `llm.ts` — the OpenRouter call profile copied from the verified Python setup
-  (`src/synthetic_data/llm.py`): `reasoning: {effort: low, exclude: true}`,
-  2000-token budget, 180s timeout, no SDK retries.
-- `rank.ts` — batches of 15 items scored 1–10 on synthetic data relevance and
-  1–10 on Well7 fit in parallel waves; sorted by `well7_fit` then `score`.
-- `summarise.ts` — full-text fetch per pick + guarded summaries: numbers in the
-  output must exist in the source text, else one repair attempt, then extractive
-  fallback. Fallbacks are counted, never silent.
-- `index.ts` — orchestrator: history dedupe against previously published URLs,
-  stable item IDs (SHA-256 of normalised URL, first 8 bytes), `reports`/`items`
-  upserts, and `pipeline_runs` row tracking.
+- `graph.ts` — `@langchain/langgraph` `StateGraph` (`collect → clean → rank → fetch → summarise → publish`) with D1 session checkpoints (`research_sessions` table) and live SSE node telemetry.
+- `sources.ts` — parameterized collectors: arXiv, Hacker News (Algolia), GitHub, Google News, Reddit r/MachineLearning + r/LocalLLaMA, Hugging Face blog, Microsoft/AWS/Google Research, BAIR, Together AI; URL normalisation + cross-source dedupe.
+- `llm.ts` — the OpenRouter call profile copied from the verified Python setup (`src/synthetic_data/llm.py`): `reasoning: {effort: low, exclude: true}`, 2000-token budget, 180s timeout, no SDK retries.
+- `rank.ts` — batches of 15 items scored 1–10 on synthetic data relevance (`score`) and 1–10 on Well7 fit (`well7_fit`) in parallel waves; sorted by `well7_fit` then `score`.
+- `summarise.ts` — full-text fetch per pick + guarded summaries: numbers in the output must exist in the source text, else one repair attempt, then extractive fallback. Fallbacks are counted, never silent.
+- `index.ts` — weekly wrapper around `executeResearchGraph` recording `pipeline_runs` rows.
 
 ### Cron & Automation
 - **Cloudflare Worker Cron**: `0 5 * * 6` (Saturday 05:00 UTC = 08:00 Saudi time).

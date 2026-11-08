@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
+import { BookOpen, CalendarDays, CircleAlert, FileText, Radio, RefreshCw } from 'lucide-react'
 
 import { FeedFilterBar, FeedList, KeywordStrip } from '@/components/feed-panel'
 import { NewsList } from '@/components/news-list'
@@ -26,12 +26,6 @@ interface BriefPageProps {
   onFollow?: (kind: TopicKind, value: string, next: boolean) => void
 }
 
-/**
- * `/brief/<week>` (spec, public): the brief — week-shape diagrams under the
- * title, then the editorial read, then ranked items and headlines.
- * `/brief` (no week) redirects to the latest report once it is known.
- * A deep link to a week that does not exist gets the missing-brief message.
- */
 export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefPageProps) {
   const { reports, loading: reportsLoading, error: reportsError, retry: retryReports } = useReports()
   const { report, items, loading, error, notFound, retry: retryReport } = useReport(week ?? null)
@@ -106,7 +100,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
             Nothing has been published yet. Once a weekly report runs, the latest brief lands here.
           </p>
           <Button className="mt-5" variant="outline" size="sm" asChild>
-            <Link to="/archive">Open the archive</Link>
+            <Link to="/studio">Open Live Studio</Link>
           </Button>
         </div>
       )}
@@ -115,8 +109,8 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
         <div className="min-w-0">
           <div className="flex flex-col justify-between gap-6 md:flex-row md:items-end">
             <div>
-              <p className="text-sm font-semibold text-primary">Weekly brief</p>
-              <h1 className="mt-3 max-w-3xl text-balance font-display text-4xl font-medium leading-tight tracking-[-0.03em] sm:text-5xl">
+              <p className="font-mono text-xs font-semibold uppercase tracking-wider text-primary">Weekly brief</p>
+              <h1 className="mt-2.5 max-w-3xl text-balance font-display text-4xl font-medium leading-tight tracking-[-0.03em] sm:text-5xl">
                 {briefTitle(report.subject)}
               </h1>
               <p className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
@@ -124,11 +118,19 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
                 Week ending {formatDate(report.week_end)}
               </p>
             </div>
-            {Boolean(report.has_pdf) && (
+            <div className="flex flex-wrap items-center gap-2.5">
               <Button variant="outline" asChild>
-                <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener"><FileText aria-hidden="true" />Open the PDF</a>
+                <Link to="/studio">
+                  <Radio className="size-3.5 text-emerald-500" aria-hidden="true" />
+                  Check a topic live
+                </Link>
               </Button>
-            )}
+              {Boolean(report.has_pdf) && (
+                <Button variant="outline" asChild>
+                  <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener"><FileText aria-hidden="true" />Open the PDF</a>
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="mt-10">
@@ -141,10 +143,10 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
 
           {report.trend && (
             <BlurFade inView duration={0.4}>
-              <Card className="mt-10 rounded-[24px] border-0 bg-[#eaf0f7] shadow-none">
+              <Card className="mt-8 rounded-2xl border border-primary/20 bg-gradient-to-br from-indigo-50/70 via-white to-teal-50/40 shadow-2xs">
                 <CardContent className="grid gap-5 p-6 sm:p-8 md:grid-cols-[190px_1fr] md:gap-10">
                   <div className="flex items-start gap-3 text-primary">
-                    <BookOpen className="mt-1 size-5" aria-hidden="true" />
+                    <BookOpen className="mt-1 size-5 shrink-0" aria-hidden="true" />
                     <div>
                       <h2 className="font-semibold text-ink">The editorial read</h2>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">The pattern across this week's selections</p>

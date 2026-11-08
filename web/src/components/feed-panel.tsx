@@ -25,8 +25,6 @@ const SECTION_OPTIONS: Array<{ value: FeedSection; label: string }> = [
   { value: 'worth', label: 'Worth a look' },
 ]
 
-/** A weekly archive grows forever; the sticky rail shows the recent run and
- *  links out, so it cannot push "Your feed" off the bottom of the viewport. */
 const MAX_SIDEBAR_WEEKS = 6
 
 interface FeedSidebarProps {
@@ -53,9 +51,9 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
               aria-pressed={active}
               onClick={() => onView(key)}
               className={cn(
-                'inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 active
-                  ? 'border-ink bg-ink text-white'
+                  ? 'border-primary bg-primary/12 font-semibold text-primary ring-1 ring-primary/25'
                   : 'border-border bg-white text-ink/80 hover:border-primary/40 hover:text-primary',
               )}
             >
@@ -63,7 +61,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
               <span
                 className={cn(
                   'rounded-full px-1.5 py-px text-[11px] leading-4 tabular-nums',
-                  active ? 'bg-white/20 text-white' : 'bg-secondary text-muted-foreground',
+                  active ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground',
                 )}
               >
                 {viewCounts[key]}
@@ -84,7 +82,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
                 aria-pressed={active}
                 onClick={() => onSelectWeek(report.id)}
                 className={cn(
-                  'inline-flex rounded-full border px-3.5 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'inline-flex cursor-pointer rounded-full border px-3.5 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active
                     ? 'border-primary/40 bg-primary/10 font-semibold text-primary'
                     : 'border-border bg-white text-ink/80 hover:border-primary/40 hover:text-primary',
@@ -129,7 +127,7 @@ export function FeedFilterBar({
   onClear,
 }: FeedFilterBarProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 rounded-2xl border border-border/80 bg-white p-4 shadow-2xs">
       <label className="relative block">
         <span className="sr-only">Search this brief</span>
         <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -139,8 +137,8 @@ export function FeedFilterBar({
           value={query}
           autoComplete="off"
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="e.g. privacy, tabular, evaluation…"
-          className="w-full rounded-xl border border-border bg-white py-2.5 pl-10 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="Filter items in this brief (e.g. privacy, tabular, evaluation)…"
+          className="w-full rounded-xl border border-border bg-background/60 py-2.5 pl-10 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </label>
 
@@ -158,7 +156,7 @@ export function FeedFilterBar({
         </div>
         {activeFilters > 0 && (
           <Button variant="ghost" size="sm" onClick={onClear}>
-            Clear filters
+            Clear filters ({activeFilters})
           </Button>
         )}
       </div>
@@ -170,7 +168,7 @@ interface KeywordStripProps {
   counts: Array<{ label: string; count: number }>
   active: string | null
   onToggle: (label: string) => void
-  /** When provided, every chip is followable: a small star sits beside it. */
+  /** When provided, every chip has an integrated star follow segment. */
   follows?: TopicFollow[]
   onFollow?: (kind: TopicKind, label: string, next: boolean) => void
 }
@@ -179,32 +177,37 @@ export function KeywordStrip({ counts, active, onToggle, follows, onFollow }: Ke
   if (counts.length === 0) return null
 
   return (
-    <div className="mt-10">
-      <p className="text-sm font-semibold text-muted-foreground">Key words this week</p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        {counts.map((keyword) => {
-          const chip = (
-            <FilterChip
-              key={keyword.label}
-              label={keyword.label}
-              count={keyword.count}
-              active={active === keyword.label}
-              onToggle={() => onToggle(keyword.label)}
-            />
-          )
-          if (!onFollow) return chip
-          return (
-            <span key={keyword.label} className="inline-flex items-center gap-1">
-              {chip}
-              <FollowToggle
-                kind="topic"
-                value={keyword.label}
-                followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === keyword.label) ?? false}
-                onToggle={(kind, value, next) => onFollow(kind, value, next)}
-              />
-            </span>
-          )
-        })}
+    <div className="mt-10 rounded-2xl border border-border/80 bg-white/90 p-5 shadow-2xs">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Key words this week {onFollow ? '· Click label to filter, ★ to follow in your feed' : '· Click to filter'}
+        </p>
+        {active && (
+          <button
+            type="button"
+            onClick={() => onToggle(active)}
+            className="cursor-pointer text-xs font-semibold text-primary hover:underline"
+          >
+            Clear "{active}" filter
+          </button>
+        )}
+      </div>
+      <div className="mt-3.5 flex flex-wrap items-center gap-2">
+        {counts.map((keyword) => (
+          <FilterChip
+            key={keyword.label}
+            label={keyword.label}
+            count={keyword.count}
+            active={active === keyword.label}
+            onToggle={() => onToggle(keyword.label)}
+            followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === keyword.label) ?? false}
+            onFollowToggle={
+              onFollow
+                ? (next) => onFollow('topic', keyword.label, next)
+                : undefined
+            }
+          />
+        ))}
       </div>
     </div>
   )
@@ -217,14 +220,14 @@ interface FeedListProps {
   active: string | null
   onKeyword: (label: string) => void
   onToggle: (itemId: string, field: 'read_later' | 'important') => void
-  /** When provided (the Feed page), topic chips carry follow stars. */
+  /** When provided, topic chips carry follow stars. */
   follows?: TopicFollow[]
   onFollow?: (kind: TopicKind, label: string, next: boolean) => void
 }
 
 export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle, follows, onFollow }: FeedListProps) {
   return (
-    <div>
+    <div className="space-y-4">
       {items.map((item, index) => {
         const state = saved.get(item.id)
         const topics = topicsFor(item)
@@ -234,19 +237,18 @@ export function FeedList({ items, saved, signedIn, active, onKeyword, onToggle, 
             item={item}
             rank={index + 1}
             tags={topics.length > 0 ? topics.map((label) => (
-              onFollow ? (
-                <span key={label} className="inline-flex items-center gap-1">
-                  <FilterChip label={label} active={active === label} onToggle={() => onKeyword(label)} />
-                  <FollowToggle
-                    kind="topic"
-                    value={label}
-                    followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === label) ?? false}
-                    onToggle={(kind, value, next) => onFollow(kind, value, next)}
-                  />
-                </span>
-              ) : (
-                <FilterChip key={label} label={label} active={active === label} onToggle={() => onKeyword(label)} />
-              )
+              <FilterChip
+                key={label}
+                label={label}
+                active={active === label}
+                onToggle={() => onKeyword(label)}
+                followed={follows?.some((follow) => follow.kind === 'topic' && follow.value === label) ?? false}
+                onFollowToggle={
+                  onFollow
+                    ? (next) => onFollow('topic', label, next)
+                    : undefined
+                }
+              />
             )) : undefined}
             followControl={onFollow ? (
               <FollowToggle

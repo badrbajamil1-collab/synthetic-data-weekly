@@ -9,6 +9,29 @@ export interface TopicFollow {
 
 export type { Taggable }
 
+export interface ChipStateSummary {
+  filterAriaPressed: boolean
+  followAriaPressed: boolean
+  tone: 'idle' | 'active' | 'followed' | 'both'
+}
+
+export function describeChipState(input: { active: boolean; followed?: boolean }): ChipStateSummary {
+  const followed = Boolean(input.followed)
+  const tone: ChipStateSummary['tone'] =
+    input.active && followed
+      ? 'both'
+      : input.active
+        ? 'active'
+        : followed
+          ? 'followed'
+          : 'idle'
+  return {
+    filterAriaPressed: input.active,
+    followAriaPressed: followed,
+    tone,
+  }
+}
+
 /** kind first, then value — the same order the D1 endpoint answers in. */
 export function sortFollows(follows: TopicFollow[]): TopicFollow[] {
   return [...follows].sort((a, b) => a.kind.localeCompare(b.kind) || a.value.localeCompare(b.value))
@@ -56,11 +79,6 @@ export function scoreBands(scores: Array<number | null | undefined>): ScoreBand[
 
 /**
  * Counts by source, merged case-insensitively.
- *
- * `items.source` holds whichever label the collector wrote — "GitHub" from one
- * run, "github" from another — so grouping on the raw string split one source
- * into two rows, and starring one missed the other. The label kept for display
- * prefers the cased spelling ("GitHub" over "github").
  */
 export function sourceCounts(items: Array<{ source: string }>): Array<{ label: string; count: number }> {
   const groups = new Map<string, { label: string; count: number }>()
