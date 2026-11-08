@@ -22,40 +22,29 @@ const SECTION_LABELS: Record<string, { label: string; className: string }> = {
 export function ReportItemRow({ item, rank, tags, actions, followControl }: ReportItemProps) {
   const [expanded, setExpanded] = useState(false)
   const sectionMeta = SECTION_LABELS[item.section] ?? SECTION_LABELS.top
-  const fitScore = item.well7_fit ?? item.score
   const summaryText = item.summary || 'The source summary is not available in this archive entry.'
   const hasMoreContent = summaryText.length > 160 || Boolean(item.reason)
 
   return (
     <article className="group rounded-2xl border border-border/75 bg-white px-5 py-4 transition-colors hover:border-border sm:px-6 sm:py-5">
       {/* Compact single-line metadata header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="font-mono text-muted-foreground/70 tabular-nums">
-            {String(rank).padStart(2, '0')}
-          </span>
-          <span aria-hidden="true" className="text-border">·</span>
-          <span className={cn('font-medium', sectionMeta.className)}>
-            {sectionMeta.label}
-          </span>
-          <span aria-hidden="true" className="text-border">·</span>
-          <span className="inline-flex items-center gap-1 font-medium text-ink/80">
-            {sourceLabel(item.source)}
-            {followControl}
-          </span>
-          <span aria-hidden="true" className="text-border">·</span>
-          <span className="font-mono tabular-nums">
-            {formatDate(item.published, 'short')}
-          </span>
-        </div>
-
-        {fitScore > 0 && (
-          <div className="flex items-center gap-3 font-mono text-xs tabular-nums">
-            <span className="text-muted-foreground">
-              Fit <strong className="font-semibold text-ink">{fitScore}</strong>/10
-            </span>
-          </div>
-        )}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <span className="font-mono text-muted-foreground/70 tabular-nums">
+          {String(rank).padStart(2, '0')}
+        </span>
+        <span aria-hidden="true" className="text-border">·</span>
+        <span className={cn('font-medium', sectionMeta.className)}>
+          {sectionMeta.label}
+        </span>
+        <span aria-hidden="true" className="text-border">·</span>
+        <span className="inline-flex items-center gap-1 font-medium text-ink/80">
+          {sourceLabel(item.source)}
+          {followControl}
+        </span>
+        <span aria-hidden="true" className="text-border">·</span>
+        <span className="font-mono tabular-nums">
+          {formatDate(item.published, 'short')}
+        </span>
       </div>
 
       {/* Title */}

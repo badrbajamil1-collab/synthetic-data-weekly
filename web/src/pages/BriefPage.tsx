@@ -3,7 +3,6 @@ import { CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
 
 import { FeedFilterBar, FeedList, KeywordStrip } from '@/components/feed-panel'
 import { NewsList } from '@/components/news-list'
-import { WeekShape } from '@/components/week-shape'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -99,7 +98,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
             Nothing has been published yet. Once a weekly report runs, the latest brief lands here.
           </p>
           <Button className="mt-5" variant="outline" size="sm" asChild>
-            <Link to="/studio">Open Live Studio</Link>
+            <Link to="/studio">Search live</Link>
           </Button>
         </div>
       )}
@@ -118,7 +117,7 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
             </div>
             <div className="flex flex-wrap items-center gap-2.5">
               <Button variant="outline" size="sm" asChild>
-                <Link to="/studio">Check a topic live</Link>
+                <Link to="/studio">Search a topic live</Link>
               </Button>
               {Boolean(report.has_pdf) && (
                 <Button variant="outline" size="sm" asChild>
@@ -149,22 +148,16 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
             </BlurFade>
           )}
 
-          <div className="mt-8">
-            <BlurFade inView duration={0.35}>
-              <WeekShape items={items} />
-            </BlurFade>
-          </div>
-
           <KeywordStrip counts={keywords} active={filters.keyword} onToggle={toggleKeyword} follows={follows} onFollow={onFollow} />
 
-          <div className="mt-14">
+          <div className="mt-12">
             <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-balance font-display text-3xl font-medium tracking-[-0.025em] text-ink">
                   Inside this brief
                 </h2>
                 <p className="mt-1.5 text-sm text-muted-foreground">
-                  Read the source, compare relevance and Well7 fit, follow the evidence.
+                  Filter by topic or section, expand any paper to read the full summary, or save items to your library.
                 </p>
               </div>
             </div>
