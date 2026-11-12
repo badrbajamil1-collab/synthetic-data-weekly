@@ -14,7 +14,13 @@ ranking:
   # The startup guard aborts if batch_size * 45 + 200 exceeds max_tokens.
   batch_size: 15
   concurrency: 3
-  max_tokens: 2000
+  # 2000 was verified for the old, short rubric. The sharpened rubric plus
+  # structured JSON makes the prompt ~7k chars, and this model spends several
+  # thousand tokens on hidden reasoning before emitting anything. At 2000 a
+  # real 15-item batch returns empty content with finish_reason='length', so
+  # every item comes back unscored and the whole week is thin. 8000 was probed
+  # against a real batch and parsed all 15 rows.
+  max_tokens: 8000
   reasoning_effort: "low"
   temperature: 0.0
   timeout_seconds: 180
