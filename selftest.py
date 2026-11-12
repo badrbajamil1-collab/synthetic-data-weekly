@@ -1634,6 +1634,15 @@ check("collect_node propagates duplicates into state",
 check("collect -> clean keeps the true duplicate count",
       _cleaned.get("duplicates") == 7, str(_cleaned.get("duplicates")))
 
+# The free-model council found the error path still zeroed the count. Force
+# clean_node's exception branch with a malformed item and assert it keeps the
+# collected count instead of re-introducing the bug on failure.
+_bad_clean = _graph.clean_node(
+    {"raw_items": ["not-a-dict"], "duplicates": 7}, None
+)
+check("clean_node error path keeps the collected duplicate count",
+      _bad_clean.get("duplicates") == 7, str(_bad_clean.get("duplicates")))
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

@@ -201,10 +201,12 @@ def clean_node(state: AgentState, config) -> AgentState:
         ]
         unique, dropped = runner.dedupe_items(items)
     except Exception as exc:  # noqa: BLE001 - a node must never escape the graph
+        # `**state` already carries the collected duplicate count. Setting 0
+        # here would erase it on the error path, re-introducing the very bug
+        # the success path was fixed for.
         return {
             **state,
             "deduped_items": [],
-            "duplicates": 0,
             "errors": [*errors, f"clean: {type(exc).__name__}: {exc}"],
         }
     # collect_all() already deduplicated and put the true count in state.
@@ -466,7 +468,10 @@ def report_node(state: AgentState, config) -> AgentState:
         # failed trend is left out and the run is flagged, never faked.
         trend = summarise.summarise_trend(top_picks, chat_fn)
         if trend.get("guard") == "omitted":
-            errors.append("report: trend omitted; the model was unreachable")
+            errors.append(
+                "report: trend omitted (model failed or the reply broke the "
+                "no-digits rule); the run is flagged"
+            )
 
         report = {
             "week_start": sections["week_start"],
