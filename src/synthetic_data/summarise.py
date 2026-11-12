@@ -1,13 +1,18 @@
 """Phase 3 — turn ranked full text into report prose.
 
-Two rules shape this module:
+Three rules shape this module:
 
 * **The model writes prose, never structure.** `compose_sections` decides what
   is a top pick, a tool and a worth-a-look from the score and the source, so the
-  report's 5-10 / 0-5 / 0-5 format cannot depend on the model counting right.
+  report's 1-10 / 0-5 / 0-5 format cannot depend on the model counting right.
 * **A number in a summary must exist in the text the model was shown.**
   `unsupported_numbers` enforces it; after one repair attempt the item falls
   back to sentences extracted from the source, which cannot invent anything.
+  The "why it matters" line is held to the same guard.
+* **Nothing is padded and nothing is faked.** A section shorter than its cap
+  is a short week, not a reason to promote a below-floor item. A trend the
+  model could not write is left out, not assembled from the picks' first
+  sentences.
 
 No file I/O here. write_report.py owns reading candidates.json, the summary
 cache and writing source.yaml.
@@ -22,22 +27,34 @@ from urllib.parse import urlparse
 # JSON extraction is shared with the ranker on purpose: models fail the same way
 # for scores and for summaries, and one implementation means one place to fix.
 from synthetic_data.rank import _first_json_value, _strip_fences, sort_ranked
+from synthetic_data.week import in_week, week_bounds
 
-SUMMARY_VERSION = "2026-11-06.1"
+SUMMARY_VERSION = "2026-11-11.1"
 
-MIN_PICKS = 5
+MIN_PICKS = 1
 MAX_PICKS = 10
-MAX_SUMMARY_CHARS = 900
+MAX_SUMMARY_CHARS = 420
+MAX_WHY_CHARS = 220
 
-# The brief asks for 2-3 line summaries; these are the word budgets the prompt
-# states and the guard enforces. A long reply is repaired once, then falls back.
-WORDS_LONG = 70
-WORDS_SHORT = 35
+# Tighter word budgets: 1-2 sentences (~50 words) for top picks, one sentence
+# (~20 words) for tools, worth-a-look and snippet-only items. A long reply is
+# repaired once, then falls back.
+WORDS_LONG = 50
+WORDS_SHORT = 20
+
+# The "why it matters" line is its own budget: one short line under an entry.
+WORDS_WHY = 18
 
 # A number at the start of a token: 0.54, 1,000, 223, 79M (the suffix is not
 # part of the token). Deliberately no trailing word boundary, or "79M" and
 # "1.5x" would escape the check.
+#
 _NUMBER = re.compile(r"(?<!\d)(\d+(?:[.,]\d+)*)")
+# Keep the original, strict numeric guard. Weakening the lookbehind to
+# (?<![A-Za-z\d]) would split "GPT3.5" into a phantom "5" and let a
+# hallucinated "v9.5" through. Only the report's own brand is a known
+# non-quantity identifier, so strip that one token before extracting numbers.
+_BRAND_TOKENS = re.compile(r"\bwell7\b", re.IGNORECASE)
 _SENTENCE = re.compile(r"(?<=[.!?])\s+")
 _SNIPPET_MARK = "(full text unavailable)"
 
@@ -109,16 +126,25 @@ def published_date(value) -> Optional[date]:
     return moment.date()
 
 
-def week_end_for(items: Iterable[dict]) -> date:
-    """The report's last day: the newest publication date in the shortlist.
+def _as_date(value) -> Optional[date]:
+    """A date from a date, a datetime or an ISO string. None if unusable.
 
-    Deriving it from the data rather than from `now` keeps a replayed week
-    reproducible, and keeps every pick inside verify_report.py's own window.
+    `run_date` and `week_end` arrive in all three shapes: the CLI parses a
+    string, the graph carries a date, and a caller may pass a datetime.
     """
-    dates = [day for day in (published_date(i.get("published")) for i in items) if day]
-    if not dates:
-        raise CompositionError("no candidate has a usable publication date")
-    return max(dates)
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return published_date(value)
+    if isinstance(value, date):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text[:10])
+    except ValueError:
+        return published_date(text)
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +154,8 @@ def week_end_for(items: Iterable[dict]) -> date:
 def extract_numbers(text: str) -> set:
     """Every numeric token in `text`, with thousands separators removed."""
     found = set()
-    for match in _NUMBER.finditer(text or ""):
+    cleaned = _BRAND_TOKENS.sub(" ", text or "")
+    for match in _NUMBER.finditer(cleaned):
         token = match.group(1).replace(",", "").rstrip(".")
         if token:
             found.add(token)
@@ -186,7 +213,7 @@ def extractive_summary(text: str, max_chars: int = 420, max_sentences: int = 3) 
 
 _ITEM_PROMPT = """You write one entry in a weekly synthetic-data research report.
 
-Summarise the item below in {length}.
+Summarise the item below in {length}, plus a "why_it_matters" line of at most 18 words.
 
 Rules:
 - Use ONLY facts stated in the TEXT. Do not use outside knowledge.
@@ -194,7 +221,8 @@ Rules:
 - Describe the item as the TEXT presents it. Do not infer its data type, domain or venue
   from the title.
 - Start with the substance, not "This article" or "This paper".
-- Say what it is, what it does or finds, and why it matters to someone working on synthetic data.
+- "summary" states what the item is and what it does or finds.
+- "why_it_matters" is one short line (at most 18 words) on why it matters to someone working on synthetic data, using only facts in the TEXT.
 - Plain prose. No bullets, no marketing adjectives, no hype words. Never use
   "breakthrough", "dramatically", "revolutionary", "game-changing", "unprecedented"
   or "groundbreaking".
@@ -207,7 +235,7 @@ Published: {published}
 TEXT
 {text}
 
-Reply with JSON only: {{"summary": "your summary"}}"""
+Reply with JSON only: {{"summary": "your summary", "why_it_matters": "one short line"}}"""
 
 _TREND_PROMPT = """You write the opening paragraph of a weekly synthetic-data research report.
 
@@ -253,6 +281,8 @@ def build_prompt(
     max_chars: int = 6000,
     rejected_numbers: Sequence[str] = (),
     over_words: int = 0,
+    over_why_words: int = 0,
+    missing_why: bool = False,
 ) -> str:
     text, origin = source_text(item, max_chars=max_chars)
     short = one_line or origin == "snippet only"
@@ -260,7 +290,7 @@ def build_prompt(
     length = (
         f"one sentence, at most {WORDS_SHORT} words"
         if short
-        else f"2 to 3 sentences, at most {WORDS_LONG} words"
+        else f"1 to 2 sentences, at most {WORDS_LONG} words"
     )
 
     extra = []
@@ -280,6 +310,16 @@ def build_prompt(
             f"- Your previous attempt was {over_words} words long. "
             f"Keep it under {limit} words and drop detail rather than sentences."
         )
+    if over_why_words:
+        extra.append(
+            f"- Your previous why_it_matters line was {over_why_words} words long. "
+            f"Keep it under {WORDS_WHY} words: one short line, no detail."
+        )
+    if missing_why:
+        extra.append(
+            "- Your previous reply omitted why_it_matters. You MUST return a "
+            f"non-empty \"why_it_matters\" string of at most {WORDS_WHY} words."
+        )
     extra_text = ("\n".join(extra) + "\n") if extra else ""
 
     day = published_date(item.get("published"))
@@ -291,6 +331,29 @@ def build_prompt(
         published=day.isoformat() if day else "unknown",
         text=text,
     )
+
+
+def _clip(text: str, limit: int) -> str:
+    """Trim to `limit` characters without leaving a severed number token.
+
+    Truncating before the fact guard turned "... by 99.9 percent" into a
+    validated "9". Cutting the whole token keeps the guard honest.
+    """
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    severed = re.search(r"\d[\d.,]*$", cut)
+    if severed:
+        cut = cut[: severed.start()].rstrip(" ,.;:")
+    return cut.rstrip()
+
+
+def _clip_words(text: str, limit: int) -> str:
+    """Trim to at most `limit` words, dropping a trailing separator."""
+    words = text.split()
+    if len(words) <= limit:
+        return text
+    return " ".join(words[:limit]).rstrip(" ,.;:")
 
 
 def parse_summary(text: Optional[str], *, key: str = "summary") -> Optional[str]:
@@ -306,7 +369,35 @@ def parse_summary(text: Optional[str], *, key: str = "summary") -> Optional[str]
         value = payload
     if not isinstance(value, str) or not value.strip():
         return None
-    return re.sub(r"\s+", " ", value).strip()[:MAX_SUMMARY_CHARS]
+    return _clip(re.sub(r"\s+", " ", value).strip(), MAX_SUMMARY_CHARS)
+
+
+def parse_item_summary(text: Optional[str]) -> Optional[Tuple[str, str]]:
+    """Decode an item reply into (summary, why_it_matters).
+
+    Tolerates a missing or empty `why_it_matters` so single-field test doubles
+    still parse cleanly.
+    """
+    if not text or not str(text).strip():
+        return None
+    payload = _first_json_value(_strip_fences(str(text)))
+    if isinstance(payload, list) and len(payload) == 1:
+        payload = payload[0]
+    if isinstance(payload, dict):
+        summary_raw = payload.get("summary")
+        why_raw = payload.get("why_it_matters")
+    else:
+        summary_raw = payload
+        why_raw = ""
+    if not isinstance(summary_raw, str) or not summary_raw.strip():
+        return None
+    summary = _clip(re.sub(r"\s+", " ", summary_raw).strip(), MAX_SUMMARY_CHARS)
+    why = (
+        _clip(re.sub(r"\s+", " ", why_raw).strip(), MAX_WHY_CHARS)
+        if isinstance(why_raw, str) and why_raw.strip()
+        else ""
+    )
+    return summary, why
 
 
 def _finish(summary: str, origin: str) -> str:
@@ -334,17 +425,23 @@ def summarise_item(
 ) -> dict:
     """Summarise one item with a numeric fact guard and an extractive fallback.
 
-    Returns {"summary", "origin", "guard"} where guard is:
-      passed     - the first reply passed the number check
-      repaired   - the first reply invented numbers, the retry passed
-      extractive - the model failed twice (or was unreachable); summary is
-                   taken verbatim from the source text
+    Returns {"summary", "why_it_matters", "origin", "guard"} where guard is:
+      passed     - the first reply passed the number and length checks
+      repaired   - the first reply failed one of them, the retry passed
+      extractive - the model failed twice (or was unreachable); the summary is
+                   taken verbatim from the source text and why_it_matters is ""
       skipped    - there was no text at all to summarise
+
+    `why_it_matters` is held to the same rules as the summary: a number in it
+    that is not in the source text fails the item exactly like a number in the
+    summary, and a line longer than WORDS_WHY words is repaired once and then
+    dropped.
     """
     text, origin = source_text(item, max_chars=max_chars)
     if origin == "title only":
         return {
             "summary": "No text could be retrieved for this item; see the link.",
+            "why_it_matters": "",
             "origin": origin,
             "guard": "skipped",
         }
@@ -364,18 +461,34 @@ def summarise_item(
             failures.append(
                 f"call failed: {type(exc).__name__}: {str(exc)[:160]}"
             )
-        candidate = parse_summary(raw) if raw else None
-        if candidate is None:
+        parsed = parse_item_summary(raw) if raw else None
+        if parsed is None:
             if raw:
                 failures.append("reply was not usable JSON")
             continue
-        missing = unsupported_numbers(candidate, guard_text)
+        candidate, why = parsed
+        missing = sorted(
+            set(unsupported_numbers(candidate, guard_text))
+            | set(unsupported_numbers(why, guard_text))
+        )
         words = word_count(candidate)
         limit = WORDS_SHORT if short else WORDS_LONG
         over = words if words > limit else 0
+        # An over-long why is a formatting miss, not a bad summary. Clipping
+        # it keeps the reply; treating it as a failure discarded a good
+        # summary and paid for a retry, the same data loss the missing-why
+        # tolerance removed for absence.
+        why = _clip_words(why, WORDS_WHY)
+        why_over = 0
+        # A missing why-line is tolerated, not a failed reply. The binding
+        # brief says the parser must accept a single-field reply; rejecting it
+        # discarded a good summary, doubled the model calls and turned a whole
+        # week extractive whenever the provider dropped the optional field.
+        why_missing = not why.strip()
         if not missing and not over:
             return {
                 "summary": _finish(candidate, origin),
+                "why_it_matters": why,
                 "origin": origin,
                 "guard": "passed" if attempt == 0 else "repaired",
             }
@@ -388,17 +501,20 @@ def summarise_item(
             max_chars=max_chars,
             rejected_numbers=missing,
             over_words=over,
+            over_why_words=why_over,
+            missing_why=why_missing,
         )
 
     detail = list(failures)
     if rejected:
         detail.append("numbers not in text: " + ", ".join(rejected))
     if short:
-        fallback = extractive_summary(text, max_chars=240, max_sentences=1)
+        fallback = extractive_summary(text, max_chars=180, max_sentences=1)
     else:
         fallback = extractive_summary(text)
     return {
         "summary": _finish(fallback, origin),
+        "why_it_matters": "",
         "origin": origin,
         "guard": "extractive",
         "rejected": rejected,
@@ -435,15 +551,13 @@ def summarise_items(
 # ---------------------------------------------------------------------------
 
 def fallback_trend(picks: Iterable[dict]) -> str:
-    """Deterministic opening made from the picks' own first sentences."""
-    sentences = []
-    for pick in list(picks)[:3]:
-        parts = _sentences(pick.get("summary") or "")
-        if parts:
-            sentences.append(parts[0])
-    if not sentences:
-        return "This week's shortlist is listed below."
-    return " ".join(sentences)
+    """No trend without the model.
+
+    The old fallback pasted the picks' first sentences together, which read as
+    a paragraph the model had not written. An empty string means "no trend";
+    the report leaves the section out instead of faking one.
+    """
+    return ""
 
 
 def summarise_trend(
@@ -452,7 +566,12 @@ def summarise_trend(
     *,
     attempts: int = 2,
 ) -> dict:
-    """The opening paragraph, guarded against invented numbers."""
+    """The opening paragraph, guarded against invented numbers.
+
+    Returns {"trend": ..., "guard": ...}. A model that fails twice, or cannot
+    be reached, yields {"trend": "", "guard": "omitted"}: the report then has
+    no trend section rather than a paragraph nobody wrote.
+    """
     picks = list(picks)
     material = "\n".join(
         f"- {pick.get('title') or ''} ({pick.get('source') or ''}): {pick.get('summary') or ''}"
@@ -478,12 +597,32 @@ def summarise_trend(
                 "ITEMS: " + ", ".join(missing) + ". Remove them or correct them."
             )
 
-    return {"trend": fallback_trend(picks), "guard": "extractive"}
+    return {"trend": "", "guard": "omitted"}
 
 
 # ---------------------------------------------------------------------------
 # deterministic structure
 # ---------------------------------------------------------------------------
+
+def _score_of(item: dict) -> Optional[float]:
+    """The item's score, or None when it has none.
+
+    A missing score is never above a floor: an unscored item does not get a
+    section because nothing ranked it.
+    """
+    value = item.get("score")
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clears(item: dict, floor: float) -> bool:
+    value = _score_of(item)
+    return value is not None and value >= floor
+
 
 def compose_sections(
     items: Iterable[dict],
@@ -492,36 +631,65 @@ def compose_sections(
     max_tools: int = 5,
     max_worth: int = 5,
     week_end=None,
+    run_date=None,
+    min_score_top: int = 7,
+    min_score_tools: int = 6,
+    min_score_worth: int = 5,
 ) -> dict:
     """Split the shortlist into the report's three sections.
 
     The split is a rule, not a judgement: the ranking already ordered the
     shortlist, so the first `picks` items inside the week become top picks,
     GitHub items after that become tools, and the rest become worth-a-look.
+
+    The window is fixed for all three sections: `week_bounds(run_date)` by
+    default, or `week_end` (a replay override) with the same seven days
+    counted back from it.
+
+    Each section has a score floor and is never padded: an item below the
+    floor is reported in `dropped_below_floor` instead of being promoted. Only
+    a run where nothing at all clears the top-pick floor is a failure.
     """
     source = [dict(item) for item in items]
     if not source:
         raise CompositionError("no candidate items")
 
     ordered = sort_ranked(source)
-    end = week_end or week_end_for(ordered)
-    if isinstance(end, str):
-        end = date.fromisoformat(end)
-    cutoff = end - timedelta(days=6)
 
-    eligible = [
-        index
-        for index, item in enumerate(ordered)
-        if (day := published_date(item.get("published"))) and cutoff <= day <= end
-    ]
-    if len(eligible) < MIN_PICKS:
+    if week_end is not None:
+        end = _as_date(week_end)
+        if end is None:
+            raise CompositionError(f"week_end is not a usable date: {week_end!r}")
+        start = end - timedelta(days=6)
+    else:
+        start, end = week_bounds(_as_date(run_date))
+
+    def _eligible_for(bounds) -> List[int]:
+        return [
+            index
+            for index, item in enumerate(ordered)
+            if in_week(item.get("published"), bounds)
+        ]
+
+    # The window is deliberately fixed. Deriving it from the data when the
+    # week looks empty is what made consecutive weeks overlap and drift, so a
+    # genuinely empty week is reported as an error rather than re-dated.
+    eligible = _eligible_for((start, end))
+    if not eligible:
         raise CompositionError(
-            f"only {len(eligible)} of {len(ordered)} items fall inside "
-            f"{cutoff}..{end}; the report format needs at least {MIN_PICKS} top picks"
+            f"none of {len(ordered)} items fall inside {start}..{end}"
         )
 
     target = max(MIN_PICKS, min(MAX_PICKS, int(picks)))
-    pick_index = eligible[:target]
+
+    pick_index = [
+        index for index in eligible if _clears(ordered[index], min_score_top)
+    ][:target]
+    if not pick_index:
+        raise CompositionError(
+            f"no eligible item clears the top-pick score floor ({min_score_top}); "
+            f"{len(eligible)} of {len(ordered)} items fall inside {start}..{end}"
+        )
     chosen = set(pick_index)
 
     # Every section obeys the same seven-day window. Selecting tools and
@@ -529,25 +697,48 @@ def compose_sections(
     # report even though it was correctly excluded from the top picks.
     rest = [index for index in eligible if index not in chosen]
     tool_index = [
-        index for index in rest if (ordered[index].get("source") or "").lower() == "github"
+        index
+        for index in rest
+        if (ordered[index].get("source") or "").lower() == "github"
+        and _clears(ordered[index], min_score_tools)
     ][:max_tools]
     in_tools = set(tool_index)
     worth_index = [
-        index for index in rest if index not in in_tools
+        index
+        for index in rest
+        if index not in in_tools and _clears(ordered[index], min_score_worth)
     ][:max_worth]
     in_worth = set(worth_index)
 
+    # An item that missed a section's floor is not a casualty of the caps, and
+    # an item that cleared a floor but lost a cap is not a floor failure.
+    # Both are reported, neither is silently dropped.
+    selected = chosen | in_tools | in_worth
+    below_floor: List[int] = []
+    over_cap: List[int] = []
+    for index in eligible:
+        if index in selected:
+            continue
+        item = ordered[index]
+        # Classify against every floor the item could have entered. A GitHub
+        # item is eligible for worth-a-look too, so counting only the tools
+        # floor labelled a score-5 cap loss as "below floor".
+        floors = [min_score_top, min_score_worth]
+        if (item.get("source") or "").lower() == "github":
+            floors.append(min_score_tools)
+        if any(_clears(item, floor) for floor in floors):
+            over_cap.append(index)
+        else:
+            below_floor.append(index)
+
     return {
-        "week_start": cutoff,
+        "week_start": start,
         "week_end": end,
         "top_picks": [ordered[index] for index in pick_index],
         "tools": [ordered[index] for index in tool_index],
         "worth_a_look": [ordered[index] for index in worth_index],
-        "dropped": [
-            ordered[index]
-            for index in rest
-            if index not in in_tools and index not in in_worth
-        ],
+        "dropped": [ordered[index] for index in over_cap],
+        "dropped_below_floor": [ordered[index] for index in below_floor],
     }
 
 
@@ -611,6 +802,8 @@ def _entry(entry: dict, name_key: str, note_key: str) -> List[str]:
     for key in ("score", "well7_fit"):
         if entry.get(key) is not None:
             out.append(f"    {key}: {int(entry[key])}")
+    if (entry.get("why_it_matters") or "").strip():
+        out.append(f"    why_it_matters: {_q(entry['why_it_matters'])}")
     for key in ("summary_origin", "guard"):
         if entry.get(key):
             out.append(f"    {key}: {_q(entry[key])}")
@@ -618,7 +811,12 @@ def _entry(entry: dict, name_key: str, note_key: str) -> List[str]:
 
 
 def dump_report(report: dict, *, generated_at: str = "") -> str:
-    """Emit source.yaml in the hand-written shape: quoted keys, folded prose."""
+    """Emit source.yaml in the hand-written shape: quoted keys, folded prose.
+
+    The trend block is omitted entirely when there is no trend, so a run whose
+    model failed says so by leaving the section out rather than by writing an
+    empty paragraph.
+    """
     stamp = f" on {generated_at}" if generated_at else ""
     lines = [
         f"# Generated by write_report.py{stamp} - Phase 3.",
@@ -628,11 +826,21 @@ def dump_report(report: dict, *, generated_at: str = "") -> str:
         "",
         f"week_start: {_iso(report['week_start'])}",
         f"week_end: {_iso(report['week_end'])}",
-        "",
-        "trend: >-",
-        _fold(report.get("trend") or ""),
-        "",
     ]
+    if report.get("week_mode"):
+        lines.append(f"week_mode: {_q(report['week_mode'])}")
+    floor = report.get("dropped_below_floor")
+    if isinstance(floor, bool):
+        floor = None
+    if isinstance(floor, int):
+        lines.append(f"dropped_below_floor: {floor}")
+    elif isinstance(floor, (list, tuple)):
+        # A count, never the items: report_build casts this to int.
+        lines.append(f"dropped_below_floor: {len(floor)}")
+    trend = (report.get("trend") or "").strip()
+    if trend:
+        lines.extend(["", "trend: >-", _fold(trend)])
+    lines.append("")
 
     sections = (
         ("top_picks", "title", "summary"),

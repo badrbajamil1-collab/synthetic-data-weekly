@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-234%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-339%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
@@ -38,10 +38,10 @@ This is where each phase stood on 2026-11-07.
 
 | Phase | Brief deliverable | Status | Evidence |
 |---|---|---|---|
-| **0 — Understand the topic** | Manual report, 15–20 sources, 10–15 keywords | ✅ Done, two recorded blemishes | `progress/phase-0-manual/`, `docs/sources.md` (18 sources), `config.yaml` → `keywords` (12 terms) |
-| **1 — Collectors** | A script that prints every raw item this week | ✅ Done | `python main.py`; 6 collectors over 18 sources, 7-day window; `progress/week-2026-11-01/run_log.json` (223 found, 222 kept, 0 source errors) |
-| **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned twice | `rank_items.py` → `ranked.json`; before/after comparison in `docs/one-page-note.md`; URL normalisation and `history.db` |
-| **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (22 structural checks) |
+| **0 — Understand the topic** | Manual report, 15–20 sources, 10–15 keywords | ✅ Done, two recorded blemishes | `progress/phase-0-manual/`, `docs/sources.md` (18 sources), `config.yaml` → `keywords` (22 terms) |
+| **1 — Collectors** | A script that prints every raw item this week | ✅ Done | `python main.py`; 6 collectors over 18 sources, one fixed Sunday–Saturday week (`src/synthetic_data/week.py`); `progress/week-2026-11-01/run_log.json` (223 found, 222 kept, 0 source errors) |
+| **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned three times | `rank_items.py` → `ranked.json`; keyword prefilter, one comparative editor pass, structured JSON output; URL normalisation, primary-source dedupe and `history.db` |
+| **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (structural checks plus the 2026-11-11 schema gates) |
 | **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
 | **5 — Email and schedule** | You receive a correct test email | ⚠️ Code complete, **not proven** | send path and a dry-run `email.eml` exist; `SyntheticDataWeekly` is registered in dry-run mode; the `.env` SMTP block is empty |
 | **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⛔ Not started | blocked on Phase 5; then `schedule_task.py --register --send` and two watched weeks |
@@ -230,17 +230,18 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 | Key | Meaning |
 |---|---|
 | `schedule` | Weekly cadence read by `schedule_task.py` (`Saturday 08:00`). |
-| `lookback_days` | How far back an item may be published. Default 7. Read by every collector. |
+| `lookback_days` | Fallback span (default 7) when no fixed week is supplied. The pipeline passes the Sunday–Saturday week instead. |
 | `max_top_picks` | Shortlist size. Read by `fetch_candidates.py` and `rank_items.py`. |
-| `ranking.*` | Model, batch size, concurrency, thresholds and cache toggle for Phase 2. |
-| `summarising.*` | Model, picks, tool/worth caps, text window and token budget for Phase 3. |
+| `ranking.*` | Model, batch size, concurrency, thresholds, cache toggle, `prefilter`, `editor_pass_size` and `min_scored_to_proceed` for Phase 2. |
+| `summarising.*` | Model, picks, tool/worth caps, text window, token budget and `min_score_top` / `min_score_tools` / `min_score_worth` score floors for Phase 3. |
 | `recipients` | Who the report goes to. Read by `emailer.deliver`. |
-| `keywords` | The Phase 0 vocabulary, for reference. Collectors search each source's own `queries` / `tags` / `subreddits`. |
-| `sources.*` | Per-source queries, subreddits, feeds and result caps. |
+| `keywords` | **Read** by the cheap ranking prefilter (`rank.prefilter_indices`), not just documentation. Collectors still use each source's own `queries` / `tags` / `subreddits`. |
+| `sources.*` | Per-source queries, subreddits, feeds, result caps, `retry_attempts` and `github.include_releases`. |
 
 Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in.
-`.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the SMTP credential set.
-The SMTP keys are still empty placeholders, which is why no real email has been sent.
+`.env` is git-ignored and holds `OPENROUTER_API_KEY` (or `LLM_API_KEY`, the name the
+GitHub Actions workflow exports) plus the SMTP credential set. The SMTP keys are
+still empty placeholders, which is why no real email has been sent.
 
 ## Outputs
 

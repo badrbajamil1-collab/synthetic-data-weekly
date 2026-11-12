@@ -8,6 +8,20 @@ Reads raw_items.json, writes ranked.json (git-ignored) and merges a `ranking`
 block into raw_run_log.json.
 
 Exit codes: 0 success or partial (some items unscored), 1 nothing usable.
+
+The order of the steps is the contract:
+
+    keyword gate -> batch scoring -> editor pass -> well7 diversification
+    -> duplicate grouping -> sort -> ranked.json
+
+* The keyword gate spends no model request on an item that matches none of
+  the configured phrases. Those rows carry score 1 and `score_status`
+  "prefiltered" so they can never take a shortlist slot.
+* The editor pass re-scores the top N on one scale, because batch scores are
+  not comparable across calls.
+* The cache is written AFTER the editor pass and BEFORE duplicate grouping, so
+  a rerun over the same week reproduces the previous output byte for byte and
+  a demoted duplicate score is never stored.
 """
 
 import argparse
@@ -23,6 +37,8 @@ from synthetic_data.links import normalize_url
 
 TOKENS_PER_ROW = 45
 PROMPT_HEADROOM = 200
+PREFILTER_REASON = "prefiltered: no keyword match"
+DEFAULT_EDITOR_SIZE = 20
 
 
 def parse_args(argv=None):
@@ -43,21 +59,52 @@ def cache_key(item, model):
 
 
 def load_cache(path, model):
+    """Return (scores, editor_applied, editor_size).
+
+    `editor_applied` says whether the cached scores already went through the
+    comparative editor pass. Without it a failed editor call would be frozen
+    into the cache and never retried.
+    """
     file = Path(path)
     if not file.exists():
-        return {}
+        return {}, False, 0
     try:
         data = json.loads(file.read_text(encoding="utf-8"))
     except (ValueError, OSError):
-        return {}
+        return {}, False, 0
+    if not isinstance(data, dict):
+        return {}, False, 0
     if data.get("model") != model or data.get("rubric") != rank.RUBRIC_VERSION:
-        return {}
+        return {}, False, 0
     scores = data.get("scores")
-    return scores if isinstance(scores, dict) else {}
+    if not isinstance(scores, dict):
+        scores = {}
+    # A failed model call is not a score. Serving "unscored" entries back from
+    # the cache would exclude those items from `pending` forever, so one bad
+    # run could brick the week until the cache file was deleted.
+    scores = {
+        key: entry
+        for key, entry in scores.items()
+        if isinstance(entry, dict)
+        and (entry.get("score_status") or "scored") != "unscored"
+    }
+    editor = data.get("editor")
+    if not isinstance(editor, dict):
+        editor = {}
+    try:
+        editor_size = int(editor.get("size") or 0)
+    except (TypeError, ValueError):
+        editor_size = 0
+    return scores, bool(editor.get("applied")), editor_size
 
 
-def save_cache(path, model, scores):
-    payload = {"model": model, "rubric": rank.RUBRIC_VERSION, "scores": scores}
+def save_cache(path, model, scores, editor_applied, editor_size):
+    payload = {
+        "model": model,
+        "rubric": rank.RUBRIC_VERSION,
+        "scores": scores,
+        "editor": {"applied": bool(editor_applied), "size": int(editor_size)},
+    }
     Path(path).write_text(json.dumps(payload, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
@@ -91,6 +138,10 @@ def main(argv=None):
     batch_size = int(ranking.get("batch_size", 15))
     concurrency = int(ranking.get("concurrency", 3))
     max_tokens = int(ranking.get("max_tokens", 2000))
+    # 0 is a real value here ("disable the editor pass"), not "unset"; the
+    # `or` form silently restored the default.
+    _editor_size = ranking.get("editor_pass_size")
+    editor_size = DEFAULT_EDITOR_SIZE if _editor_size is None else int(_editor_size)
 
     if not model:
         print("FAIL  config.yaml has no ranking.model", file=sys.stderr)
@@ -119,38 +170,74 @@ def main(argv=None):
     if args.limit and args.limit > 0:
         items = items[: args.limit]
 
-    env = llm.load_env()
     try:
-        api_key = llm.require(env, "OPENROUTER_API_KEY")
+        api_key = llm.require_api_key(llm.load_env())
     except llm.LLMError as exc:
         print(f"FAIL  {exc}", file=sys.stderr)
         return 1
 
-    cache = {} if args.no_cache or not ranking.get("cache", True) else load_cache(args.cache, model)
-    keys = [cache_key(item, model) for item in items]
-    cached = {i: cache[key] for i, key in enumerate(keys) if key in cache}
-    pending = [i for i in range(len(items)) if i not in cached]
+    # The keyword gate. An item that matches none of the configured phrases is
+    # noise for this report; it is scored 1 without spending a model request.
+    skip = set()
+    if ranking.get("prefilter"):
+        skip = rank.prefilter_indices(items, config.get("keywords") or [])
 
-    stats = {"calls": 0, "retries": 0}
+    use_cache = bool(ranking.get("cache", True)) and not args.no_cache
+    if use_cache:
+        scores_cache, editor_applied, cached_editor_size = load_cache(args.cache, model)
+    else:
+        scores_cache, editor_applied, cached_editor_size = {}, False, 0
+
+    keys = [cache_key(item, model) for item in items]
+    # One cache slot per key. Two items can normalise to the same URL (arXiv
+    # v1 and v2 of one paper), and one slot cannot hold two scores, so those
+    # items are scored fresh on every run instead of sharing a score. The
+    # collector's dedupe normally removes such a pair before it gets here.
+    key_counts = {}
+    for key in keys:
+        key_counts[key] = key_counts.get(key, 0) + 1
+    shared = {key for key, count in key_counts.items() if count > 1}
+
+    cached = {}
+    for index, key in enumerate(keys):
+        if index in skip:
+            continue  # the gate decides; a stale cache entry must not revive it
+        if key in shared:
+            continue
+        if key in scores_cache:
+            cached[index] = scores_cache[key]
+    pending = [i for i in range(len(items)) if i not in cached and i not in skip]
+
+    stats = {"calls": 0, "retries": 0, "failed_calls": 0}
 
     def chat_fn(messages):
-        content, retries = llm.chat(
-            messages,
-            api_key=api_key,
-            base_url=base_url,
-            model=model,
-            temperature=float(ranking.get("temperature", 0.0)),
-            max_tokens=max_tokens,
-            reasoning_effort=ranking.get("reasoning_effort", "low"),
-            timeout=float(ranking.get("timeout_seconds", 180)),
-            attempts=int(ranking.get("max_attempts", 4)),
-        )
         stats["calls"] += 1
+        try:
+            content, retries = llm.chat(
+                messages,
+                api_key=api_key,
+                base_url=base_url,
+                model=model,
+                temperature=float(ranking.get("temperature", 0.0)),
+                max_tokens=max_tokens,
+                reasoning_effort=ranking.get("reasoning_effort", "low"),
+                json_mode=True,
+                timeout=float(ranking.get("timeout_seconds", 180)),
+                attempts=int(ranking.get("max_attempts", 4)),
+            )
+        except Exception:
+            # Counted before the call, so a fully failed run still records
+            # that the model was contacted instead of claiming calls: 0.
+            stats["failed_calls"] += 1
+            raise
         stats["retries"] += retries
         return content
 
     print(f"Ranking {len(items)} items with {model}")
-    print(f"  cached: {len(cached)}   to score: {len(pending)}   batch: {batch_size}   workers: {concurrency}")
+    print(
+        f"  cached: {len(cached)}   to score: {len(pending)}   prefiltered: {len(skip)}   "
+        f"batch: {batch_size}   workers: {concurrency}"
+    )
 
     fresh_rows = []
     if pending:
@@ -167,7 +254,16 @@ def main(argv=None):
     # Input order, one row per item. This is the invariant: nothing vanishes.
     raw_rows = []
     for index, item in enumerate(items):
-        if index in cached:
+        if index in skip:
+            row = dict(item)
+            row["score"] = 1
+            row["well7_fit"] = 1
+            row["reason"] = PREFILTER_REASON
+            row["score_status"] = "prefiltered"
+            row["duplicate_of"] = None
+            row["scored_by"] = model
+            raw_rows.append(row)
+        elif index in cached:
             entry = cached[index]
             row = dict(item)
             row["score"] = int(entry.get("score") or 0)
@@ -176,42 +272,100 @@ def main(argv=None):
             row["score_status"] = entry.get("score_status") or "scored"
             row["duplicate_of"] = None
             row["scored_by"] = model
+            if entry.get("editor_pass"):
+                # The editor marker has to come back with the score, or the
+                # rerun writes a different ranked.json than the first run.
+                row["editor_pass"] = True
             raw_rows.append(row)
         else:
             raw_rows.append(fresh_by_index[index])
 
+    # The editor pass re-scores the top N on one scale, because batch scores
+    # are not comparable between calls. It runs when something was scored, or
+    # when the previous run never completed one - a failed editor call must
+    # not be frozen into the cache. A rerun over a fully cached week therefore
+    # costs no call and reproduces the last run byte for byte.
+    #
+    # Prefiltered rows are not candidates: they never went to the model, so
+    # they are kept out of the editor prompt as well.
+    run_editor = bool(pending) or not editor_applied or cached_editor_size != editor_size
+    editable = [row for index, row in enumerate(raw_rows) if index not in skip]
+    if editor_size <= 0:
+        # The editor pass is switched off: there is nothing to wait for and
+        # nothing to retry next run.
+        editor_done = True
+    elif run_editor and editable:
+        targets = rank.editor_target_indices(editable, editor_size)
+        edited = rank.rerank_top(editable, chat_fn, top_n=editor_size)
+        # Latch only when every row the editor was meant to re-score carries
+        # the marker. `any(...)` let a partial reply look like success and
+        # froze the rest at batch scores; requiring the whole target set also
+        # stops a fully cached top-N from latching False forever, because the
+        # markers were already there before the call.
+        editor_done = bool(targets) and all(
+            edited[index].get("editor_pass") for index in targets
+        )
+        editable = edited
+    else:
+        editor_done = editor_applied and cached_editor_size == editor_size
+
+    editable = rank.diversify_well7_fit(editable)
+
+    # Back to input order. rerank_top and diversify_well7_fit both keep the
+    # order of the rows they were handed, so the two lists line up.
+    final_rows = []
+    editable_iter = iter(editable)
+    for index, row in enumerate(raw_rows):
+        final_rows.append(row if index in skip else next(editable_iter))
+
     # Cache BEFORE grouping: a demoted duplicate score must not be stored, or
-    # every rerun would subtract the penalty again.
+    # every rerun would subtract the penalty again. The cache holds the
+    # post-editor scores, so a rerun reproduces them without another call.
     new_cache = {}
     for index, key in enumerate(keys):
-        row = raw_rows[index]
+        if index in skip:
+            continue  # the gate is recomputed every run; never freeze its verdict
+        if key in shared:
+            continue  # one slot, two rows: never let them overwrite each other
+        row = final_rows[index]
+        if (row.get("score_status") or "unscored") != "scored":
+            # Never freeze a failure: the next run must retry this item.
+            continue
         new_cache[key] = {
             "score": row.get("score", 0),
             "well7_fit": row.get("well7_fit"),
             "reason": row.get("reason", ""),
             "score_status": row.get("score_status", "unscored"),
+            "editor_pass": bool(row.get("editor_pass")),
         }
-    if ranking.get("cache", True) and not args.no_cache:
-        save_cache(args.cache, model, new_cache)
+    if use_cache and not args.limit:
+        # A --limit smoke test must not evict the other entries.
+        save_cache(args.cache, model, new_cache, editor_done, editor_size)
 
-    rows = rank.group_duplicates(raw_rows, threshold=float(ranking.get("duplicate_similarity", 0.80)))
+    rows = rank.group_duplicates(
+        final_rows, threshold=float(ranking.get("duplicate_similarity", 0.80))
+    )
     rows = rank.sort_ranked(rows)
 
     Path(args.out).write_text(json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8")
 
     scored = sum(1 for row in rows if row.get("score_status") == "scored")
-    unscored = len(rows) - scored
+    prefiltered = sum(1 for row in rows if row.get("score_status") == "prefiltered")
+    unscored = len(rows) - scored - prefiltered
     duplicates = sum(1 for row in rows if row.get("duplicate_of"))
 
     block = {
         "model": model,
         "items_in": len(rows),
         "scored": scored,
+        "prefiltered": prefiltered,
         "unscored": unscored,
         "duplicates_collapsed": duplicates,
         "calls": stats["calls"],
         "retries": stats["retries"],
+        "failed_calls": stats["failed_calls"],
         "cached": len(cached),
+        "editor_pass": bool(editor_done),
     }
     merge_run_log("raw_run_log.json", block)
 
@@ -227,21 +381,34 @@ def main(argv=None):
         print(f"    {row.get('url')}")
 
     print(
-        f"\nscored {scored}/{len(rows)}  unscored {unscored}  "
-        f"duplicates collapsed {duplicates}  calls {stats['calls']}  retries {stats['retries']}"
+        f"\nscored {scored}/{len(rows)}  unscored {unscored}  prefiltered {prefiltered}  "
+        f"duplicates collapsed {duplicates}  calls {stats['calls']}  "
+        f"failed {stats['failed_calls']}  retries {stats['retries']}"
     )
     print(f"wrote {args.out}")
 
-    ratio = unscored / len(rows)
+    # The failure rate is over the items that were actually sent to the model:
+    # a deliberately prefiltered item is not a failure.
+    attempted = scored + unscored
+    ratio = (unscored / attempted) if attempted else 0.0
     if ratio > float(ranking.get("max_unscored_ratio", 0.10)):
         print(
-            f"\nWARNING  {ratio:.0%} of items are unscored "
+            f"\nWARNING  {ratio:.0%} of the scored items are unscored "
             f"(threshold {float(ranking.get('max_unscored_ratio', 0.10)):.0%}). "
             "The report will be thin this week."
         )
 
     if scored == 0:
-        print("FAIL  no item could be scored; the model is unavailable or rejecting the prompt.", file=sys.stderr)
+        if prefiltered:
+            print(
+                f"FAIL  every item was prefiltered ({prefiltered}); nothing was left to rank.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "FAIL  no item could be scored; the model is unavailable or rejecting the prompt.",
+                file=sys.stderr,
+            )
         return 1
     return 0
 

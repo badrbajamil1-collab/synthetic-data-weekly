@@ -69,6 +69,22 @@ def require(env: Dict[str, str], name: str) -> str:
     return value
 
 
+def require_api_key(
+    env: Dict[str, str],
+    names: tuple = ("OPENROUTER_API_KEY", "LLM_API_KEY"),
+) -> str:
+    """Return the first non-empty API key from `names`, or raise LLMError."""
+    for name in names:
+        value = (env.get(name) or "").strip()
+        if value:
+            return value
+    accepted = ", ".join(names)
+    raise LLMError(
+        f"None of {accepted} is set. Put it in .env (git-ignored) or export it. "
+        "See .env.example for the shape."
+    )
+
+
 def chat(
     messages: List[dict],
     *,
@@ -78,11 +94,12 @@ def chat(
     temperature: float = 0.0,
     max_tokens: int = 2000,
     reasoning_effort: str = "low",
+    json_mode: bool = False,
     timeout: float = 180.0,
     attempts: int = 4,
     client: Optional[httpx.Client] = None,
     sleep: Callable[[float], None] = time.sleep,
-) -> tuple:
+) -> tuple[str, int]:
     """POST to {base_url}/chat/completions.
 
     Returns (content, retries_used). Retries 429/5xx and network errors with
@@ -93,9 +110,9 @@ def chat(
     its whole budget on hidden reasoning, so another identical call just repeats
     the loss.
 
-    If the provider rejects the `reasoning` field with a 400, the call is retried
-    once without it, so switching to a provider that lacks the parameter needs no
-    code change.
+    If the provider rejects `response_format` or `reasoning` with a 400, the call
+    is retried without the offending field, so switching to a provider that lacks
+    the parameter needs no code change.
     """
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {
@@ -104,7 +121,7 @@ def chat(
         "HTTP-Referer": "https://github.com/badrfaez1/Testing",
         "X-Title": APP_TITLE,
     }
-    payload = {
+    payload: Dict[str, object] = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
@@ -112,11 +129,16 @@ def chat(
     }
     if reasoning_effort:
         payload["reasoning"] = {"effort": reasoning_effort, "exclude": True}
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
 
     retries = 0
     last_error = ""
 
-    for attempt in range(attempts):
+    # Two extra iterations cover the two possible 400-field strips below
+    # (response_format, then reasoning). Those retries are free: they must not
+    # consume the caller's transport-retry budget.
+    for attempt in range(attempts + 2):
         try:
             if client is not None:
                 response = client.post(url, headers=headers, json=payload, timeout=timeout)
@@ -144,12 +166,18 @@ def chat(
                 )
             return content, retries
 
-        # A provider that does not accept `reasoning` answers 400. Drop the field
-        # and try once more rather than failing the whole run.
-        if response.status_code == 400 and "reasoning" in payload:
-            payload.pop("reasoning", None)
-            retries += 1
-            continue
+        # A provider that does not accept `response_format` or `reasoning` answers 400.
+        # Drop `response_format` first, then `reasoning`, and try once more.
+        if response.status_code == 400:
+            last_error = f"HTTP 400: {response.text[:160]}"
+            if "response_format" in payload:
+                payload.pop("response_format", None)
+                retries += 1
+                continue
+            if "reasoning" in payload:
+                payload.pop("reasoning", None)
+                retries += 1
+                continue
 
         if response.status_code in RETRY_STATUSES and attempt < attempts - 1:
             last_error = f"HTTP {response.status_code}: {response.text[:160]}"

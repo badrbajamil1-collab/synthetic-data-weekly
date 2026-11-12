@@ -25,8 +25,10 @@ ranking:
   max_attempts: 2
   # Above this share of unscored items the run still writes output but warns.
   max_unscored_ratio: 0.10
-  # fetch_candidates.py refuses to build a shortlist below this.
-  min_scored_to_proceed: 5
+  # fetch_candidates.py refuses to build a shortlist below this. Score floors
+  # can legitimately leave a quiet week with only a few qualifying items, and
+  # "fewer items is fine" now applies to the shortlist too.
+  min_scored_to_proceed: 1
   # Title-token Jaccard at or above this is the same story (brief: "group items
   # with similar titles; keep the original source").
   duplicate_similarity: 0.80
@@ -36,6 +38,12 @@ ranking:
   # alone. The ranker still sees a repo's stars and creation date in the
   # prompt and discounts old low-star repos itself. 0 disables the cap.
   github_share_cap: 3
+  # Cheap keyword gate before any model call. Obvious noise is scored 1 without
+  # spending a free-tier request. `keywords` below is the vocabulary.
+  prefilter: true
+  # Batch scores are not comparable across calls. One final comparative call
+  # re-scores the top N together so the shortlist has a single scale.
+  editor_pass_size: 20
 
 # Phase 3 — summarising. The model writes prose only; the section split is a
 # rule in summarise.py. `picks` is the target number of top picks and must stay
@@ -56,6 +64,12 @@ summarising:
   picks: 6
   max_tools: 5
   max_worth_a_look: 5
+  # Minimum score for each section. Sections are never padded to a count: if
+  # fewer items clear the floor, the section is shorter. verify_report.py
+  # checks the floor instead of demanding five picks.
+  min_score_top: 7
+  min_score_tools: 6
+  min_score_worth: 5
   # Characters of full text sent per item. The Microsoft item has ~21k; the
   # opening 6k is what a 2-3 sentence summary actually needs.
   max_text_chars: 6000
@@ -68,7 +82,9 @@ recipients:
   - mohammed.abdo@awqef.sa
   - umairafzal92786@gmail.com
 
-# Core search terms tuned for enterprise & Well7 priorities
+# Core search terms tuned for enterprise & Well7 priorities. These are READ now:
+# rank.prefilter_indices uses them as the cheap keyword gate before any model
+# call, so an item must match at least one phrase to be worth scoring.
 keywords:
   - "synthetic data"
   - "tabular data synthesis"
@@ -82,6 +98,19 @@ keywords:
   - "synthetic training data"
   - "synthetic dataset"
   - "data synthesizer"
+  # Shorter phrases: a genuinely relevant item often omits the word
+  # "synthetic" (DP-SGD, membership inference, tabular generation). Without
+  # these the gate dropped Well7-relevant work while keeping noise.
+  - "differential privacy"
+  - "membership inference"
+  - "privacy attack"
+  - "tabular data"
+  - "data synthesis"
+  - "time series"
+  - "federated learning"
+  - "privacy preserving"
+  - "anonymeter"
+  - "dp-sgd"
 
 # Data ingestion sources (Phase 1)
 sources:
@@ -94,6 +123,7 @@ sources:
       - '"tabular synthesis"'
       - '"differential privacy" AND synthetic'
     max_results: 25
+    retry_attempts: 3
 
   google_news:
     queries:
@@ -103,6 +133,7 @@ sources:
     gl: "US"
     ceid: "US:en"
     max_results: 20
+    retry_attempts: 3
 
   reddit:
     subreddits:
@@ -119,6 +150,7 @@ sources:
       - "synthetic dataset"
       - "data augmentation"
     max_results: 15
+    retry_attempts: 3
 
   github:
     queries:
@@ -127,10 +159,15 @@ sources:
       - "differential-privacy"
       - "data-augmentation"
     max_results: 15
+    retry_attempts: 3
+    # A repo created before the week is only news when it published a release
+    # inside it. Without this, `pushed:` made 2021 repos look brand new.
+    include_releases: true
 
   # Research / vendor / industry blogs, read with feedparser
   blogs:
     max_per_feed: 15
+    retry_attempts: 2
     feeds:
       - name: "OpenAI"
         url: "https://openai.com/news/rss.xml"

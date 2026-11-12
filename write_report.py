@@ -9,6 +9,11 @@ fetch_candidates.py, splits the shortlist into the report's three sections by a
 rule (not by asking a model to count), writes summaries whose numbers are
 checked against the source text, and hands a valid source.yaml to report_build.py.
 
+The report covers one fixed Sunday-Saturday week: the week the run date falls
+in, or the week named by --week-end when a past week is replayed. Each section
+has a score floor and is never padded, so a quiet week produces a short report
+rather than a padded one.
+
 A summary cache keyed by URL + model + prompt version + text hash makes a rerun
 free and byte-identical, the same bargain score_cache.json makes in Phase 2.
 
@@ -24,7 +29,7 @@ import hashlib
 import json
 import sys
 import threading
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -105,6 +110,7 @@ def pick_entry(item: dict, result: dict) -> dict:
         "source": summarise.source_label(item),
         "published": summarise.published_date(item.get("published")),
         "summary": result["summary"],
+        "why_it_matters": result.get("why_it_matters") or "",
         "score": item.get("score"),
         "well7_fit": item.get("well7_fit"),
         "summary_origin": result["origin"],
@@ -121,6 +127,7 @@ def tool_entry(item: dict, result: dict) -> dict:
         "source": summarise.source_label(item),
         "published": summarise.published_date(item.get("published")),
         "note": result["summary"],
+        "why_it_matters": result.get("why_it_matters") or "",
         "score": item.get("score"),
         "well7_fit": item.get("well7_fit"),
         "summary_origin": result["origin"],
@@ -137,6 +144,7 @@ def worth_entry(item: dict, result: dict) -> dict:
         "source": summarise.source_label(item),
         "published": summarise.published_date(item.get("published")),
         "note": result["summary"],
+        "why_it_matters": result.get("why_it_matters") or "",
         "score": item.get("score"),
         "well7_fit": item.get("well7_fit"),
         "summary_origin": result["origin"],
@@ -147,7 +155,11 @@ def worth_entry(item: dict, result: dict) -> dict:
 
 
 def summarise_section(items, chat_fn, cache, *, model, one_line, cache_config) -> list:
-    """Cache hits first, then one model call per miss, merged back in order."""
+    """Cache hits first, then one model call per miss, merged back in order.
+
+    The cached value is the whole result dict, so a cached entry still carries
+    its `why_it_matters` line.
+    """
     results = {}
     pending = []
     keys = [cache_key(item, model, one_line) for item in items]
@@ -212,6 +224,11 @@ def main(argv=None) -> int:
             print("FAIL  --week-end must be YYYY-MM-DD", file=sys.stderr)
             return 1
 
+    # One fixed week for the whole report: the Sunday-Saturday week the run
+    # date falls in. --week-end replays a past week instead. Local date, matching
+    # graph.py's week_bounds() so the CLI and pipeline never disagree by a day
+    # around midnight (the scheduled task runs at 08:00 local).
+    run_date = date.today()
     try:
         sections = summarise.compose_sections(
             items,
@@ -219,6 +236,10 @@ def main(argv=None) -> int:
             max_tools=int(settings.get("max_tools", 5)),
             max_worth=int(settings.get("max_worth_a_look", 5)),
             week_end=week_end,
+            run_date=run_date,
+            min_score_top=int(settings.get("min_score_top", 7)),
+            min_score_tools=int(settings.get("min_score_tools", 6)),
+            min_score_worth=int(settings.get("min_score_worth", 5)),
         )
     except summarise.CompositionError as exc:
         print(f"FAIL  {exc}", file=sys.stderr)
@@ -234,7 +255,7 @@ def main(argv=None) -> int:
     else:
         env = llm.load_env()
         try:
-            api_key = llm.require(env, "OPENROUTER_API_KEY")
+            api_key = llm.require_api_key(env)
         except llm.LLMError as exc:
             print(f"FAIL  {exc}", file=sys.stderr)
             return 1
@@ -252,6 +273,7 @@ def main(argv=None) -> int:
                 temperature=float(settings.get("temperature", 0.2)),
                 max_tokens=int(settings.get("max_tokens", 2000)),
                 reasoning_effort=settings.get("reasoning_effort", "low"),
+                json_mode=True,
                 timeout=float(settings.get("timeout_seconds", 180)),
                 attempts=int(settings.get("max_attempts", 4)),
             )
@@ -286,6 +308,11 @@ def main(argv=None) -> int:
     report = {
         "week_start": sections["week_start"],
         "week_end": sections["week_end"],
+        # "replay" when --week-end named the week, "run_date" otherwise.
+        # report_build records it and verify_report only demands the
+        # Sunday-Saturday shape of a run-date week.
+        "week_mode": "replay" if week_end else "run_date",
+        "dropped_below_floor": len(sections.get("dropped_below_floor") or []),
         "top_picks": [
             pick_entry(item, result)
             for item, result in zip(sections["top_picks"], pick_results)
@@ -300,13 +327,10 @@ def main(argv=None) -> int:
         ],
     }
 
-    if not offline:
-        trend = summarise.summarise_trend(report["top_picks"], chat_fn)
-    else:
-        trend = {
-            "trend": summarise.fallback_trend(report["top_picks"]),
-            "guard": "extractive",
-        }
+    # The trend comes from the model or it is left out. Offline, the raising
+    # chat_fn makes summarise_trend omit it and flag the omission, so the
+    # report never carries a paragraph nobody wrote.
+    trend = summarise.summarise_trend(report["top_picks"], chat_fn)
     report["trend"] = trend["trend"]
 
     generated = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -317,10 +341,17 @@ def main(argv=None) -> int:
         f"  picks: {len(report['top_picks'])}   tools: {len(report['tools'])}"
         f"   worth a look: {len(report['worth_a_look'])}"
         f"   dropped: {len(sections['dropped'])}"
+        f"   below floor: {report['dropped_below_floor']}"
     )
     if sections["dropped"]:
         for item in sections["dropped"]:
             print(f"    dropped  {item.get('title', '')[:70]}")
+    if sections.get("dropped_below_floor"):
+        for item in sections["dropped_below_floor"]:
+            print(
+                f"    below floor  {item.get('title', '')[:60]}"
+                f"  (score {item.get('score')})"
+            )
 
     print()
     for label, entries in (
@@ -339,7 +370,10 @@ def main(argv=None) -> int:
             print(f"  [{guard:<10}] [{origin:<12}] {entry.get('title') or entry.get('name')}{suffix}")
         print()
 
-    print(f"Trend guard: {trend['guard']}")
+    if trend["guard"] == "omitted" or not (report.get("trend") or "").strip():
+        print("Trend guard: omitted — trend section left out")
+    else:
+        print(f"Trend guard: {trend['guard']}")
     guards = [e["guard"] for e in report["top_picks"] + report["tools"] + report["worth_a_look"]]
     counts = {name: guards.count(name) for name in sorted(set(guards))}
     print(f"Summary guards: {counts}")

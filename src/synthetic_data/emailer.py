@@ -24,7 +24,7 @@ from email import policy
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence
 
 import yaml
 
@@ -204,6 +204,23 @@ def _update_run_log(out_dir: Path, summary: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+def published_links(report: dict, out_dir) -> List[Dict[str, str]]:
+    """Links that actually appear in the published artefacts.
+
+    ``report_build.py`` drops dead links from the report it renders but leaves
+    the curated ``source.yaml`` alone, so recording every link from the YAML
+    would mark a link as sent that was never emailed. The rendered markdown is
+    the published document, and the verifier guarantees every surviving link
+    is in it.
+    """
+    links = render.render_all_links(report)
+    markdown = Path(out_dir) / "report.md"
+    if not markdown.exists():
+        return links
+    text = markdown.read_text(encoding="utf-8")
+    return [link for link in links if link["url"] in text]
+
+
 def deliver(
     report_path,
     config_path: str = "config.yaml",
@@ -253,7 +270,7 @@ def deliver(
         summary["sent"] = True
         if record and not test:
             summary["urls_recorded"] = memory.mark_sent(
-                [(link["url"], link["label"], "") for link in render.render_all_links(report)],
+                [(link["url"], link["label"], "") for link in published_links(report, out_dir)],
                 db_path=db_path or memory.DB_PATH,
             )
 

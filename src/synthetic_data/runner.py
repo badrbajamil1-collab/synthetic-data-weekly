@@ -6,6 +6,7 @@ No LLM, no ranking, no email yet - this is the deliverable
 
 import json
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -14,6 +15,7 @@ import yaml
 from synthetic_data import collectors, memory
 from synthetic_data.links import normalize_url
 from synthetic_data.models import Item
+from synthetic_data.week import week_bounds
 
 SOURCE_ORDER = ["arxiv", "news", "blog", "reddit", "hn", "github"]
 
@@ -25,6 +27,11 @@ SOURCE_LABELS = {
     "hn": "Hacker News",
     "github": "GitHub repositories",
 }
+
+# A primary source is where the thing was published; Hacker News and Reddit
+# are discussions of it. For the same URL the primary copy is the better
+# report candidate even when the discussion is newer.
+PRIMARY_SOURCES = frozenset({"arxiv", "github", "blog", "news"})
 
 CollectorJob = Callable[[List[str]], List[Item]]
 
@@ -46,23 +53,40 @@ class CollectResult:
     already_sent: int = 0
 
 
+def _source_priority(item: Item) -> int:
+    """0 for a primary source, 1 for a secondary one (or an unknown one)."""
+    return 0 if item.source in PRIMARY_SOURCES else 1
+
+
 def dedupe_items(items: List[Item]) -> Tuple[List[Item], int]:
     """Collapse URL variants (tracking params, arXiv versions) into one item.
 
-    Returns the survivors newest-first plus how many were dropped. The kept
-    copy is the newest, because that is usually the canonical or updated one.
+    Within one normalised URL the copy that survives is the primary source -
+    arxiv / github / blog / news - because that is the place the thing was
+    published; a Hacker News or Reddit thread about it is the same story with
+    less information. Two primaries (or two secondaries) collapse to the
+    newest, as before.
+
+    Returns the survivors newest-first plus how many were dropped.
     """
-    seen = set()
+    groups: Dict[str, List[Item]] = {}
+    for item in items:
+        key = normalize_url(item.url) or item.url
+        groups.setdefault(key, []).append(item)
+
     unique: List[Item] = []
     dropped = 0
 
-    for item in sorted(items, key=lambda i: i.published, reverse=True):
-        key = normalize_url(item.url) or item.url
-        if key in seen:
-            dropped += 1
+    for bucket in groups.values():
+        if len(bucket) == 1:
+            unique.append(bucket[0])
             continue
-        seen.add(key)
-        unique.append(item)
+        dropped += len(bucket) - 1
+        ordered = sorted(bucket, key=lambda i: i.published, reverse=True)
+        primary = next((i for i in ordered if _source_priority(i) == 0), None)
+        unique.append(primary if primary is not None else ordered[0])
+
+    unique.sort(key=lambda i: i.published, reverse=True)
 
     return unique, dropped
 
@@ -72,8 +96,16 @@ def load_config(path: str = "config.yaml") -> dict:
         return yaml.safe_load(handle)
 
 
-def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
-    """Map each configured source to a callable that accepts a warnings list."""
+def build_collectors(
+    config: dict,
+    week: Optional[Tuple[date, date]] = None,
+) -> List[Tuple[str, CollectorJob]]:
+    """Map each configured source to a callable that accepts a warnings list.
+
+    ``week`` is the fixed Sunday-Saturday reporting window; every job gets
+    it so all six sources describe the same seven days. With no week the
+    collectors fall back to ``lookback_days``.
+    """
     sources = config.get("sources", {})
     lookback = int(config.get("lookback_days", 7))
     jobs: List[Tuple[str, CollectorJob]] = []
@@ -82,10 +114,12 @@ def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
     if arxiv_cfg:
         jobs.append((
             "arxiv",
-            lambda warn, cfg=arxiv_cfg: collectors.fetch_arxiv(
+            lambda warn, cfg=arxiv_cfg, week=week: collectors.fetch_arxiv(
                 queries=cfg.get("queries") or ['"synthetic data"'],
                 max_results=int(cfg.get("max_results", 25)),
                 lookback_days=lookback,
+                retry_attempts=int(cfg.get("retry_attempts", 3)),
+                week=week,
                 warnings=warn,
             ),
         ))
@@ -94,13 +128,15 @@ def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
     if news_cfg:
         jobs.append((
             "news",
-            lambda warn, cfg=news_cfg: collectors.fetch_google_news(
+            lambda warn, cfg=news_cfg, week=week: collectors.fetch_google_news(
                 queries=cfg.get("queries") or ['"synthetic data" when:7d'],
                 hl=cfg.get("hl", "en-US"),
                 gl=cfg.get("gl", "US"),
                 ceid=cfg.get("ceid", "US:en"),
                 max_results=int(cfg.get("max_results", 20)),
                 lookback_days=lookback,
+                retry_attempts=int(cfg.get("retry_attempts", 3)),
+                week=week,
                 warnings=warn,
             ),
         ))
@@ -109,10 +145,12 @@ def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
     if blog_cfg:
         jobs.append((
             "blog",
-            lambda warn, cfg=blog_cfg: collectors.fetch_blogs(
+            lambda warn, cfg=blog_cfg, week=week: collectors.fetch_blogs(
                 feeds=cfg.get("feeds") or [],
                 max_per_feed=int(cfg.get("max_per_feed", 15)),
                 lookback_days=lookback,
+                retry_attempts=int(cfg.get("retry_attempts", 2)),
+                week=week,
                 warnings=warn,
             ),
         ))
@@ -121,11 +159,12 @@ def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
     if reddit_cfg:
         jobs.append((
             "reddit",
-            lambda warn, cfg=reddit_cfg: collectors.fetch_reddit(
+            lambda warn, cfg=reddit_cfg, week=week: collectors.fetch_reddit(
                 subreddits=cfg.get("subreddits") or ["MachineLearning"],
                 max_per_sub=int(cfg.get("max_per_sub", 25)),
                 lookback_days=lookback,
                 retry_attempts=int(cfg.get("retry_attempts", 4)),
+                week=week,
                 warnings=warn,
             ),
         ))
@@ -134,10 +173,12 @@ def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
     if hn_cfg:
         jobs.append((
             "hn",
-            lambda warn, cfg=hn_cfg: collectors.fetch_hacker_news(
+            lambda warn, cfg=hn_cfg, week=week: collectors.fetch_hacker_news(
                 tags=cfg.get("tags") or ["synthetic data"],
                 max_results=int(cfg.get("max_results", 15)),
                 lookback_days=lookback,
+                retry_attempts=int(cfg.get("retry_attempts", 3)),
+                week=week,
                 warnings=warn,
             ),
         ))
@@ -146,10 +187,13 @@ def build_collectors(config: dict) -> List[Tuple[str, CollectorJob]]:
     if github_cfg:
         jobs.append((
             "github",
-            lambda warn, cfg=github_cfg: collectors.fetch_github_repos(
+            lambda warn, cfg=github_cfg, week=week: collectors.fetch_github_repos(
                 queries=cfg.get("queries") or ["synthetic-data"],
                 max_results=int(cfg.get("max_results", 15)),
                 lookback_days=lookback,
+                retry_attempts=int(cfg.get("retry_attempts", 3)),
+                include_releases=bool(cfg.get("include_releases", False)),
+                week=week,
                 warnings=warn,
             ),
         ))
@@ -161,13 +205,23 @@ def collect_all(
     config: dict,
     only: Optional[List[str]] = None,
     use_history: bool = True,
+    week: Optional[Tuple[date, date]] = None,
 ) -> CollectResult:
+    """Collect every configured source for one fixed week.
+
+    ``week`` defaults to the current Sunday-Saturday reporting week, so a
+    run in the middle of the week and a run on the Saturday describe exactly
+    the same seven days.
+    """
     items: List[Item] = []
     errors: List[str] = []          # fatal: the whole source returned nothing
     warnings: Dict[str, List[str]] = {}  # partial: some feeds/queries failed
     counts: Dict[str, int] = {}
 
-    for name, job in build_collectors(config):
+    if week is None:
+        week = week_bounds()
+
+    for name, job in build_collectors(config, week):
         if only and name not in only:
             continue
         source_warnings: List[str] = []

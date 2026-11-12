@@ -45,10 +45,11 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Restore history and score caches (dedupe + rerun cost)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             history.db
+            history.db.bak
             score_cache.json
             summary_cache.json
           key: weekly-cache-${{ github.run_id }}
@@ -57,6 +58,9 @@ jobs:
 
       - name: Run the weekly pipeline
         env:
+          # One documented secret feeds both accepted key names, so a repo
+          # that only defines LLM_API_KEY cannot silently lose its key.
+          OPENROUTER_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
@@ -70,7 +74,22 @@ jobs:
             python main.py --pipeline --dry-run
           fi
 
+      - name: Save history and score caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            history.db
+            history.db.bak
+            score_cache.json
+            summary_cache.json
+          # run_attempt keeps a re-run from colliding with its own earlier save.
+          key: weekly-cache-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Upload the week's artefacts
+        # A thin run exits 1 by design; the report it wrote is still the
+        # deliverable, so the upload must not be skipped.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-report-${{ github.run_number }}

@@ -14,7 +14,7 @@ Writes into progress/week-<week_end>/ so weeks never overwrite each other.
 import concurrent.futures
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -66,12 +66,90 @@ def source_errors() -> list:
     return load_run_log().get("errors", [])
 
 
+def load_score_floors(config_path: str = "config.yaml") -> dict:
+    """Read section score floors from config.yaml, or fall back to defaults."""
+    floors = {"top": 7, "tools": 6, "worth": 5}
+    path = Path(config_path)
+    if not path.exists():
+        return floors
+    try:
+        cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001
+        return floors
+    summ = cfg.get("summarising") or {}
+    return {
+        "top": int(summ.get("min_score_top", floors["top"])),
+        "tools": int(summ.get("min_score_tools", floors["tools"])),
+        "worth": int(summ.get("min_score_worth", floors["worth"])),
+    }
+
+
+def _has_why_it_matters(report: dict) -> bool:
+    """True when the renderers had at least one why-line to emit.
+
+    This is a capability flag, not a per-item claim: a partial model outage can
+    leave some picks on the extractive fallback with no why-line. The verifier
+    checks the rendered output and that at least one top pick carries the line,
+    so one degraded item does not fail the whole report.
+    """
+    for section in ("top_picks", "tools", "worth_a_look"):
+        for entry in report.get(section) or []:
+            if isinstance(entry, dict) and (entry.get("why_it_matters") or "").strip():
+                return True
+    return False
+
+
 def newest_report() -> str:
     """Default input: the newest week under progress/, same rule as verify_report."""
     found = sorted(Path("progress").glob("week-*/source.yaml"))
     if not found:
         raise SystemExit("no report found under progress/week-*/source.yaml")
     return str(found[-1])
+
+
+def _week_mode(report: dict) -> str:
+    """Label the week without mislabelling a historical replay.
+
+    YAML written by the current pipeline says `run_date` explicitly. Older
+    weeks have no key, so infer `replay` when the week start is not a Sunday:
+    claiming `run_date` made the verifier fail a legitimate historical render.
+    """
+    declared = str(report.get("week_mode") or "").strip()
+    if declared:
+        return declared
+    try:
+        day = date.fromisoformat(str(report.get("week_start") or "")[:10])
+    except ValueError:
+        return "unknown"
+    return "replay" if day.weekday() != 6 else "run_date"
+
+
+def run_log_stale_reason(collected: dict, week_end: str) -> str:
+    """Why `raw_run_log.json` does not describe `week_end`, or "" if it does.
+
+    Rendering an older week from the current CWD used to inherit this run's
+    collector counts. Newer logs carry `week_end`; older ones (and the
+    collect-only CLI) do not, so their collection date is compared with the
+    week being rendered instead.
+    """
+    if not isinstance(collected, dict):
+        return "is not an object"
+    logged_week = str(collected.get("week_end") or "")
+    if logged_week:
+        if logged_week == week_end:
+            return ""
+        return f"describes week ending {logged_week}, not {week_end}"
+    run_at = str(collected.get("run_at") or "")
+    if not run_at:
+        return ""
+    try:
+        run_day = date.fromisoformat(run_at[:10])
+        end_day = date.fromisoformat(week_end[:10])
+    except ValueError:
+        return "has no usable date"
+    if end_day - timedelta(days=6) <= run_day <= end_day:
+        return ""
+    return f"was collected on {run_day}, outside {week_end}"
 
 
 def main(argv=None) -> int:
@@ -94,6 +172,18 @@ def main(argv=None) -> int:
     print()
     if dead:
         print(f"DROPPED {len(dead)} dead link(s) - they will not appear in the report.\n")
+
+    collected = load_run_log()
+    week_end = str(report.get("week_end") or "")
+    stale_reason = run_log_stale_reason(collected, week_end)
+    if stale_reason:
+        print(
+            f"WARNING  raw_run_log.json {stale_reason}; "
+            "its counts are ignored."
+        )
+        collected = {}
+    report = dict(report)
+    report["source_counts"] = dict(collected.get("counts") or {})
 
     markdown = render_markdown(report)
     html = render_html(report)
@@ -125,20 +215,34 @@ def main(argv=None) -> int:
 
     raw_path = Path("raw_items.json")
     raw = json.loads(raw_path.read_text(encoding="utf-8")) if raw_path.exists() else []
-    collected = load_run_log()
     candidates = Path("candidates.json")
+    candidates_read = None
+    if candidates.exists():
+        try:
+            parsed_candidates = json.loads(candidates.read_text(encoding="utf-8"))
+        except ValueError:
+            parsed_candidates = None
+        if isinstance(parsed_candidates, dict):
+            candidates_read = len(parsed_candidates)
     counts = {
+        "schema": "2026-11-11",
+        "week_mode": _week_mode(report),
+        "week_start": str(report.get("week_start") or ""),
+        "week_end": str(report.get("week_end") or ""),
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "items_found": collected.get("found", len(raw)),
         "items_after_dedupe": collected.get("kept", len(raw)),
         "duplicates_removed": collected.get("duplicates"),
         "already_sent": collected.get("already_sent"),
-        "candidates_read": len(json.loads(candidates.read_text(encoding="utf-8")))
-        if candidates.exists()
-        else None,
+        "candidates_read": candidates_read,
         "top_picks": len(report.get("top_picks", [])),
         "tools": len(report.get("tools", [])),
         "worth_a_look": len(report.get("worth_a_look", [])),
+        "dropped_below_floor": int(report.get("dropped_below_floor") or 0),
+        "trend_omitted": not (report.get("trend") or "").strip(),
+        "score_floors": load_score_floors(),
+        "source_counts": source_counts,
+        "why_it_matters": _has_why_it_matters(report),
         "links_checked": len(results),
         "links_dead": len(dead),
         "history_recorded": record,

@@ -147,8 +147,10 @@ Three rules that are easy to break:
   minute stalls ~90 s; that is rate limiting, not a hang.
 - **arXiv announces nothing Friday or Saturday**, so most weeks end with a date gap.
   Expected. Its `all:` search also matches loosely — expect off-topic papers in the raw list.
-- **GitHub search filters on `pushed_at`**, not publication date, and returns repos that
-  merely mention the query. Treat the ranking as noise.
+- **GitHub search filters on creation and push dates**, not publication date, and
+  returns repos that merely mention the query. Repos created inside the week are
+  news on their own; older ones count only when a release shipped that week.
+  Treat the ranking as noise.
 - **PowerShell 5.1**: no `head`, `wc`, `sed`, or `&&`. Use `Select-Object -First`,
   `Measure-Object`, `;`.
 
@@ -223,8 +225,9 @@ Markdown follow the spec order exactly.
 
 - Recipients, keywords, sources and feeds live in `config.yaml` — never hard-code them.
   `lookback_days`, `sources.*`, `ranking.*`, `summarising.*`, `max_top_picks`,
-  `schedule` and `recipients` are all read today; `keywords` remains documentation
-  while the per-source queries do the work.
+  `schedule` and `recipients` are all read today; `keywords` drives the cheap
+  prefilter (`ranking.prefilter`) before any model call, while the per-source
+  queries do the collection work.
 - `.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the SMTP credential set.
   Model, base URL, batch size and thresholds live in `config.yaml` under `ranking:` and
   `summarising:` — one source of truth, and no secret in a committed file. The SMTP

@@ -16,7 +16,7 @@ an item the same way regardless of origin.
 | 2 | Google News | `news.google.com/rss/search` — `"synthetic data"`, `"synthetic dataset"`, both `when:7d` | continuous | Catches industry news the blogs miss: funding, acquisitions, product launches, regulation. |
 | 3 | Reddit — r/MachineLearning, r/LocalLLaMA, r/datascience | `reddit.com/r/MachineLearning+LocalLLaMA+datascience.rss` — one combined feed, because Reddit allows about one request per minute per IP | continuous | Practitioner argument about whether a method works. Three subreddits: research-heavy, local-model pragmatic, and enterprise/tabular. One request keeps the run under a minute. |
 | 4 | Hacker News | Algolia API — `"synthetic data"`, `"tabular synthesis"`, `"synthetic dataset"`, `"data augmentation"` | continuous | Early signal on tools and posts that later become widely cited. Also the fastest source for "this paper is wrong" threads. |
-| 5 | GitHub | search API — `synthetic-data`, `tabular-synthesis`, `differential-privacy`, `data-augmentation` | continuous | New open-source tooling shows up here before it is written about. Filtered on `pushed_at`, so treat it as noise-tolerant. |
+| 5 | GitHub | search API — `synthetic-data`, `tabular-synthesis`, `differential-privacy`, `data-augmentation` | continuous | New open-source tooling shows up here before it is written about. Two passes: repos created inside the week, plus older repos that shipped a release inside the week. Treat it as noise-tolerant. |
 | 6 | OpenAI | `openai.com/news/rss.xml` | irregular | Frontier-lab announcements shape what the field considers possible. |
 | 7 | Google DeepMind | `deepmind.google/blog/rss.xml` | irregular | Same, with a stronger methods focus (diffusion, evaluation). |
 | 8 | Google Research | `research.google/blog/rss/` | weekly-ish | Applied research write-ups, often with released code and benchmarks. |
@@ -59,7 +59,8 @@ own `queries`, `tags` or `subreddits` key, not this list directly.
   invisible to it, which is why the keyword list is broad rather than exact.
 - arXiv announces nothing on Friday or Saturday, so most weeks end with a date gap.
   That is expected, not a collector failure.
-- GitHub search filters on `pushed_at`, not publication date, and returns repos that
-  merely mention a query term. Its ranking is noise; treat it as a discovery net.
+- GitHub search filters on creation and push dates, not publication date, and returns
+  repos that merely mention a query term. Its ranking is noise; treat it as a
+  discovery net.
 - Reddit allows roughly one request per minute per IP. The collector backs off
   15/30/45 s rather than failing, so a second full run inside a minute takes ~90 s.

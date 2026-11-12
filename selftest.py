@@ -5,7 +5,7 @@ dataset, so they get unit coverage.
 """
 
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import date as _date, datetime, timedelta, timezone
 from pathlib import Path
 
 from synthetic_data.collectors import (
@@ -340,6 +340,11 @@ check("invented number is caught", _sum.unsupported_numbers("uses 300 tables", "
 check("5 does not pass because 15 exists", _sum.unsupported_numbers("uses 5 tables", "uses 15 tables") == ["5"])
 check("comma form matches plain form", _sum.unsupported_numbers("1,000 rows", "1000 rows") == [])
 check("0.5 does not pass because 0.54 exists", _sum.unsupported_numbers("r = 0.5", "r = 0.54") == ["0.5"])
+check("dotted identifiers stay whole", _sum.extract_numbers("GPT3.5") == {"3.5"}, str(_sum.extract_numbers("GPT3.5")))
+check("a letter-prefixed quantity is still checked",
+      _sum.unsupported_numbers("Released v9.5 today.", "We tested 5 models.") == ["9.5"],
+      str(_sum.unsupported_numbers("Released v9.5 today.", "We tested 5 models.")))
+check("the Well7 brand is not a quantity", _sum.extract_numbers("Well7") == set(), str(_sum.extract_numbers("Well7")))
 
 print("extractive_summary")
 _multi = "First sentence is long enough to count. Second sentence follows it here. Third sentence is also here. Fourth is dropped."
@@ -378,8 +383,8 @@ check("newlines collapse", _sum.parse_summary('{"summary": "a\\nb"}') == "a b")
 print("summarise_item")
 
 
-def _reply(text):
-    return lambda messages: _json.dumps({"summary": text})
+def _reply(text, why="It matters for synthetic data research."):
+    return lambda messages: _json.dumps({"summary": text, "why_it_matters": why})
 
 
 good = _sum.summarise_item(_cand(0), _reply("It reports 223 tables."))
@@ -396,8 +401,10 @@ _calls = []
 def _flaky(messages):
     _calls.append(1)
     if len(_calls) == 1:
-        return _json.dumps({"summary": "It reports 900 tables."})
-    return _json.dumps({"summary": "It reports 223 tables."})
+        return _json.dumps({"summary": "It reports 900 tables.",
+                            "why_it_matters": "It matters for synthetic data research."})
+    return _json.dumps({"summary": "It reports 223 tables.",
+                        "why_it_matters": "It matters for synthetic data research."})
 
 
 repaired = _sum.summarise_item(_cand(0), _flaky)
@@ -438,8 +445,10 @@ _length_calls = []
 def _long_then_short(messages):
     _length_calls.append(1)
     if len(_length_calls) == 1:
-        return _json.dumps({"summary": _long_reply})
-    return _json.dumps({"summary": "It reports 223 tables."})
+        return _json.dumps({"summary": _long_reply,
+                            "why_it_matters": "It matters for synthetic data research."})
+    return _json.dumps({"summary": "It reports 223 tables.",
+                        "why_it_matters": "It matters for synthetic data research."})
 
 
 _shortened = _sum.summarise_item(_cand(0), _long_then_short)
@@ -449,16 +458,16 @@ print("compose_sections")
 _ten = [_cand(i, source="github" if i in (6, 7, 8) else "arxiv") for i in range(9)] + [
     _cand(9, source="news")
 ]
-_split = _sum.compose_sections(_ten, picks=6)
+_split = _sum.compose_sections(_ten, picks=6, run_date=_date(2026, 11, 4))
 check("six top picks", len(_split["top_picks"]) == 6, str(len(_split["top_picks"])))
 check("github items after the picks become tools", len(_split["tools"]) == 3, str(len(_split["tools"])))
 check("the news item becomes worth a look", len(_split["worth_a_look"]) == 1, str(len(_split["worth_a_look"])))
 check("nothing is lost when caps do not bind", len(_split["dropped"]) == 0, str(len(_split["dropped"])))
-check("week_end is the newest publication date", _split["week_end"] == _sum.published_date("2026-11-04"), str(_split["week_end"]))
-check("week_start is six days before week_end", _split["week_start"] == _sum.published_date("2026-10-29"), str(_split["week_start"]))
+check("week_end is the run week's Saturday", _split["week_end"] == _sum.published_date("2026-11-07"), str(_split["week_end"]))
+check("week_start is the Sunday before it", _split["week_start"] == _sum.published_date("2026-11-01"), str(_split["week_start"]))
 
 _many = [_cand(i, source="github" if i % 2 == 0 else "arxiv") for i in range(20)]
-_capped = _sum.compose_sections(_many, picks=6, max_tools=5, max_worth=5)
+_capped = _sum.compose_sections(_many, picks=6, max_tools=5, max_worth=5, run_date=_date(2026, 11, 4))
 check("tools capped at five", len(_capped["tools"]) == 5, str(len(_capped["tools"])))
 check("worth a look capped at five", len(_capped["worth_a_look"]) == 5, str(len(_capped["worth_a_look"])))
 check("items beyond the caps are reported as dropped", len(_capped["dropped"]) == 4, str(len(_capped["dropped"])))
@@ -479,10 +488,10 @@ check("every tool and worth item is inside the week", all(
 ))
 
 try:
-    _sum.compose_sections([_cand(i) for i in range(3)])
-    check("too few items raises CompositionError", False)
+    _sum.compose_sections([_cand(i, score=4) for i in range(3)], run_date=_date(2026, 11, 4))
+    check("no item above the score floor raises CompositionError", False)
 except _sum.CompositionError:
-    check("too few items raises CompositionError", True)
+    check("no item above the score floor raises CompositionError", True)
 
 print("source_label")
 check("github label", _sum.source_label({"source": "github", "url": "https://github.com/a/b"}) == "GitHub")
@@ -557,7 +566,9 @@ check("contractual footer is unchanged", _brand_md.rstrip().endswith("Auto-gener
 
 with tempfile.TemporaryDirectory() as _tmp:
     _out = Path(_tmp)
-    (_out / "report.md").write_text("plain body", encoding="utf-8")
+    (_out / "report.md").write_text(
+        "plain body\n\n1. [A pick](https://example.com/pick)\n", encoding="utf-8"
+    )
     (_out / "report.html").write_text("<html><body>html body</body></html>", encoding="utf-8")
     (_out / "Synthetic_Data_Weekly_2026-11-01.pdf").write_bytes(b"%PDF-1.4 fake pdf")
 
@@ -698,6 +709,22 @@ with tempfile.TemporaryDirectory() as _tmp:
     check("dry run sends nothing", _sent.get("smtp") is None, str(_sent))
     check("dry run records no history", not _history.exists())
 
+    # report_build.py drops dead links from what it renders but leaves
+    # source.yaml untouched. The send path must record only what was published.
+    _send_report = {
+        **_mail_report,
+        "worth_a_look": [
+            {
+                "title": "A dead link",
+                "url": "https://example.com/dead",
+                "source": "news",
+                "published": _sum.published_date("2026-10-31"),
+                "note": "Dropped by report_build; never published.",
+            }
+        ],
+    }
+    _report_yaml.write_text(_yaml.safe_dump(_send_report), encoding="utf-8")
+
     _mail.deliver(
         str(_report_yaml),
         str(_smtp_cfg),
@@ -720,6 +747,11 @@ with tempfile.TemporaryDirectory() as _tmp:
     finally:
         _conn.close()
     check("a real send records the links", "https://example.com/pick" in _recorded, str(_recorded))
+    check(
+        "a link report_build dropped is not recorded",
+        "https://example.com/dead" not in _recorded,
+        str(_recorded),
+    )
 
 print("schedule_task")
 import schedule_task as _sched
@@ -779,6 +811,27 @@ check("config has a summarising block", isinstance(_config.get("summarising"), d
 check("config picks stay inside the format bound", 5 <= int(_config["summarising"]["picks"]) <= 10)
 check("summary version is recorded", isinstance(_sum.SUMMARY_VERSION, str) and _sum.SUMMARY_VERSION)
 
+import report_build as _rb
+
+check("a run log for the same week is not stale",
+      _rb.run_log_stale_reason({"week_end": "2026-11-14"}, "2026-11-14") == "")
+check("a run log for another week is stale",
+      _rb.run_log_stale_reason({"week_end": "2026-11-07"}, "2026-11-14") != "")
+check("a legacy run log collected inside the week is accepted",
+      _rb.run_log_stale_reason(
+          {"run_at": "2026-11-11T09:00:00+00:00"}, "2026-11-14") == "")
+check("a legacy run log collected outside the week is stale",
+      _rb.run_log_stale_reason(
+          {"run_at": "2026-11-20T09:00:00+00:00"}, "2026-11-14") != "")
+
+# The scheduled job installs requirements.txt, not the dev group. Regenerating
+# it with the default `uv export` once pulled in torch and sdv.
+_requirements = Path("requirements.txt").read_text(encoding="utf-8").lower()
+check("requirements.txt excludes the dev group",
+      "torch==" not in _requirements
+      and "jupyterlab==" not in _requirements
+      and "sdv==" not in _requirements)
+
 print("Phase 4 report node")
 from synthetic_data import graph as _graph
 
@@ -791,7 +844,8 @@ def _fake_chat(messages):
     if "opening paragraph" in prompt:
         return _json.dumps({"trend": "A plain trend sentence."})
     _item_calls.append(1)
-    return _json.dumps({"summary": "A plain summary sentence."})
+    return _json.dumps({"summary": "A plain summary sentence.",
+                        "why_it_matters": "It helps Well7 build private tables."})
 
 
 def _down_chat(messages):
@@ -806,17 +860,17 @@ _graph.configure(
     settings={"summarising": {"picks": 5, "max_tools": 5, "max_worth_a_look": 5}},
     chat_fn=_fake_chat,
 )
-_first_run = _graph.report_node({"errors": [], "shortlist": _graph_items}, None)
+_first_run = _graph.report_node({"errors": [], "shortlist": _graph_items, "run_date": "2026-11-04"}, None)
 check("report node builds picks, tools and worth-a-look", len(_first_run["report"]["top_picks"]) == 5 and len(_first_run["report"]["tools"]) == 3, str(_first_run.get("errors")))
 check("report node saves the summary cache", len(_json.loads((_cache_dir / "summary_cache.json").read_text(encoding="utf-8"))["entries"]) == 10)
 
 _calls_before = len(_item_calls)
-_graph.report_node({"errors": [], "shortlist": _graph_items}, None)
+_graph.report_node({"errors": [], "shortlist": _graph_items, "run_date": "2026-11-04"}, None)
 check("a rerun on the same week makes no summary calls", len(_item_calls) == _calls_before, str(len(_item_calls) - _calls_before))
 
 _graph._CACHE_PATH = str(_cache_dir / "down.json")
 _graph.configure(chat_fn=_down_chat)
-_down_run = _graph.report_node({"errors": [], "shortlist": _graph_items}, None)
+_down_run = _graph.report_node({"errors": [], "shortlist": _graph_items, "run_date": "2026-11-04"}, None)
 check("an all-fallback run is flagged in the state", any("extractive fallback" in item for item in _down_run["errors"]), str(_down_run["errors"]))
 check("fallbacks are never cached", _json.loads((_cache_dir / "down.json").read_text(encoding="utf-8"))["entries"] == {})
 
@@ -841,6 +895,636 @@ check(
     "SMTP_PASSWORD" in Path(".env.example").read_text(encoding="utf-8")
     and "SMTP_PASSWORD=" not in Path("config.yaml").read_text(encoding="utf-8"),
 )
+
+# ---------------------------------------------------------------------------
+# 2026-11-11 pipeline improvements. Written before the implementation so the
+# suite is red until every task lands.
+# ---------------------------------------------------------------------------
+
+print("week window")
+from synthetic_data import week as _week
+
+_wed = _week.week_bounds(_date(2026, 11, 11))
+check("a Wednesday run covers Sunday..Saturday", _wed == (_date(2026, 11, 8), _date(2026, 11, 14)), str(_wed))
+check("Saturday run ends on that Saturday", _week.week_bounds(_date(2026, 11, 14)) == _wed)
+check("Sunday run starts on that Sunday", _week.week_bounds(_date(2026, 11, 8))[0] == _date(2026, 11, 8))
+check("consecutive weeks do not overlap", _week.week_bounds(_date(2026, 11, 18))[0] == _wed[1] + timedelta(days=1))
+check("in_week accepts an ISO datetime", _week.in_week("2026-11-11T10:00:00Z", _wed))
+check("in_week accepts a date", _week.in_week(_date(2026, 11, 8), _wed))
+check("in_week rejects a day outside the week", not _week.in_week("2026-11-07", _wed))
+check("in_week rejects unparseable input", not _week.in_week("not a date", _wed))
+check("_in_window with week accepts a day inside",
+      _in_window(datetime(2026, 11, 10, tzinfo=timezone.utc), cutoff, week=_wed))
+check("_in_window with week rejects a day outside",
+      not _in_window(datetime(2026, 11, 7, tzinfo=timezone.utc), cutoff, week=_wed))
+check("_in_window with week rejects a future day",
+      not _in_window(datetime(2026, 11, 20, tzinfo=timezone.utc), cutoff, week=_wed))
+
+print("primary-source dedupe")
+_older_primary = Item(title="paper", url="https://x/p?utm_source=a", source="arxiv", published=NOW - timedelta(days=3))
+_newer_secondary = Item(title="discussion", url="https://x/p", source="hn", published=NOW)
+_kept, _ = dedupe_items([_older_primary, _newer_secondary])
+check("dedupe keeps the primary source even when older", _kept[0].source == "arxiv", _kept[0].source)
+
+print("canonical story key")
+from synthetic_data.links import canonical_target, story_key
+
+check("arxiv versions share one canonical target",
+      canonical_target("https://arxiv.org/abs/2610.35521v2") == canonical_target("http://arxiv.org/abs/2610.35521v1"))
+check("arxiv canonical target carries the id", "2610.35521" in canonical_target("https://arxiv.org/abs/2610.35521v2"))
+check("github repo is canonicalised", canonical_target("https://github.com/Owner/Repo/tree/main") == "github:owner/repo")
+check("an unrelated url has no canonical target", canonical_target("https://example.com/post") == "")
+check("story_key prefers target_url",
+      story_key({"url": "https://news.ycombinator.com/item?id=9", "target_url": "https://arxiv.org/abs/2610.35521"})
+      == canonical_target("https://arxiv.org/abs/2610.35521"))
+check("story_key normalises a plain (non-canonical) target_url",
+      story_key({"url": "https://news.ycombinator.com/item?id=42",
+                 "target_url": "https://example.com/blog/p?utm_source=x"})
+      == "https://example.com/blog/p")
+
+_paper = _item("A tabular synthesis method", "https://arxiv.org/abs/2610.35521", score=9, well7=8)
+_hn_post = _item("Show HN: tables from nowhere", "https://news.ycombinator.com/item?id=42", score=8, well7=7)
+_hn_post["target_url"] = "https://arxiv.org/abs/2610.35521v2"
+_merged = _rank.group_duplicates([_paper, _hn_post])
+check("HN post linking to the paper is merged into it",
+      next(r for r in _merged if "ycombinator" in r["url"])["duplicate_of"] == _paper["url"])
+check("the paper stays the representative", next(r for r in _merged if r["url"] == _paper["url"])["duplicate_of"] is None)
+
+_hn_high = _item("Show HN: tables", "https://news.ycombinator.com/item?id=7",
+                 score=10, well7=10, source="hn")
+_hn_high["target_url"] = "https://arxiv.org/abs/2610.77777"
+_paper_low = _item("A tabular method", "https://arxiv.org/abs/2610.77777",
+                   score=6, well7=5, source="arxiv")
+_primary_group = _rank.group_duplicates([_hn_high, _paper_low])
+check("primary source wins the duplicate group over a higher-scored post",
+      next(r for r in _primary_group if r["url"] == _paper_low["url"])["duplicate_of"] is None)
+
+print("keyword prefilter")
+_kw = ["synthetic data", "tabular synthesis", "differential privacy"]
+_pf = [
+    _item("A synthetic data method for tabular generation", "https://pf/1"),
+    _item("3D Gaussian splatting for novel view synthesis", "https://pf/2"),
+]
+_skip = _rank.prefilter_indices(_pf, _kw)
+check("obvious noise is prefiltered", 1 in _skip, str(_skip))
+check("a relevant item is not prefiltered", 0 not in _skip, str(_skip))
+check("an empty keyword list filters nothing", _rank.prefilter_indices(_pf, []) == set())
+
+print("final editor re-rank")
+_editor_calls = []
+
+
+def _editor(messages):
+    _editor_calls.append(messages[0]["content"])
+    return _json.dumps({"scores": [
+        {"id": 0, "score": 9, "well7_fit": 8, "reason": "best"},
+        {"id": 1, "score": 4, "well7_fit": 3, "reason": "weak"},
+    ]})
+
+
+_editor_rows = [
+    _item("First candidate", "https://ed/1", score=6, well7=6),
+    _item("Second candidate", "https://ed/2", score=5, well7=5),
+]
+_editor_out = _rank.rerank_top(_editor_rows, _editor, top_n=2)
+check("editor pass is a single call", len(_editor_calls) == 1, str(len(_editor_calls)))
+check("editor pass keeps every row", len(_editor_out) == 2)
+check("editor pass updates candidate 0 to 9", _editor_out[0]["score"] == 9, str(_editor_out[0]["score"]))
+check("editor pass updates candidate 1 to 4", _editor_out[1]["score"] == 4, str(_editor_out[1]["score"]))
+check("editor pass keeps each row's own well7_fit",
+      (_editor_out[0]["well7_fit"], _editor_out[1]["well7_fit"]) == (8, 3),
+      str([r["well7_fit"] for r in _editor_out]))
+check("editor pass marks the edited rows", all(r.get("editor_pass") for r in _editor_out))
+check("editor prompt shows all candidates", "https://ed/1" in _editor_calls[0] and "https://ed/2" in _editor_calls[0])
+
+# A reply that omits well7_fit must not erase the batch-stage value.
+_editor_no_well7 = _rank.rerank_top(
+    [_item("Third candidate", "https://ed/3", score=6, well7=5)],
+    lambda _messages: _json.dumps({"scores": [{"id": 0, "score": 9, "reason": "best"}]}),
+    top_n=1,
+)
+check("editor pass preserves well7_fit when the reply omits it",
+      _editor_no_well7[0]["well7_fit"] == 5, str(_editor_no_well7[0]["well7_fit"]))
+
+# The CLI latches editor_applied only when every row the editor was meant to
+# re-score carries the marker. A partial reply must therefore stay visible.
+_editor_targets = _rank.editor_target_indices(
+    [
+        _item("kept", "https://et/1", score=9),
+        _item("prefiltered", "https://et/2", score=1),
+        {**_item("unscored", "https://et/3", score=0), "score_status": "unscored"},
+        _item("low", "https://et/4", score=2),
+    ],
+    2,
+)
+check("editor targets skip prefiltered and unscored rows",
+      _editor_targets == [0, 3], str(_editor_targets))
+_partial_editor = _rank.rerank_top(
+    [_item("a", "https://pe/1", score=9), _item("b", "https://pe/2", score=8),
+     _item("c", "https://pe/3", score=7)],
+    lambda _messages: _json.dumps({"scores": [{"id": 0, "score": 9, "reason": "only one"}]}),
+    top_n=3,
+)
+check("a partial editor reply marks only the rows it returned",
+      sum(1 for row in _partial_editor if row.get("editor_pass")) == 1,
+      str([row.get("editor_pass") for row in _partial_editor]))
+check("a partial editor reply leaves the rest unmarked, so the latch stays false",
+      not all(_partial_editor[index].get("editor_pass")
+              for index in _rank.editor_target_indices(_partial_editor, 3)),
+      str([row.get("editor_pass") for row in _partial_editor]))
+
+print("well7 divergence guard")
+_diverged = _rank.diversify_well7_fit([
+    _item("A generic LLM inference benchmark", "https://dv/generic", score=9, well7=9),
+    _item("Differentially private tabular synthesis with DP-SGD", "https://dv/relevant", score=9, well7=9),
+    _item("Top 7 Python Libraries for Time Series Analysis", "https://dv/ts", score=9, well7=9),
+    _item("A great new LLM dataset", "https://dv/great", score=9, well7=9),
+    _item("A tour of Amsterdam", "https://dv/mst", score=9, well7=9),
+])
+check("a generic item cannot have well7_fit equal to score",
+      next(r for r in _diverged if r["url"] == "https://dv/generic")["well7_fit"] == 7)
+check("a Well7-relevant item keeps its fit",
+      next(r for r in _diverged if r["url"] == "https://dv/relevant")["well7_fit"] == 9)
+check("'time series' written with a space is a signal",
+      next(r for r in _diverged if r["url"] == "https://dv/ts")["well7_fit"] == 9)
+check("an ordinary 'great' does not defeat the ceiling",
+      next(r for r in _diverged if r["url"] == "https://dv/great")["well7_fit"] == 7)
+check("'mst' only matches a whole token",
+      next(r for r in _diverged if r["url"] == "https://dv/mst")["well7_fit"] == 7)
+check("the ceiling never drops below 1",
+      _rank.diversify_well7_fit([_item("A generic note", "https://dv/low", score=2, well7=2)])[0]["well7_fit"] == 1)
+
+print("structured output and API key names")
+check("LLM_API_KEY is accepted", _llm.require_api_key({"LLM_API_KEY": "from-workflow"}) == "from-workflow")
+check("OPENROUTER_API_KEY wins when both are set",
+      _llm.require_api_key({"OPENROUTER_API_KEY": "primary", "LLM_API_KEY": "fallback"}) == "primary")
+try:
+    _llm.require_api_key({})
+    check("missing both API keys raises", False)
+except _llm.LLMError:
+    check("missing both API keys raises", True)
+
+
+class _FakeResponse:
+    def __init__(self, code, text):
+        self.status_code = code
+        self.text = text
+
+    def json(self):
+        return {"choices": [{"message": {"content": '{"scores": []}'}}]}
+
+
+class _FakeClient:
+    def __init__(self):
+        self.payloads = []
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        self.payloads.append(dict(json or {}))
+        if len(self.payloads) == 1 and "response_format" in self.payloads[0]:
+            return _FakeResponse(400, "response_format is not supported")
+        return _FakeResponse(200, "")
+
+
+_json_client = _FakeClient()
+_json_text, _ = _llm.chat(
+    [{"role": "user", "content": "score these"}],
+    api_key="k", model="m", json_mode=True,
+    client=_json_client, attempts=2, sleep=lambda _s: None,
+)
+check("json_mode asks for a JSON object",
+      _json_client.payloads[0].get("response_format") == {"type": "json_object"},
+      str(_json_client.payloads[0].get("response_format")))
+check("json_mode falls back when the provider rejects it",
+      _json_text == '{"scores": []}' and "response_format" not in _json_client.payloads[1],
+      str(_json_client.payloads))
+
+print("why it matters and trend omission")
+_wim = _sum.summarise_item(
+    _cand(0),
+    lambda _m: _json.dumps({"summary": "It reports 223 tables.", "why_it_matters": "Well7 can use the 223 tables."}),
+)
+check("summarise_item returns why_it_matters", bool(_wim.get("why_it_matters")), str(_wim))
+check("why_it_matters is guarded against invented numbers",
+      _sum.summarise_item(_cand(0), lambda _m: _json.dumps({
+          "summary": "It reports 223 tables.", "why_it_matters": "It reports 900 tables."}))["guard"] == "extractive")
+_missing_why_calls = []
+
+
+def _no_why(_messages):
+    _missing_why_calls.append(_messages)
+    return _json.dumps({"summary": "It reports 223 tables."})
+
+
+_missing_why = _sum.summarise_item(_cand(0), _no_why)
+check("a reply without why_it_matters still keeps its summary",
+      _missing_why["guard"] == "passed" and "223" in _missing_why["summary"],
+      str(_missing_why))
+check("a missing why does not cost a second model call",
+      len(_missing_why_calls) == 1, str(len(_missing_why_calls)))
+_why_long = _sum.summarise_item(
+    _cand(0),
+    lambda _m: _json.dumps({
+        "summary": "It reports 223 tables.",
+        "why_it_matters": " ".join(["word"] * 100),
+    }),
+)
+check("an over-long why is clipped, not fatal",
+      _why_long["guard"] == "passed"
+      and _sum.word_count(_why_long["why_it_matters"]) <= _sum.WORDS_WHY,
+      f"guard={_why_long['guard']} words={_sum.word_count(_why_long['why_it_matters'])}")
+try:
+    _sum.compose_sections([])
+    check("compose_sections rejects an empty week instead of re-dating it", False)
+except _sum.CompositionError:
+    check("compose_sections rejects an empty week instead of re-dating it", True)
+_wim_report = {
+    "week_start": _date(2026, 11, 1), "week_end": _date(2026, 11, 7),
+    "trend": "A trend.",
+    "top_picks": [{"title": "t", "url": "https://x", "source": "arXiv",
+                   "published": _date(2026, 11, 4), "summary": "s",
+                   "why_it_matters": "It helps Well7 build private tables."}],
+    "tools": [], "worth_a_look": [],
+}
+check("dump_report emits why_it_matters", "why_it_matters" in _sum.dump_report(_wim_report))
+check("dump_report omits an empty trend", "trend:" not in _sum.dump_report({**_wim_report, "trend": ""}))
+
+_omitted = _sum.summarise_trend([_cand(0)], _always_down)
+check("a failed trend is omitted and flagged",
+      _omitted["trend"] == "" and _omitted["guard"] == "omitted", str(_omitted))
+check("fallback_trend no longer pastes sentences", _sum.fallback_trend([_cand(0)]) == "")
+
+print("score floors and no padding")
+_floor_items = [_cand(i, score=9 if i < 3 else 4) for i in range(8)]
+_sections = _sum.compose_sections(_floor_items, picks=6, run_date=_date(2026, 11, 4))
+check("sections are not padded with below-floor items", len(_sections["top_picks"]) == 3,
+      str(len(_sections["top_picks"])))
+check("below-floor items are reported", len(_sections["dropped_below_floor"]) == 5,
+      str(len(_sections["dropped_below_floor"])))
+
+print("render: optional trend, why-it-matters line, footer counts")
+_no_trend = {**_mail_report}
+_no_trend.pop("trend", None)
+_no_trend["source_counts"] = {"arxiv": 12, "news": 3}
+_no_trend_md = _render.render_markdown(_no_trend)
+_no_trend_html = _render.render_html(_no_trend)
+check("markdown omits the trend section when there is no trend", "## Trend of the week" not in _no_trend_md)
+check("html omits the trend section too", "Trend of the week" not in _no_trend_html)
+check("markdown footer shows per-source counts", "arxiv" in _no_trend_md and "12" in _no_trend_md)
+check("html footer shows per-source counts", "arxiv" in _no_trend_html and "12" in _no_trend_html)
+check("contractual footer is still the last line",
+      _no_trend_md.rstrip().endswith("Auto-generated by the Synthetic Data Research Agent. Reply with feedback."))
+_wim_md = _render.render_markdown({**_mail_report, "top_picks": [
+    {**_mail_report["top_picks"][0], "why_it_matters": "It helps Well7 build private tables."}]})
+check("why it matters is its own line", "Why it matters for Well7" in _wim_md)
+
+print("history durability")
+_hist_dir = Path(tempfile.mkdtemp())
+_hist_db = _hist_dir / "history.db"
+mark_sent([("https://seen.example/x", "already sent", "arxiv")], db_path=str(_hist_db))
+check("mark_sent writes a backup", (_hist_dir / "history.db.bak").exists())
+_hist_db.unlink()
+_seen_item = Item(title="t", url="https://seen.example/x", source="arxiv", published=NOW)
+check("a lost main db still remembers sent links via the backup",
+      len(filter_seen_urls([_seen_item], db_path=str(_hist_db))) == 0)
+
+print("config wiring (2026-11-11)")
+check("config has the score floors", all(
+    k in _config["summarising"] for k in ("min_score_top", "min_score_tools", "min_score_worth")))
+check("config has the editor pass size", "editor_pass_size" in _config["ranking"])
+check("config enables the keyword prefilter", bool(_config["ranking"].get("prefilter")))
+
+print("Phase 4 rank node")
+_rank_fake_calls = []
+
+
+def _rank_node_fake(messages):
+    prompt = messages[0]["content"]
+    _rank_fake_calls.append(prompt)
+    editor = "final editor calibrating" in prompt
+    body = prompt.split("BEGIN ITEMS\n", 1)[-1].split("\nEND ITEMS", 1)[0]
+    lines = [line for line in body.splitlines() if line.strip()]
+    rows = [
+        {"id": i, "score": 9 if editor else 8,
+         "well7_fit": 9 if editor else 7, "reason": "relevant"}
+        for i in range(len(lines))
+    ]
+    return _json.dumps({"scores": rows})
+
+
+_graph.configure(
+    settings={
+        "ranking": {"prefilter": True, "editor_pass_size": 20, "batch_size": 15, "concurrency": 3},
+        "keywords": ["synthetic data", "tabular data"],
+    },
+    chat_fn=_rank_node_fake,
+)
+_rank_node_items = [
+    _item("A synthetic data method for tabular generation", "https://rn/1",
+          published="2026-11-11T00:00:00Z"),
+    _item("3D Gaussian splatting for novel views", "https://rn/2",
+          published="2026-11-11T00:00:00Z"),
+]
+_rank_node_out = _graph.rank_node(
+    {"errors": [], "deduped_items": _rank_node_items, "run_date": "2026-11-11"}, None
+)
+_rn_rows = _rank_node_out["ranked_items"]
+check("rank node keeps every item", len(_rn_rows) == 2, str(len(_rn_rows)))
+check("rank node prefilters obvious noise",
+      next(r for r in _rn_rows if r["url"] == "https://rn/2")["score_status"] == "prefiltered")
+check("rank node scores the relevant item",
+      next(r for r in _rn_rows if r["url"] == "https://rn/1")["score_status"] == "scored")
+check("rank node runs the editor pass", any("final editor calibrating" in p for p in _rank_fake_calls))
+
+# The guard the CLI applies must exist on the graph path too: a scheduled run
+# with a dead model must say so, not quietly render a thin report.
+_graph.configure(chat_fn=_always_down)
+_guard_out = _graph.rank_node(
+    {
+        "errors": [],
+        "deduped_items": [
+            _item("A synthetic data method", "https://rn/guard",
+                  published="2026-11-11T00:00:00Z")
+        ],
+        "run_date": "2026-11-11",
+    },
+    None,
+)
+check("rank node records a score guard error when nothing could be scored",
+      any(str(error).startswith("rank:") for error in _guard_out["errors"]),
+      str(_guard_out["errors"]))
+check("rank node leaves an unscored row visible instead of inventing a score",
+      _guard_out["ranked_items"][0]["score_status"] == "unscored",
+      str(_guard_out["ranked_items"]))
+_graph.configure(chat_fn=_rank_node_fake)
+
+print("score_items failure policy")
+_transport_calls = []
+
+
+def _provider_down(messages):
+    _transport_calls.append(messages)
+    raise RuntimeError("provider down")
+
+
+_down_rows = _rank.score_items(
+    [_item("A", "https://sc/1"), _item("B", "https://sc/2")], _provider_down
+)
+check("a failed batch is not retried per item",
+      len(_transport_calls) == 1, str(len(_transport_calls)))
+check("a failed batch leaves every row unscored",
+      all(r.get("score_status") == "unscored" for r in _down_rows),
+      str([r.get("score_status") for r in _down_rows]))
+
+_garbage_calls = []
+
+
+def _garbage(messages):
+    _garbage_calls.append(messages)
+    return "this is not the JSON you are looking for"
+
+
+_garbage_rows = _rank.score_items(
+    [_item(f"g{i}", f"https://gr/{i}") for i in range(6)], _garbage, batch_size=6
+)
+check("unparseable per-item replies stop after three",
+      len(_garbage_calls) == 4, str(len(_garbage_calls)))
+check("unparseable replies leave every row unscored",
+      all(r.get("score_status") == "unscored" for r in _garbage_rows),
+      str([r.get("score_status") for r in _garbage_rows]))
+
+print("score cache never freezes a failure")
+import rank_items as _rank_items
+
+_cache_file = Path(tempfile.mkdtemp()) / "score_cache.json"
+_cache_file.write_text(_json.dumps({
+    "model": "m",
+    "rubric": _rank.RUBRIC_VERSION,
+    "scores": {
+        "unscored": {"score": 0, "score_status": "unscored"},
+        "scored": {"score": 8, "score_status": "scored", "reason": "ok"},
+    },
+    "editor": {"applied": True, "size": 20},
+}), encoding="utf-8")
+_cached, _applied, _size = _rank_items.load_cache(str(_cache_file), "m")
+check("an unscored cache entry is not served", "unscored" not in _cached, str(_cached))
+check("a scored cache entry is still served",
+      _cached.get("scored", {}).get("score") == 8, str(_cached))
+
+print("html escaping")
+_escaped = _render.render_html({**_mail_report, "top_picks": [
+    {**_mail_report["top_picks"][0],
+     "title": "<script>alert(1)</script>",
+     "summary": "A & B"}
+]})
+check("model/feed text is html-escaped",
+      "<script>" not in _escaped
+      and "&lt;script&gt;" in _escaped
+      and "A &amp; B" in _escaped,
+      _escaped[:200])
+
+print("graph fetch failure and report fallback")
+_fb_rows = [
+    _item("keep", "https://g/keep", score=9, published="2026-11-11T00:00:00Z"),
+    {**_item("dup", "https://g/dup", score=9, published="2026-11-11T00:00:00Z"),
+     "duplicate_of": "https://g/keep"},
+    _item("old", "https://g/old", score=9, published="2026-11-01T00:00:00Z"),
+    {**_item("unscored", "https://g/u", score=0, published="2026-11-11T00:00:00Z"),
+     "score_status": "unscored"},
+]
+_fb = _graph._eligible_rows(_fb_rows, (_date(2026, 11, 8), _date(2026, 11, 14)))
+check("report fallback drops duplicates, unscored and out-of-week rows",
+      [r["url"] for r in _fb] == ["https://g/keep"], str([r["url"] for r in _fb]))
+
+_original_fetch_one = _graph._fetch_one
+_graph._fetch_one = lambda _record: (_ for _ in ()).throw(RuntimeError("boom"))
+try:
+    _graph.configure(
+        settings={"max_top_picks": 10, "ranking": {"github_share_cap": 3}},
+        chat_fn=lambda _messages: "{}",
+    )
+    _fetch_out = _graph.fetch_node(
+        {"errors": [], "ranked_items": [_fb_rows[0]], "run_date": "2026-11-11"}, None
+    )
+finally:
+    _graph._fetch_one = _original_fetch_one
+check("a failed fetch leaves shortlist unset so the filtered fallback runs",
+      "shortlist" not in _fetch_out, str(sorted(_fetch_out.keys())))
+
+_clean_bad = _graph.clean_node(
+    {"errors": [], "raw_items": [{"title": "no url or source"}]}, None
+)
+check("clean node records a bad item instead of raising",
+      _clean_bad["deduped_items"] == []
+      and any(str(e).startswith("clean:") for e in _clean_bad["errors"]),
+      str(_clean_bad))
+
+print("corrupt history recovers from its backup")
+_corrupt_dir = Path(tempfile.mkdtemp())
+_corrupt_db = _corrupt_dir / "history.db"
+mark_sent([("https://seen.example/y", "seen", "arxiv")], db_path=str(_corrupt_db))
+_corrupt_db.write_bytes(b"not a sqlite database")
+_added = mark_sent([("https://seen.example/z", "new", "arxiv")], db_path=str(_corrupt_db))
+check("mark_sent rebuilds a corrupt main db instead of raising", _added == 1, str(_added))
+check("the backup row survives the rebuild",
+      filter_seen_urls(
+          [Item(title="y", url="https://seen.example/y", source="arxiv", published=NOW)],
+          db_path=str(_corrupt_db),
+      ) == [])
+check("the newly sent row is recorded too",
+      filter_seen_urls(
+          [Item(title="z", url="https://seen.example/z", source="arxiv", published=NOW)],
+          db_path=str(_corrupt_db),
+      ) == [])
+
+print("pdf without a trend")
+from synthetic_data.render_pdf import render_pdf as _render_pdf
+
+_pdf_dir = Path(tempfile.mkdtemp())
+_pdf_path = _pdf_dir / "no-trend.pdf"
+_render_pdf({**_mail_report, "trend": ""}, str(_pdf_path))
+check("PDF renders with no trend section",
+      _pdf_path.exists() and _pdf_path.stat().st_size > 1000,
+      f"{_pdf_path.stat().st_size if _pdf_path.exists() else 0} bytes")
+
+print("verify_report new-schema path")
+import subprocess as _subprocess
+import sys as _sys
+
+_fixture_report = {
+    "week_start": _date(2026, 11, 8),
+    "week_end": _date(2026, 11, 14),
+    "week_mode": "run_date",
+    "trend": "",
+    "top_picks": [{
+        "title": "A private tabular method",
+        "url": "https://example.com/a",
+        "source": "arXiv",
+        "published": _date(2026, 11, 10),
+        "summary": "It reports 223 tables.",
+        "why_it_matters": "It helps Well7 build private tables.",
+        "score": 9,
+    }],
+    "tools": [],
+    "worth_a_look": [],
+    "source_counts": {"arxiv": 12, "news": 3},
+}
+_fixture_log = {
+    "schema": "2026-11-11",
+    "week_mode": "run_date",
+    "week_start": "2026-11-08",
+    "week_end": "2026-11-14",
+    "items_found": 10,
+    "items_after_dedupe": 9,
+    "links_dead": 0,
+    "source_errors": [],
+    "trend_omitted": True,
+    "score_floors": {"top": 7, "tools": 6, "worth": 5},
+    "source_counts": {"arxiv": 12, "news": 3},
+    "why_it_matters": True,
+}
+
+
+def _write_verify_fixture(report, log):
+    directory = Path(tempfile.mkdtemp()) / f"week-{report['week_end']}"
+    directory.mkdir(parents=True)
+    (directory / "report.md").write_text(_render.render_markdown(report), encoding="utf-8")
+    (directory / "report.html").write_text(_render.render_html(report), encoding="utf-8")
+    (directory / "source.yaml").write_text(_yaml.safe_dump(report), encoding="utf-8")
+    (directory / "run_log.json").write_text(_json.dumps(log), encoding="utf-8")
+    (directory / f"Synthetic_Data_Weekly_{report['week_end']}.pdf").write_bytes(
+        b"%PDF-1.4\n" + b"0" * 50_000
+    )
+    return directory / "source.yaml"
+
+
+_good_path = _write_verify_fixture(_fixture_report, _fixture_log)
+_good = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_good_path)],
+    capture_output=True,
+    text=True,
+)
+check("verify_report accepts a valid new-schema report",
+      _good.returncode == 0, (_good.stdout + _good.stderr)[-500:])
+
+_broken_report = {
+    **_fixture_report,
+    "top_picks": [
+        {**_fixture_report["top_picks"][0], "why_it_matters": ""}
+    ],
+}
+_broken_path = _write_verify_fixture(_broken_report, _fixture_log)
+_broken = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_broken_path)],
+    capture_output=True,
+    text=True,
+)
+check("verify_report rejects a new-schema report missing why_it_matters",
+      _broken.returncode == 1, (_broken.stdout + _broken.stderr)[-500:])
+check("the rejection names the why check",
+      "why" in (_broken.stdout or "").lower(), (_broken.stdout or "")[-300:])
+
+_corrupt_path = _write_verify_fixture(_fixture_report, _fixture_log)
+(_corrupt_path.parent / "run_log.json").write_text("not json", encoding="utf-8")
+_corrupt = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_corrupt_path)],
+    capture_output=True,
+    text=True,
+)
+check("a corrupt run_log fails cleanly instead of tracing back",
+      _corrupt.returncode == 1 and "Traceback" not in _corrupt.stderr,
+      (_corrupt.stdout + _corrupt.stderr)[-500:])
+
+# A partial model outage leaves one pick on the extractive fallback. The
+# producer's flag is a capability flag, so one degraded item must not fail the
+# week; an offline (--no-llm) report has no why-lines at all and is valid too.
+_partial_report = {
+    **_fixture_report,
+    "top_picks": [
+        _fixture_report["top_picks"][0],
+        {
+            **_fixture_report["top_picks"][0],
+            "title": "A second method",
+            "url": "https://example.com/b",
+            "why_it_matters": "",
+        },
+    ],
+}
+_partial_path = _write_verify_fixture(_partial_report, _fixture_log)
+_partial = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_partial_path)],
+    capture_output=True,
+    text=True,
+)
+check("one degraded top pick does not fail the week",
+      _partial.returncode == 0, (_partial.stdout + _partial.stderr)[-500:])
+
+_offline_report = {
+    **_fixture_report,
+    "top_picks": [{**_fixture_report["top_picks"][0], "why_it_matters": ""}],
+}
+_offline_path = _write_verify_fixture(
+    _offline_report, {**_fixture_log, "why_it_matters": False}
+)
+_offline = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_offline_path)],
+    capture_output=True,
+    text=True,
+)
+check("an offline report with no why-lines is accepted",
+      _offline.returncode == 0, (_offline.stdout + _offline.stderr)[-500:])
+
+_no_week_end_path = _write_verify_fixture(_fixture_report, _fixture_log)
+_no_week_end = _yaml.safe_load(_no_week_end_path.read_text(encoding="utf-8"))
+_no_week_end.pop("week_end", None)
+_no_week_end_path.write_text(_yaml.safe_dump(_no_week_end), encoding="utf-8")
+_missing_date = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_no_week_end_path)],
+    capture_output=True,
+    text=True,
+)
+check("a missing week_end fails cleanly instead of tracing back",
+      _missing_date.returncode == 1 and "Traceback" not in _missing_date.stderr,
+      (_missing_date.stdout + _missing_date.stderr)[-500:])
 
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")

@@ -27,7 +27,7 @@ from reportlab.platypus import (
 )
 from xml.sax.saxutils import escape
 
-from synthetic_data.render import format_day, format_week, subject_line
+from synthetic_data.render import format_day, format_source_counts, format_week, subject_line
 
 FONT_DIR = "C:/Windows/Fonts"
 try:
@@ -106,6 +106,9 @@ STYLE = {
     ),
     "footer": ParagraphStyle(
         "footer", fontName=FONT_REG, fontSize=7.8, leading=10, textColor=MUTED
+    ),
+    "why": ParagraphStyle(
+        "why", fontName=FONT_ITALIC, fontSize=9.0, leading=12.8, textColor=MUTED, spaceBefore=2
     ),
 }
 
@@ -230,8 +233,10 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
     story.append(table)
 
     # --- trend ---
-    story += _section("Trend of the week")
-    story.append(Paragraph(escape(" ".join(report["trend"].split())), STYLE["lead"]))
+    trend = (report.get("trend") or "").strip()
+    if trend:
+        story += _section("Trend of the week")
+        story.append(Paragraph(escape(" ".join(trend.split())), STYLE["lead"]))
 
     # --- top picks ---
     story.append(PageBreak())
@@ -247,6 +252,15 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
             Spacer(1, 3),
             Paragraph(escape(summary), STYLE["body"]),
         ]
+        wim = (pick.get("why_it_matters") or "").strip()
+        if wim:
+            block.append(Spacer(1, 2))
+            block.append(
+                Paragraph(
+                    f"Why it matters for Well7: {escape(' '.join(wim.split()))}",
+                    STYLE["why"],
+                )
+            )
         row = Table([[block[0], block[1:]]], colWidths=[20, WIDTH - 20], hAlign="LEFT")
         row.setStyle(
             TableStyle(
@@ -274,6 +288,14 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
                     bulletText="•",
                 )
             )
+            wim = (tool.get("why_it_matters") or "").strip()
+            if wim:
+                story.append(
+                    Paragraph(
+                        f"Why it matters for Well7: {escape(' '.join(wim.split()))}",
+                        STYLE["why"],
+                    )
+                )
             story.append(Spacer(1, 5))
     else:
         story.append(Paragraph("Nothing worth listing this week.", STYLE["body"]))
@@ -291,9 +313,23 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
                     bulletText="•",
                 )
             )
+            wim = (item.get("why_it_matters") or "").strip()
+            if wim:
+                story.append(
+                    Paragraph(
+                        f"Why it matters for Well7: {escape(' '.join(wim.split()))}",
+                        STYLE["why"],
+                    )
+                )
             story.append(Spacer(1, 5))
     else:
         story.append(Paragraph("Nothing this week.", STYLE["body"]))
+
+    counts_line = format_source_counts(report)
+    if counts_line:
+        story.append(Spacer(1, 10))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=RULE, spaceBefore=2, spaceAfter=6))
+        story.append(Paragraph(escape(counts_line), STYLE["footer"]))
 
     doc.build(story)
     return path

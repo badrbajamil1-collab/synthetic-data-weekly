@@ -44,7 +44,8 @@ because leaving them broken would have silently corrupted the output:
   recorded 0 new URLs.
 
 **The report itself** renders to Markdown, HTML and a three-page PDF with the
-glossary first, and passes all 21 structural checks. For week 2026-11-01: 8 picks,
+glossary first, and passes every structural check in `verify_report.py`. For
+week 2026-11-01: 8 picks,
 4 tools, 5 worth-a-look, 17 links verified, 0 dead.
 
 ## Phase 2 vs the manual report — the comparison the brief asks for
@@ -154,3 +155,34 @@ be a historical artefact and editing it after the fact would fake the process.
 - **Repo split for GitHub:** `main` is the Python agent; the `web` branch carries
   the Cloudflare Workers/D1/React view. The Worker's silent score-1 fallback is
   documented at `web/worker/pipeline/rank.ts:58` (guarded by `guard.ts` now).
+
+## Update — 2026-11-12 (reviewer feedback applied to the Python pipeline)
+
+All six groups of reviewer feedback landed, with tests first (~290 new lines in
+`selftest.py`) and a whole-branch review. Nothing in `web/` changed.
+
+- **One fixed week.** `src/synthetic_data/week.py` derives Sunday–Saturday from
+  the run date; collect, fetch, compose and verify all import it, so windows no
+  longer overlap or drift. `write_report.py --week-end` still replays a past week.
+- **Collect.** GitHub searches `created:` (plus releases for older repos) instead
+  of `pushed:`; arXiv uses the API abstract rather than scraping `/abs`; every
+  source retries 429/5xx with backoff; per-source counts appear in the footer.
+- **Clean.** Dedupe and duplicate grouping both prefer the primary source, and
+  `links.story_key` collapses an HN/Reddit post onto the paper or repo it links to.
+- **Rank.** A cheap `config.keywords` gate skips obvious noise before any model
+  call; one comparative editor pass re-scores the top 20 together; the rubric and
+  a deterministic ceiling keep `well7_fit` distinct from `score`; the LLM is asked
+  for JSON via `response_format` (with a 400 fallback).
+- **Summarise.** Top picks ~50 words, tools/worth one line; `why_it_matters` is
+  its own guarded line; a failed trend is omitted and the run flagged instead of
+  pasting together first sentences.
+- **Build.** Per-section score floors (top 7 / tools 6 / worth 5): sections are
+  never padded, and `verify_report.py` checks the floor, the why-line in the
+  rendered Markdown/HTML and the Sunday–Saturday shape. Old weeks still verify.
+- **Deliver.** `llm.require_api_key` accepts `OPENROUTER_API_KEY` **or**
+  `LLM_API_KEY` (the 7 Nov failure); `history.db` is written atomically with a
+  backup merged on read; the workflow saves its cache with `if: always()`.
+
+Spec: `docs/superpowers/specs/2026-11-11-pipeline-improvements-design.md`.
+Plan: `docs/superpowers/plans/2026-11-11-pipeline-improvements.md`.
+Reader-feedback links remain the deferred Phase 6 idea.

@@ -19,7 +19,7 @@ and print every raw item) so historical weeks stay reproducible.
 
 import concurrent.futures
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
@@ -29,6 +29,7 @@ import fetch_candidates
 from synthetic_data import emailer, llm, rank, runner, summarise
 from synthetic_data.models import AgentState, Item
 from synthetic_data.rank import sort_ranked
+from synthetic_data.week import in_week, week_bounds
 
 from report_build import main as report_build_main
 from write_report import (
@@ -50,6 +51,15 @@ _CHAT_FN: Optional[Callable[[List[dict]], str]] = None
 _CONFIG_PATH = "config.yaml"
 _CACHE_PATH = "summary_cache.json"
 _DELIVERY: Dict[str, bool] = {"enabled": True, "dry_run": False}
+
+
+def _as_int(value, default: int) -> int:
+    """Config integer where 0 is a real value, not "unset".
+
+    `int(block.get(key) or default)` silently replaced a deliberate 0 (e.g.
+    "disable the editor pass") with the default.
+    """
+    return default if value is None else int(value)
 
 
 def configure(
@@ -81,7 +91,10 @@ def _chat_for(section: str) -> Callable[[List[dict]], str]:
         return _CHAT_FN
 
     block = _SETTINGS.get(section) or {}
-    api_key = llm.require(llm.load_env(), "OPENROUTER_API_KEY")
+    # The GitHub Actions workflow exports LLM_API_KEY; local .env uses
+    # OPENROUTER_API_KEY. Both names are accepted so a scheduled run cannot
+    # fail on a key-name mismatch (the 2026-11-07 failure).
+    api_key = llm.require_api_key(llm.load_env())
     base_url = block.get("base_url") or llm.DEFAULT_BASE_URL
     model = block.get("model") or (
         (_SETTINGS.get("ranking") or {}).get("model") or DEFAULT_SUMMARISE_MODEL
@@ -98,10 +111,30 @@ def _chat_for(section: str) -> Callable[[List[dict]], str]:
             reasoning_effort=block.get("reasoning_effort") or "low",
             timeout=float(block.get("timeout_seconds") or 180),
             attempts=int(block.get("max_attempts") or 4),
+            json_mode=True,
         )
         return content
 
     return chat_fn
+
+
+def _run_date(state: AgentState) -> date:
+    """The run date carried in state (a replay hook), or today.
+
+    Every stage reads this one value, so collect, fetch and compose describe
+    the same Sunday–Saturday week instead of drifting apart.
+    """
+    raw = state.get("run_date")
+    if isinstance(raw, datetime):
+        return raw.date()
+    if isinstance(raw, date):
+        return raw
+    if raw:
+        try:
+            return date.fromisoformat(str(raw)[:10])
+        except ValueError:
+            pass
+    return date.today()
 
 
 def collect_node(state: AgentState, config) -> AgentState:
@@ -113,11 +146,19 @@ def collect_node(state: AgentState, config) -> AgentState:
     ``report_build.py`` reads for its counts.
     """
     errors = list(state.get("errors") or [])
+    run_date = _run_date(state)
+    week = week_bounds(run_date)
     try:
-        result = runner.collect_all(_SETTINGS, use_history=True)
+        # Collection and reporting share one fixed Sunday–Saturday window, so
+        # a rolling 7-day lookback cannot smuggle a previous week's item into
+        # the shortlist.
+        result = runner.collect_all(_SETTINGS, use_history=True, week=week)
         runner.save_items(result.items)
         payload = {
             "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "run_date": run_date.isoformat(),
+            "week_start": week[0].isoformat(),
+            "week_end": week[1].isoformat(),
             "counts": result.counts,
             "found": result.found,
             "duplicates": result.duplicates,
@@ -133,6 +174,7 @@ def collect_node(state: AgentState, config) -> AgentState:
             "raw_items": [item.model_dump(mode="json") for item in result.items],
             "collect_counts": result.counts,
             "already_sent": result.already_sent,
+            "run_date": run_date.isoformat(),
             "errors": [*errors, *result.errors],
         }
     except Exception as exc:  # noqa: BLE001 - a node failure is data, not a crash
@@ -148,11 +190,20 @@ def clean_node(state: AgentState, config) -> AgentState:
     The graph state carries plain dicts (what JSON looks like), so the items
     are wrapped into Item before dedupe and unwrapped back to dicts after.
     """
-    items = [
-        item if isinstance(item, Item) else Item(**item)
-        for item in state.get("raw_items") or []
-    ]
-    unique, dropped = runner.dedupe_items(items)
+    errors = list(state.get("errors") or [])
+    try:
+        items = [
+            item if isinstance(item, Item) else Item(**item)
+            for item in state.get("raw_items") or []
+        ]
+        unique, dropped = runner.dedupe_items(items)
+    except Exception as exc:  # noqa: BLE001 - a node must never escape the graph
+        return {
+            **state,
+            "deduped_items": [],
+            "duplicates": 0,
+            "errors": [*errors, f"clean: {type(exc).__name__}: {exc}"],
+        }
     return {
         "deduped_items": [item.model_dump(mode="json") for item in unique],
         "duplicates": dropped,
@@ -160,24 +211,104 @@ def clean_node(state: AgentState, config) -> AgentState:
 
 
 def rank_node(state: AgentState, config) -> AgentState:
-    """Node 3 - LLM scores each item 1-10 with a one-line reason."""
+    """Node 3 - keyword gate, batch scoring, then one comparative editor pass.
+
+    Cheap obvious noise never reaches the model (free-tier budget), and the
+    final top ~20 are re-scored in a single call so scores from different
+    batches are directly comparable.
+    """
     errors = list(state.get("errors") or [])
     items = list(state.get("deduped_items") or [])
     if not items:
         return {**state, "ranked_items": [], "errors": [*errors, "rank: no items to score"]}
     try:
         ranking = _SETTINGS.get("ranking") or {}
-        rows = rank.score_items(
-            items,
-            chat_fn=_chat_for("ranking"),
-            batch_size=int(ranking.get("batch_size") or 15),
-            concurrency=int(ranking.get("concurrency") or 3),
+        chat_fn = _chat_for("ranking")
+
+        prefiltered: Dict[int, dict] = {}
+        to_score: List[tuple] = []
+        if ranking.get("prefilter", False):
+            skip = rank.prefilter_indices(items, _SETTINGS.get("keywords") or [])
+            for index, item in enumerate(items):
+                if index in skip:
+                    row = dict(item)
+                    row.update({
+                        "score": 1,
+                        "well7_fit": 1,
+                        "reason": "prefiltered: no keyword match",
+                        "score_status": "prefiltered",
+                        "duplicate_of": None,
+                        "scored_by": "weekly-graph",
+                    })
+                    prefiltered[index] = row
+                else:
+                    to_score.append((index, item))
+        else:
+            to_score = list(enumerate(items))
+
+        scored = rank.score_items(
+            [item for _index, item in to_score],
+            chat_fn=chat_fn,
+            batch_size=_as_int(ranking.get("batch_size"), 15),
+            concurrency=_as_int(ranking.get("concurrency"), 3),
             scored_by="weekly-graph",
             fallback=True,
         )
-        return {**state, "ranked_items": rows}
+        by_index = {index: row for (index, _item), row in zip(to_score, scored)}
+        rows = [prefiltered.get(i) or by_index[i] for i in range(len(items))]
+
+        rows = rank.rerank_top(
+            rows, chat_fn, top_n=_as_int(ranking.get("editor_pass_size"), 20)
+        )
+        rows = rank.diversify_well7_fit(rows)
+
+        # Same story, different titles: collapse HN/Reddit posts onto the
+        # paper/repo they link to, then impose the one total order the CLI
+        # path also uses. Without this, `fetch_node`'s `not duplicate_of`
+        # filter is a no-op and duplicates reach the report.
+        rows = rank.group_duplicates(
+            rows, threshold=float(ranking.get("duplicate_similarity", 0.80))
+        )
+        rows = rank.sort_ranked(rows)
+
+        # The same score guard the CLI applies. `max_unscored_ratio` and
+        # `min_scored_to_proceed` are documented in config.yaml, and the
+        # scheduled path is where a mostly-failed ranking matters most.
+        attempted = [
+            row for row in rows if row.get("score_status") != "prefiltered"
+        ]
+        scored_count = sum(
+            1 for row in attempted if row.get("score_status") == "scored"
+        )
+        if scored_count == 0:
+            errors.append("rank: no item could be scored; the report will be thin")
+        elif attempted:
+            ratio = (len(attempted) - scored_count) / len(attempted)
+            max_ratio = float(ranking.get("max_unscored_ratio", 0.10))
+            if ratio > max_ratio:
+                errors.append(
+                    f"rank: {ratio:.0%} of attempted items are unscored "
+                    f"(threshold {max_ratio:.0%}); the report will be thin"
+                )
+        min_scored = _as_int(ranking.get("min_scored_to_proceed"), 1)
+        if scored_count < min_scored:
+            errors.append(
+                f"rank: only {scored_count} scored items (need {min_scored})"
+            )
+        return {**state, "ranked_items": rows, "errors": errors}
     except Exception as exc:  # noqa: BLE001
         return {**state, "ranked_items": [], "errors": [*errors, f"rank: {type(exc).__name__}: {exc}"]}
+
+
+def _eligible_rows(rows, bounds) -> List[dict]:
+    """Rows allowed into the report: scored, not a demoted duplicate, in week."""
+    return [
+        row
+        for row in rows
+        if row.get("score_status") == "scored"
+        and not row.get("duplicate_of")
+        and in_week(row.get("published"), bounds)
+    ]
 
 
 def _fetch_one(record: dict) -> dict:
@@ -210,27 +341,17 @@ def fetch_node(state: AgentState, config) -> AgentState:
     if not ranked:
         return {**state, "shortlist": [], "errors": [*errors, "fetch: no ranked items"]}
     try:
-        cap = int(_SETTINGS.get("max_top_picks") or 10)
-        eligible = [
-            row
-            for row in ranked
-            if row.get("score_status") == "scored" and not row.get("duplicate_of")
-        ]
-        # Apply the report's seven-day window before the cap, so a stale
-        # high-scorer cannot take a fetch slot from a current item.
-        end = summarise.week_end_for(eligible)
-        cutoff = end - timedelta(days=6)
-        in_window = [
-            row
-            for row in eligible
-            if (day := summarise.published_date(row.get("published")))
-            and cutoff <= day <= end
-        ]
-        shortlist = sort_ranked(in_window)
+        cap = _as_int(_SETTINGS.get("max_top_picks"), 10)
+        # The same fixed Sunday–Saturday window the collector and the report
+        # use. Deriving it from the newest item let the window drift.
+        bounds = week_bounds(_run_date(state))
+        shortlist = sort_ranked(_eligible_rows(ranked, bounds))
         # Same mix rule as fetch_candidates.load_shortlist: the rubric rewards
         # "new tools", so without a cap GitHub repos can take the whole
         # shortlist away from papers and news.
-        share_cap = int((_SETTINGS.get("ranking") or {}).get("github_share_cap", 3))
+        share_cap = _as_int(
+            (_SETTINGS.get("ranking") or {}).get("github_share_cap"), 3
+        )
         shortlist = rank.cap_github_share(shortlist, share_cap)[:cap]
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
             records = list(pool.map(_fetch_one, shortlist))
@@ -246,28 +367,38 @@ def fetch_node(state: AgentState, config) -> AgentState:
         )
         return {**state, "shortlist": records}
     except Exception as exc:  # noqa: BLE001
-        return {
-            **state,
-            "shortlist": [],
-            "errors": [*errors, f"fetch: {type(exc).__name__}: {exc}"],
-        }
+        # Leave `shortlist` unset: report_node then falls back to the ranked
+        # rows with the eligibility filters applied. Setting it to [] here
+        # used to make `shortlist or ranked_items` resurrect unfiltered rows.
+        return {**state, "errors": [*errors, f"fetch: {type(exc).__name__}: {exc}"]}
 
 
 def report_node(state: AgentState, config) -> AgentState:
     """Node 5 - write the trend, top picks, tools and worth-a-look."""
     errors = list(state.get("errors") or [])
     # The fetch node replaces the shortlist with records that carry the real
-    # page text. If it failed, fall back to the ranked rows (snippet-only).
-    items = list(state.get("shortlist") or state.get("ranked_items") or [])
+    # page text. If it failed, fall back to the ranked rows (snippet-only) but
+    # keep the same eligibility rules, so a demoted duplicate or an
+    # out-of-week item cannot slip into the report through the fallback.
+    shortlist = state.get("shortlist")
+    if shortlist is None:
+        bounds = week_bounds(_run_date(state))
+        items = _eligible_rows(state.get("ranked_items") or [], bounds)
+    else:
+        items = list(shortlist)
     if not items:
         return {**state, "report": {}, "errors": [*errors, "report: no ranked items to write"]}
     try:
         summarising = _SETTINGS.get("summarising") or {}
         sections = summarise.compose_sections(
             items,
-            picks=int(summarising.get("picks") or 6),
-            max_tools=int(summarising.get("max_tools") or 5),
-            max_worth=int(summarising.get("max_worth_a_look") or 5),
+            picks=_as_int(summarising.get("picks"), 6),
+            max_tools=_as_int(summarising.get("max_tools"), 5),
+            max_worth=_as_int(summarising.get("max_worth_a_look"), 5),
+            run_date=_run_date(state),
+            min_score_top=_as_int(summarising.get("min_score_top"), 7),
+            min_score_tools=_as_int(summarising.get("min_score_tools"), 6),
+            min_score_worth=_as_int(summarising.get("min_score_worth"), 5),
         )
         chat_fn = _chat_for("summarising")
         model_name = str(summarising.get("model") or MODEL)
@@ -275,8 +406,8 @@ def report_node(state: AgentState, config) -> AgentState:
         # model calls, and a fallback is never stored, so an outage cannot freeze.
         cache = load_cache(_CACHE_PATH, model_name)
         cache_config = {
-            "max_chars": int(summarising.get("max_text_chars") or 6000),
-            "concurrency": int(summarising.get("concurrency") or 3),
+            "max_chars": _as_int(summarising.get("max_text_chars"), 6000),
+            "concurrency": _as_int(summarising.get("concurrency"), 3),
         }
         pick_results = summarise_section(
             sections["top_picks"],
@@ -324,12 +455,17 @@ def report_node(state: AgentState, config) -> AgentState:
             for item, result in zip(sections["worth_a_look"], worth_results)
         ]
 
-        # Write the trend from the finished summaries, not the raw rows.
+        # Write the trend from the finished summaries, not the raw rows. A
+        # failed trend is left out and the run is flagged, never faked.
         trend = summarise.summarise_trend(top_picks, chat_fn)
+        if trend.get("guard") == "omitted":
+            errors.append("report: trend omitted; the model was unreachable")
 
         report = {
             "week_start": sections["week_start"],
             "week_end": sections["week_end"],
+            "week_mode": "run_date",
+            "dropped_below_floor": len(sections.get("dropped_below_floor") or []),
             "top_picks": top_picks,
             "tools": tools,
             "worth_a_look": worth,
@@ -359,7 +495,9 @@ def render_node(state: AgentState, config) -> AgentState:
         # A render, a dry run or a failed SMTP attempt must not suppress next
         # week's copy of the same link.
         code = report_build_main([str(source_path), "--no-record"])
-        if code != 0:
+        # Exit 1 means "rendered, but dropped dead links" — a successful
+        # filtered render, not a crash. Only other codes are errors.
+        if code not in (0, 1):
             errors.append(f"render: report_build exited {code}")
 
         # The rendered files are the email body: report_build has already
@@ -450,6 +588,6 @@ def weekly_run(
     )
     graph = build_weekly_graph()
     return graph.invoke(
-        {"errors": []},
+        {"errors": [], "run_date": date.today().isoformat()},
         config={"configurable": {"thread_id": "weekly-synthetic-data"}},
     )

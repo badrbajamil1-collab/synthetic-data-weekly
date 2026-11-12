@@ -20,13 +20,18 @@ import yaml
 
 from synthetic_data import rank
 from synthetic_data.links import UA, normalize_url, resolve_google_news
+from synthetic_data.week import in_week, week_bounds
 
 RANKED = "ranked.json"
 OUT = "candidates.json"
 
 
-def load_shortlist(path=RANKED, config_path="config.yaml"):
-    """Return the ranked, non-duplicate, scored rows, capped at max_top_picks."""
+def load_shortlist(path=RANKED, config_path="config.yaml", week_end=None):
+    """Return the ranked, non-duplicate, scored rows, capped at max_top_picks.
+
+    `week_end` replays a historical week; the default is the fixed
+    Sunday-Saturday week containing today.
+    """
     file = Path(path)
     if not file.exists():
         raise SystemExit(f"FAIL  {path} not found - run `uv run python rank_items.py` first")
@@ -40,13 +45,27 @@ def load_shortlist(path=RANKED, config_path="config.yaml"):
         if row.get("score_status") == "scored" and not row.get("duplicate_of")
     ]
 
+    # The same fixed Sunday-Saturday window the collector, the graph's fetch
+    # node and compose_sections use. Without this, an out-of-week item in a
+    # stale ranked.json could take a fetch slot from a current one.
+    bounds = week_bounds() if week_end is None else week_bounds(week_end)
+    in_window = [row for row in scored if in_week(row.get("published"), bounds)]
+    if len(in_window) != len(scored):
+        print(
+            f"week filter: {len(scored) - len(in_window)} of {len(scored)} scored "
+            f"items are outside {bounds[0]}..{bounds[1]}"
+        )
+
     config = {}
     config_file = Path(config_path)
     if config_file.exists():
         config = yaml.safe_load(config_file.read_text(encoding="utf-8")) or {}
 
+    # The minimum applies AFTER the window filter: an all-out-of-week
+    # ranked.json used to pass this check and then write an empty
+    # candidates.json with no warning.
     minimum = int((config.get("ranking") or {}).get("min_scored_to_proceed", 5))
-    if len(scored) < minimum:
+    if len(in_window) < minimum:
         # A stale candidates.json would be read by report_build.py as if it were
         # this week's, so remove it rather than leave a trap behind.
         stale = Path(OUT)
@@ -54,7 +73,8 @@ def load_shortlist(path=RANKED, config_path="config.yaml"):
             stale.unlink()
             print(f"removed stale {OUT}")
         raise SystemExit(
-            f"FAIL  only {len(scored)} scored items (need {minimum}). "
+            f"FAIL  only {len(in_window)} scored items in "
+            f"{bounds[0]}..{bounds[1]} (need {minimum}). "
             "Re-run rank_items.py; nothing was fetched."
         )
 
@@ -65,11 +85,12 @@ def load_shortlist(path=RANKED, config_path="config.yaml"):
     # lead the list.
     ranking_cfg = config.get("ranking") or {}
     share_cap = int(ranking_cfg.get("github_share_cap", 3))
-    ordered = rank.cap_github_share(rank.sort_ranked(scored), share_cap)
+    ordered = rank.cap_github_share(rank.sort_ranked(in_window), share_cap)
     return ordered[:top_n]
 
 
 GITHUB_REPO = re.compile(r"^https?://github\.com/([^/\s]+)/([^/?#\s]+)/?$")
+ARXIV_PAGE = re.compile(r"^https?://(?:[\w.-]+\.)?arxiv\.org/(?:abs|pdf)/", re.IGNORECASE)
 
 
 def fetch_github_readme(url):
@@ -119,6 +140,14 @@ def fetch(record):
         "chars": 0,
         "text": "",
     }
+
+    if ARXIV_PAGE.match(resolved or ""):
+        text = re.sub(r"\n{3,}", "\n\n", (record.get("snippet") or "").strip())[:8000]
+        out["status"] = 200
+        out["fetched_from"] = "arxiv api abstract"
+        out["chars"] = len(text)
+        out["text"] = text
+        return out
 
     readme = fetch_github_readme(resolved)
     if readme:
