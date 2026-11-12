@@ -1571,6 +1571,43 @@ check("report_build run_log keeps collector counts",
       _rb_log.get("items_found") == 15 and _rb_log.get("source_errors") == [],
       str(_rb_log))
 
+print("council round 1 regressions")
+_trend_digits = _sum.summarise_trend(
+    [_cand(0)],
+    lambda _m: _json.dumps({"trend": "It reports 223 tables across the week."}),
+)
+check("a trend with digits is omitted, not published",
+      _trend_digits["trend"] == "" and _trend_digits["guard"] == "omitted",
+      str(_trend_digits))
+
+_tool_only_report = {
+    **_fixture_report,
+    "top_picks": [{**_fixture_report["top_picks"][0], "why_it_matters": ""}],
+    "tools": [{
+        "name": "owner/repo",
+        "url": "https://example.com/tool",
+        "note": "A one line note.",
+        "source": "GitHub",
+        "published": _date(2026, 11, 10),
+        "score": 8,
+        "why_it_matters": "It helps Well7 build private tables.",
+    }],
+}
+_tool_only_path = _write_verify_fixture(
+    _tool_only_report, {**_fixture_log, "why_it_matters": True}
+)
+_tool_only = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_tool_only_path)],
+    capture_output=True,
+    text=True,
+)
+check("verify_report accepts a why-line that sits only on a tool",
+      _tool_only.returncode == 0, (_tool_only.stdout + _tool_only.stderr)[-500:])
+
+_clean_out = _graph.clean_node({"raw_items": [], "duplicates": 7}, None)
+check("clean_node preserves the collected duplicate count",
+      _clean_out["duplicates"] == 7, str(_clean_out["duplicates"]))
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

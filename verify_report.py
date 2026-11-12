@@ -117,9 +117,16 @@ if NEW:
     # Check the RENDERED artefacts, not just source.yaml: that is what the
     # reader sees. The old gate (`if log.get("why_it_matters")`) skipped the
     # whole block exactly when the field was missing, so it could never fail.
-    top_picks = data.get("top_picks") or []
+    # The producer's flag scans all three sections, so the verifier must too.
+    # Scanning only top_picks made a report whose only why-line sits on a tool
+    # or worth-a-look entry fail even though the run log was truthful.
+    why_entries = [
+        entry
+        for section in ("top_picks", "tools", "worth_a_look")
+        for entry in (data.get(section) or [])
+    ]
     present = [
-        p for p in top_picks if str(p.get("why_it_matters") or "").strip()
+        p for p in why_entries if str(p.get("why_it_matters") or "").strip()
     ]
     # The producer flag is a capability flag: it is set when at least one
     # line was written, not when every pick has one. Requiring a line per
@@ -129,7 +136,7 @@ if NEW:
         check(
             "run log's why_it_matters flag matches the artefact",
             False,
-            f"flag={bool(log.get('why_it_matters'))} present={len(present)}/{len(top_picks)}",
+            f"flag={bool(log.get('why_it_matters'))} present={len(present)}/{len(why_entries)}",
         )
     else:
         check("run log's why_it_matters flag matches the artefact", True)

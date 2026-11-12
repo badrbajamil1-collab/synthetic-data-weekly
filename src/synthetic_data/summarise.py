@@ -587,15 +587,29 @@ def summarise_trend(
         candidate = parse_summary(raw, key="trend") if raw else None
         if candidate:
             missing = unsupported_numbers(candidate, material)
-            if not missing:
+            # The prompt forbids digits outright. Checking only against the
+            # material let a trend ship "223 tables" whenever that number
+            # happened to appear in the week's items, so the guard must also
+            # reject any numeric token at all.
+            digits = sorted(extract_numbers(candidate))
+            if not missing and not digits:
                 return {
                     "trend": candidate,
                     "guard": "passed" if attempt == 0 else "repaired",
                 }
-            prompt = _TREND_PROMPT.format(items=material) + (
-                "\n\nYour previous attempt used these numbers, which are NOT in the "
-                "ITEMS: " + ", ".join(missing) + ". Remove them or correct them."
-            )
+            notes = []
+            if missing:
+                notes.append(
+                    "Your previous attempt used these numbers, which are NOT in the "
+                    "ITEMS: " + ", ".join(missing) + ". Remove them or correct them."
+                )
+            if digits:
+                notes.append(
+                    "The TREND must contain no digits at all; your previous attempt "
+                    "contained " + ", ".join(digits) + ". Write quantities in words "
+                    "or leave them out."
+                )
+            prompt = _TREND_PROMPT.format(items=material) + "\n\n" + "\n\n".join(notes)
 
     return {"trend": "", "guard": "omitted"}
 

@@ -204,9 +204,13 @@ def clean_node(state: AgentState, config) -> AgentState:
             "duplicates": 0,
             "errors": [*errors, f"clean: {type(exc).__name__}: {exc}"],
         }
+    # collect_all() already deduplicated and put the true count in state.
+    # Running dedupe_items again here normally drops 0, so writing `dropped`
+    # alone would overwrite that count with 0. Keep the collected count and
+    # add anything this second pass actually removed.
     return {
         "deduped_items": [item.model_dump(mode="json") for item in unique],
-        "duplicates": dropped,
+        "duplicates": int(state.get("duplicates") or 0) + dropped,
     }
 
 
