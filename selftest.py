@@ -1608,6 +1608,32 @@ _clean_out = _graph.clean_node({"raw_items": [], "duplicates": 7}, None)
 check("clean_node preserves the collected duplicate count",
       _clean_out["duplicates"] == 7, str(_clean_out["duplicates"]))
 
+# The round-2 council objected that clean_node's fix was only half-wired:
+# collect_node must actually put the count into state first. Exercise the real
+# collect -> clean chain offline with a stubbed collector.
+from synthetic_data.runner import CollectResult as _CollectResult
+
+_collect_dir = Path(tempfile.mkdtemp())
+_orig_collect = _graph.runner.collect_all
+_orig_cwd2 = _os.getcwd()
+try:
+    _graph.runner.collect_all = lambda *a, **k: _CollectResult(
+        items=[], counts={}, found=0, duplicates=7, already_sent=0,
+        errors=[], warnings={},
+    )
+    _os.chdir(_collect_dir)
+    with _contextlib.redirect_stdout(_io.StringIO()):
+        _collected = _graph.collect_node({"errors": []}, None)
+        _cleaned = _graph.clean_node(_collected, None)
+finally:
+    _os.chdir(_orig_cwd2)
+    _graph.runner.collect_all = _orig_collect
+
+check("collect_node propagates duplicates into state",
+      _collected.get("duplicates") == 7, str(_collected.get("duplicates")))
+check("collect -> clean keeps the true duplicate count",
+      _cleaned.get("duplicates") == 7, str(_cleaned.get("duplicates")))
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

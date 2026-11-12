@@ -173,6 +173,9 @@ def collect_node(state: AgentState, config) -> AgentState:
         return {
             "raw_items": [item.model_dump(mode="json") for item in result.items],
             "collect_counts": result.counts,
+            # collect_all already deduplicated; carry its count into state so
+            # clean_node can add to it instead of overwriting it with zero.
+            "duplicates": result.duplicates,
             "already_sent": result.already_sent,
             "run_date": run_date.isoformat(),
             "errors": [*errors, *result.errors],
