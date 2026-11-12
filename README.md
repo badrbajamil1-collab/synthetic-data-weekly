@@ -43,16 +43,17 @@ This is where each phase stood on 2026-11-07.
 | **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned three times | `rank_items.py` → `ranked.json`; keyword prefilter, one comparative editor pass, structured JSON output; URL normalisation, primary-source dedupe and `history.db` |
 | **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (structural checks plus the 2026-11-11 schema gates) |
 | **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
-| **5 — Email and schedule** | You receive a correct test email | ⚠️ Code complete, **not proven** | send path and a dry-run `email.eml` exist; `SyntheticDataWeekly` is registered in dry-run mode; the `.env` SMTP block is empty |
+| **5 — Email and schedule** | You receive a correct test email | ⚠️ Code complete, **not proven** | send path and a dry-run `email.eml` exist; `SyntheticDataWeekly` is **not registered on this machine**; the `.env` SMTP block is empty |
 | **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⛔ Not started | blocked on Phase 5; then `schedule_task.py --register --send` and two watched weeks |
 
 **Where that leaves the project:** end of week 3 of the brief's timetable. The
 remaining work is not code — it is credentials and two observed Saturdays.
 
 **The brief's "done" test** is that the agent runs unattended for two Saturdays and
-the team finds the reports useful. Neither has happened yet: the scheduled task
-deliberately runs `--dry-run` until SMTP is configured, and the Windows task is
-interactive-only (it will not fire while the machine is signed out).
+the team finds the reports useful. Neither has happened yet: the Windows task is
+**not currently registered** on this machine (`schtasks /query /tn SyntheticDataWeekly`
+reports no such task). Once registered it deliberately runs `--dry-run` until SMTP is
+configured, and it is interactive-only (it will not fire while the machine is signed out).
 
 What is still missing, in order:
 
@@ -274,9 +275,10 @@ from scratch.
 - **No real email has been sent.** The send path is implemented and dry-run tested,
   but `.env` still has empty SMTP placeholders. `send_report.py` fails loudly without
   them, and `main.py --pipeline` records `send: EmailError: SMTP_HOST is not set ...`.
-- **The scheduled task runs dry.** The registered `SyntheticDataWeekly` task calls
-  `scripts/run_weekly.ps1`, which adds `--dry-run` unless it is invoked with `-Send`.
-  Each Saturday therefore writes a report and `email.eml` and never contacts SMTP.
+- **The scheduled task runs dry, once it exists.** `SyntheticDataWeekly` is **not
+  currently registered** on this machine; `schedule_task.py --register` creates it.
+  It then calls `scripts/run_weekly.ps1`, which adds `--dry-run` unless invoked with
+  `-Send`, so each Saturday writes a report and `email.eml` and never contacts SMTP.
   Re-register with `uv run python schedule_task.py --register --send` once a test
   email has arrived.
 - **The scheduled task is interactive-only.** It runs as the current user when

@@ -177,7 +177,8 @@ Three rules that are easy to break:
   offline tests plus a real `--dry-run` render, but `.env` has no SMTP credentials. Fill
   `SMTP_*` / `MAIL_FROM` and run `python send_report.py --test` before trusting the
   weekly task. `send_report.py --dry-run` needs no credentials.
-- **The scheduled task is registered in dry-run mode.** `scripts/run_weekly.ps1` adds
+- **The scheduled task is not currently registered.** `schedule_task.py --register`
+  creates `SyntheticDataWeekly` in dry-run mode: `scripts/run_weekly.ps1` adds
   `--dry-run` unless it is called with `-Send`, so each Saturday writes a report and
   `email.eml` without touching SMTP. That is deliberate while `.env` is empty: a missing
   credential cannot make the weekly run fail. After a test email arrives, re-register
