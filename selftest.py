@@ -1526,6 +1526,51 @@ check("a missing week_end fails cleanly instead of tracing back",
       _missing_date.returncode == 1 and "Traceback" not in _missing_date.stderr,
       (_missing_date.stdout + _missing_date.stderr)[-500:])
 
+print("report_build writes run_log counts")
+import contextlib as _contextlib
+import io as _io
+import os as _os
+import report_build as _report_build
+
+_rb_dir = Path(tempfile.mkdtemp())
+(_rb_dir / "raw_run_log.json").write_text(_json.dumps({
+    "run_at": "2026-11-12T09:00:00+00:00",
+    "week_end": "2026-11-14",
+    "counts": {"arxiv": 12, "news": 3},
+    "found": 15,
+    "kept": 15,
+    "duplicates": 0,
+    "already_sent": 0,
+    "errors": [],
+}), encoding="utf-8")
+_rb_source = _rb_dir / "source.yaml"
+_rb_source.write_text(_yaml.safe_dump(_fixture_report), encoding="utf-8")
+
+_orig_check = _report_build.check_link
+_orig_pdf = _report_build.render_pdf
+_orig_cwd = _os.getcwd()
+try:
+    _report_build.check_link = lambda url, timeout=30.0: {"status": 200, "ok": True}
+    _report_build.render_pdf = lambda report, path: Path(path).write_bytes(
+        b"%PDF-1.4\n" + b"0" * 50_000
+    )
+    _os.chdir(_rb_dir)
+    with _contextlib.redirect_stdout(_io.StringIO()):
+        _rb_code = _report_build.main([str(_rb_source), "--no-record"])
+finally:
+    _os.chdir(_orig_cwd)
+    _report_build.check_link = _orig_check
+    _report_build.render_pdf = _orig_pdf
+
+_rb_out = _rb_dir / "progress" / "week-2026-11-14"
+_rb_log = _json.loads((_rb_out / "run_log.json").read_text(encoding="utf-8"))
+check("report_build writes run_log.json with source_counts",
+      _rb_log.get("source_counts") == {"arxiv": 12, "news": 3},
+      str(_rb_log.get("source_counts")))
+check("report_build run_log keeps collector counts",
+      _rb_log.get("items_found") == 15 and _rb_log.get("source_errors") == [],
+      str(_rb_log))
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

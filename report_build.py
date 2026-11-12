@@ -183,7 +183,8 @@ def main(argv=None) -> int:
         )
         collected = {}
     report = dict(report)
-    report["source_counts"] = dict(collected.get("counts") or {})
+    source_counts = dict(collected.get("counts") or {})
+    report["source_counts"] = source_counts
 
     markdown = render_markdown(report)
     html = render_html(report)

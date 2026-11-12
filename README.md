@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-339%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-341%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
