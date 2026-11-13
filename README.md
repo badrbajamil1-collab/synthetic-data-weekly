@@ -312,8 +312,9 @@ There is no pytest or linter. CI is one scheduled workflow,
 `.github/workflows/weekly-report.yml` (Saturday 05:00 UTC, or manual
 `workflow_dispatch`), which sends the weekly report when SMTP secrets exist and
 falls back to a dry run otherwise; it keeps the report, PDF and (in dry-run mode)
-`email.eml` as build artefacts. Locally, the suite is two scripts that exit
-non-zero on failure:
+`email.eml` as build artefacts. A flagged run (an omitted trend, a thin ranking,
+a failed source) still exits 0 — only a missing report or email fails the run.
+Locally, the suite is two scripts that exit non-zero on failure:
 
 ```powershell
 uv run python selftest.py       # offline: parsing, dates, URL normalisation, dedupe, history, email, schedule

@@ -903,6 +903,40 @@ check("missing SMTP credentials fall back to dry-run",
 check("a real send is gated on SMTP credentials",
       'if [ "$ready" = "true" ] && [ "${{ github.event_name }}" = "schedule" ]' in _wf_src)
 
+print("pipeline exit status")
+from synthetic_data import cli as _cli
+from synthetic_data import graph as _graph_mod
+
+
+def _exit_code(state, **kw):
+    fn = getattr(_cli, "pipeline_exit_code", None)
+    return fn(state, **kw) if fn else None
+
+
+_flagged = {
+    "report": {"trend": ""},
+    "email": {"dry_run": True, "path": "progress/week-x/email.eml"},
+    "errors": ["report: trend omitted; the run is flagged"],
+    "raw_items": [],
+    "ranked_items": [],
+}
+check("flagged run with a dry-run email exits 0", _exit_code(_flagged) == 0)
+check("flagged run with a real send exits 0",
+      _exit_code({**_flagged, "email": {"sent": True}}) == 0)
+check("--no-email keeps a flagged run green",
+      _exit_code({**_flagged, "email": {}}, no_email=True) == 0)
+check("a missing email still exits 1",
+      _exit_code({**_flagged, "email": {}}) == 1)
+check("a missing report still exits 1",
+      _exit_code({"email": {"dry_run": True}, "errors": []}) == 1)
+_orig_run = _graph_mod.weekly_run
+_graph_mod.weekly_run = lambda *a, **k: _flagged
+try:
+    _cli_code = _cli.main(["--pipeline", "--dry-run"])
+finally:
+    _graph_mod.weekly_run = _orig_run
+check("cli.main returns 0 for a flagged-but-complete pipeline", _cli_code == 0)
+
 # ---------------------------------------------------------------------------
 # 2026-11-11 pipeline improvements. Written before the implementation so the
 # suite is red until every task lands.

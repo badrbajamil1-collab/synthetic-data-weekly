@@ -35,6 +35,20 @@ def write_run_log(result: CollectResult, path: Path) -> None:
     print(f"Saved run log -> {path}")
 
 
+def pipeline_exit_code(state: dict, *, no_email: bool = False) -> int:
+    """0 when the weekly run produced its deliverable, 1 when it did not.
+
+    The graph records degradation flags in ``state["errors"]`` and keeps going
+    by design: a failed source, a thin ranking or an omitted trend must not
+    stop the report. Those flags stay visible in the printed summary and in
+    run_log.json, but only a missing report or a missing email is a failure.
+    """
+    report_ok = bool(state.get("report"))
+    email = state.get("email") or {}
+    delivery_ok = no_email or bool(email.get("dry_run")) or bool(email.get("sent"))
+    return 0 if report_ok and delivery_ok else 1
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         description="Collect this week's synthetic-data items."
@@ -103,7 +117,12 @@ def main(argv=None) -> int:
         print(f"  errors    : {len(errors)}")
         for error in errors:
             print(f"    ! {error}")
-        return 1 if errors else 0
+        code = pipeline_exit_code(state, no_email=args.no_email)
+        if code == 0 and errors:
+            print("  status    : delivered with warnings (flagged, not failed)")
+        elif code:
+            print("  status    : deliverable missing - run failed")
+        return code
 
     config = load_config(args.config)
     only = None
