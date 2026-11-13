@@ -1153,6 +1153,40 @@ check("a failed trend is omitted and flagged",
       _omitted["trend"] == "" and _omitted["guard"] == "omitted", str(_omitted))
 check("fallback_trend no longer pastes sentences", _sum.fallback_trend([_cand(0)]) == "")
 
+_trend_sentences = [
+    "This week the field turns toward privacy preserving tabular generation and careful evaluation of synthetic cohorts.",
+    "Several groups release tooling that keeps sensitive records local while still measuring utility against held out data.",
+    "Benchmarks increasingly compare generalist models with specialist portfolios across generation and imputation tasks.",
+    "Regulatory pressure keeps differential privacy and membership inference in the evaluation conversation.",
+    "Taken together the work favours measured claims over grand narratives about synthetic data replacing real records.",
+]
+_long_trend = " ".join(_trend_sentences)
+
+
+def _long_trend_reply(_messages):
+    return _json.dumps({"trend": _long_trend})
+
+
+_long_trend_result = _sum.summarise_trend([_cand(0)], _long_trend_reply)
+check("a full-length trend is not clipped to the item-summary budget",
+      _long_trend_result["trend"] == _long_trend
+      and len(_long_trend_result["trend"]) > _sum.MAX_SUMMARY_CHARS,
+      f"len={len(_long_trend_result['trend'])} expected={len(_long_trend)}")
+
+_huge_trend = " ".join(_trend_sentences * 4)
+
+
+def _huge_trend_reply(_messages):
+    return _json.dumps({"trend": _huge_trend})
+
+
+_huge_result = _sum.summarise_trend([_cand(0)], _huge_trend_reply)
+_prefix = _huge_trend[:_sum.MAX_TREND_CHARS]
+_expected_clip = _prefix[:_prefix.rfind(" ")].rstrip()
+check("an over-budget trend is cut at a word boundary, not mid-word",
+      _huge_result["trend"] == _expected_clip,
+      f"tail={_huge_result['trend'][-40:]!r}")
+
 print("score floors and no padding")
 _floor_items = [_cand(i, score=9 if i < 3 else 4) for i in range(8)]
 _sections = _sum.compose_sections(_floor_items, picks=6, run_date=_date(2026, 11, 4))

@@ -29,12 +29,15 @@ from urllib.parse import urlparse
 from synthetic_data.rank import _first_json_value, _strip_fences, sort_ranked
 from synthetic_data.week import in_week, week_bounds
 
-SUMMARY_VERSION = "2026-11-11.1"
+SUMMARY_VERSION = "2026-11-13.1"
 
 MIN_PICKS = 1
 MAX_PICKS = 10
 MAX_SUMMARY_CHARS = 420
 MAX_WHY_CHARS = 220
+# The trend is its own paragraph (up to 110 words), not an item summary.
+# Capping it at the item budget severed the paragraph mid-word.
+MAX_TREND_CHARS = 900
 
 # Tighter word budgets: 1-2 sentences (~50 words) for top picks, one sentence
 # (~20 words) for tools, worth-a-look and snippet-only items. A long reply is
@@ -334,14 +337,19 @@ def build_prompt(
 
 
 def _clip(text: str, limit: int) -> str:
-    """Trim to `limit` characters without leaving a severed number token.
+    """Trim to `limit` characters at a word boundary.
 
     Truncating before the fact guard turned "... by 99.9 percent" into a
-    validated "9". Cutting the whole token keeps the guard honest.
+    validated "9", and a plain character cut severed words ("generation"
+    became "generat"). Cut at the last space instead, then drop any number
+    token left hanging at the end.
     """
     if len(text) <= limit:
         return text
     cut = text[:limit]
+    boundary = cut.rfind(" ")
+    if boundary > 0:
+        cut = cut[:boundary]
     severed = re.search(r"\d[\d.,]*$", cut)
     if severed:
         cut = cut[: severed.start()].rstrip(" ,.;:")
@@ -356,7 +364,7 @@ def _clip_words(text: str, limit: int) -> str:
     return " ".join(words[:limit]).rstrip(" ,.;:")
 
 
-def parse_summary(text: Optional[str], *, key: str = "summary") -> Optional[str]:
+def parse_summary(text: Optional[str], *, key: str = "summary", limit: int = MAX_SUMMARY_CHARS) -> Optional[str]:
     """Decode a model reply into one paragraph. Never raises, never empty."""
     if not text or not str(text).strip():
         return None
@@ -369,7 +377,7 @@ def parse_summary(text: Optional[str], *, key: str = "summary") -> Optional[str]
         value = payload
     if not isinstance(value, str) or not value.strip():
         return None
-    return _clip(re.sub(r"\s+", " ", value).strip(), MAX_SUMMARY_CHARS)
+    return _clip(re.sub(r"\s+", " ", value).strip(), limit)
 
 
 def parse_item_summary(text: Optional[str]) -> Optional[Tuple[str, str]]:
@@ -584,7 +592,7 @@ def summarise_trend(
             raw = chat_fn([{"role": "user", "content": prompt}])
         except Exception:  # noqa: BLE001
             raw = None
-        candidate = parse_summary(raw, key="trend") if raw else None
+        candidate = parse_summary(raw, key="trend", limit=MAX_TREND_CHARS) if raw else None
         if candidate:
             missing = unsupported_numbers(candidate, material)
             # The prompt forbids digits outright. Checking only against the
