@@ -895,6 +895,13 @@ check(
     "SMTP_PASSWORD" in Path(".env.example").read_text(encoding="utf-8")
     and "SMTP_PASSWORD=" not in Path("config.yaml").read_text(encoding="utf-8"),
 )
+_wf_src = Path(".github/workflows/weekly-report.yml").read_text(encoding="utf-8")
+check("scheduled runs deliver real email",
+      '"${{ github.event_name }}" = "schedule"' in _wf_src and '"mode: send"' in _wf_src)
+check("missing SMTP credentials fall back to dry-run",
+      "ready=false" in _wf_src and "mode: dry-run" in _wf_src)
+check("a real send is gated on SMTP credentials",
+      'if [ "$ready" = "true" ] && [ "${{ github.event_name }}" = "schedule" ]' in _wf_src)
 
 # ---------------------------------------------------------------------------
 # 2026-11-11 pipeline improvements. Written before the implementation so the

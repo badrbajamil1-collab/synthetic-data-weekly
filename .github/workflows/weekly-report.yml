@@ -1,8 +1,8 @@
 # The workflow the brief lists as a final-submission item (Option A).
-# Scheduled runs are ALWAYS dry-run: they collect, rank and render, and the
-# artefacts (report + email.eml + PDF) go to the Actions artifact list.
-# A real send is only possible by pressing "Run workflow" with
-# "send_email" checked AND the SMTP secrets configured on this repo.
+# Scheduled runs deliver the real report to config.yaml's recipients once the
+# SMTP_* secrets are set; with no credentials they fall back to --dry-run so a
+# missing secret can never fail the weekly run. A manual "Run workflow" with
+# send_email unchecked always forces a dry run.
 #
 # history.db / score_cache.json / summary_cache.json are NOT committable
 # (git-ignored); they persist between runs through the cache step instead,
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       send_email:
-        description: "Actually send the email (needs the SMTP_* secrets). Scheduled runs never send."
+        description: "Send the email. Scheduled runs send once the SMTP_* secrets exist; leave unchecked to force a dry run."
         type: boolean
         default: false
 
@@ -68,9 +68,25 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
         run: |
-          if [ "${{ inputs.send_email }}" = "true" ]; then
+          # A real send needs all three SMTP credentials. Anything missing
+          # falls back to --dry-run, which keeps the Saturday run green.
+          ready=false
+          if [ -n "$SMTP_HOST" ] && [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ]; then
+            ready=true
+          fi
+
+          send=false
+          if [ "$ready" = "true" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            send=true
+          elif [ "$ready" = "true" ] && [ "${{ inputs.send_email }}" = "true" ]; then
+            send=true
+          fi
+
+          if [ "$send" = "true" ]; then
+            echo "mode: send"
             python main.py --pipeline
           else
+            echo "mode: dry-run (SMTP secrets missing or send_email unchecked)"
             python main.py --pipeline --dry-run
           fi
 

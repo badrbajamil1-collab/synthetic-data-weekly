@@ -217,10 +217,11 @@ Two schedulers ship, both reading `config.yaml` → `schedule` (`Saturday 08:00`
   password, so it will not fire while the machine is signed out. `logs/weekly.log`
   records `mode: dry-run` or `mode: send` plus the command line for every run.
 - **GitHub Actions** — `.github/workflows/weekly-report.yml`, Saturday 05:00 UTC
-  (08:00 UTC+3), also runnable by hand with `workflow_dispatch`. Scheduled runs are
-  always dry-run; a real send needs the SMTP secrets plus a manual run with
-  `send_email` checked. `history.db`, `score_cache.json` and `summary_cache.json`
-  are persisted through `actions/cache`, so cross-week dedupe keeps working.
+  (08:00 UTC+3), also runnable by hand with `workflow_dispatch`. Scheduled runs
+  send the real email once the `SMTP_*` secrets are set, and fall back to
+  `--dry-run` when any credential is missing; `send_email` unchecked always forces
+  a dry run. `history.db`, `score_cache.json` and `summary_cache.json` are
+  persisted through `actions/cache`, so cross-week dedupe keeps working.
 
 Neither scheduler has sent a real email yet.
 
@@ -309,8 +310,9 @@ from scratch.
 
 There is no pytest or linter. CI is one scheduled workflow,
 `.github/workflows/weekly-report.yml` (Saturday 05:00 UTC, or manual
-`workflow_dispatch`), which runs the pipeline in dry-run mode and keeps the report,
-PDF and `email.eml` as build artefacts. Locally, the suite is two scripts that exit
+`workflow_dispatch`), which sends the weekly report when SMTP secrets exist and
+falls back to a dry run otherwise; it keeps the report, PDF and (in dry-run mode)
+`email.eml` as build artefacts. Locally, the suite is two scripts that exit
 non-zero on failure:
 
 ```powershell
