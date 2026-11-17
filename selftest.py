@@ -4,12 +4,14 @@ No network access: these are the functions that decide what enters the
 dataset, so they get unit coverage.
 """
 
+import os
 import tempfile
 from datetime import date as _date, datetime, timedelta, timezone
 from pathlib import Path
 
 from synthetic_data.collectors import (
     _dedupe,
+    _github_headers,
     _in_window,
     clean_text,
     cutoff_for,
@@ -463,8 +465,8 @@ check("six top picks", len(_split["top_picks"]) == 6, str(len(_split["top_picks"
 check("github items after the picks become tools", len(_split["tools"]) == 3, str(len(_split["tools"])))
 check("the news item becomes worth a look", len(_split["worth_a_look"]) == 1, str(len(_split["worth_a_look"])))
 check("nothing is lost when caps do not bind", len(_split["dropped"]) == 0, str(len(_split["dropped"])))
-check("week_end is the run week's Saturday", _split["week_end"] == _sum.published_date("2026-11-07"), str(_split["week_end"]))
-check("week_start is the Sunday before it", _split["week_start"] == _sum.published_date("2026-11-01"), str(_split["week_start"]))
+check("week_end is the run week's Friday", _split["week_end"] == _sum.published_date("2026-11-06"), str(_split["week_end"]))
+check("week_start is the Saturday before it", _split["week_start"] == _sum.published_date("2026-10-31"), str(_split["week_start"]))
 
 _many = [_cand(i, source="github" if i % 2 == 0 else "arxiv") for i in range(20)]
 _capped = _sum.compose_sections(_many, picks=6, max_tools=5, max_worth=5, run_date=_date(2026, 11, 4))
@@ -946,20 +948,49 @@ print("week window")
 from synthetic_data import week as _week
 
 _wed = _week.week_bounds(_date(2026, 11, 11))
-check("a Wednesday run covers Sunday..Saturday", _wed == (_date(2026, 11, 8), _date(2026, 11, 14)), str(_wed))
-check("Saturday run ends on that Saturday", _week.week_bounds(_date(2026, 11, 14)) == _wed)
-check("Sunday run starts on that Sunday", _week.week_bounds(_date(2026, 11, 8))[0] == _date(2026, 11, 8))
+check("a Wednesday run covers Saturday..Friday", _wed == (_date(2026, 11, 7), _date(2026, 11, 13)), str(_wed))
+check("Saturday run reports the week just ended Friday", _week.week_bounds(_date(2026, 11, 14)) == _wed)
 check("consecutive weeks do not overlap", _week.week_bounds(_date(2026, 11, 18))[0] == _wed[1] + timedelta(days=1))
+check("a Friday 23:00 timestamp is in the current week",
+      _week.in_week(datetime(2026, 11, 13, 23, 0, tzinfo=timezone.utc), _wed))
+check("a Saturday timestamp is in the next week",
+      not _week.in_week(datetime(2026, 11, 14, 0, 0, tzinfo=timezone.utc), _wed))
 check("in_week accepts an ISO datetime", _week.in_week("2026-11-11T10:00:00Z", _wed))
 check("in_week accepts a date", _week.in_week(_date(2026, 11, 8), _wed))
-check("in_week rejects a day outside the week", not _week.in_week("2026-11-07", _wed))
+check("in_week rejects a day outside the week", not _week.in_week("2026-11-06", _wed))
 check("in_week rejects unparseable input", not _week.in_week("not a date", _wed))
 check("_in_window with week accepts a day inside",
       _in_window(datetime(2026, 11, 10, tzinfo=timezone.utc), cutoff, week=_wed))
 check("_in_window with week rejects a day outside",
-      not _in_window(datetime(2026, 11, 7, tzinfo=timezone.utc), cutoff, week=_wed))
+      not _in_window(datetime(2026, 11, 6, tzinfo=timezone.utc), cutoff, week=_wed))
 check("_in_window with week rejects a future day",
       not _in_window(datetime(2026, 11, 20, tzinfo=timezone.utc), cutoff, week=_wed))
+
+print("github token header")
+_old_token = os.environ.pop("GITHUB_TOKEN", None)
+_old_gh = os.environ.pop("GH_TOKEN", None)
+try:
+    os.environ["GITHUB_TOKEN"] = "secret-token-value"
+    _hdr = _github_headers()
+    check("Authorization present when GITHUB_TOKEN set",
+          _hdr.get("Authorization") == "Bearer secret-token-value", str(_hdr))
+finally:
+    os.environ.pop("GITHUB_TOKEN", None)
+    if _old_token is not None:
+        os.environ["GITHUB_TOKEN"] = _old_token
+    if _old_gh is not None:
+        os.environ["GH_TOKEN"] = _old_gh
+_hdr2 = _github_headers()
+check("Authorization absent when no token set", "Authorization" not in _hdr2, str(_hdr2))
+
+print("narrowed github query")
+import yaml as _cfg_yaml
+_cfg = _cfg_yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
+_gh_queries = _cfg["sources"]["github"]["queries"]
+check("exact data-augmentation query removed",
+      "data-augmentation" not in _gh_queries, str(_gh_queries))
+check("narrowed llm query present",
+      "data-augmentation llm" in _gh_queries, str(_gh_queries))
 
 print("primary-source dedupe")
 _older_primary = Item(title="paper", url="https://x/p?utm_source=a", source="arxiv", published=NOW - timedelta(days=3))

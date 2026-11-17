@@ -163,7 +163,9 @@ sources:
       - "synthetic-data"
       - "tabular-synthesis"
       - "differential-privacy"
-      - "data-augmentation"
+      - "data-augmentation llm"
+      - "data-augmentation nlp"
+      - "text data augmentation"
     max_results: 15
     retry_attempts: 3
     # A repo created before the week is only news when it published a release
