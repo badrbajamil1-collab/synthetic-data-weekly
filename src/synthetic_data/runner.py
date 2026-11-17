@@ -102,7 +102,7 @@ def build_collectors(
 ) -> List[Tuple[str, CollectorJob]]:
     """Map each configured source to a callable that accepts a warnings list.
 
-    ``week`` is the fixed Sunday-Saturday reporting window; every job gets
+    ``week`` is the fixed Saturday-Friday reporting window; every job gets
     it so all six sources describe the same seven days. With no week the
     collectors fall back to ``lookback_days``.
     """
@@ -209,7 +209,7 @@ def collect_all(
 ) -> CollectResult:
     """Collect every configured source for one fixed week.
 
-    ``week`` defaults to the current Sunday-Saturday reporting week, so a
+    ``week`` defaults to the current Saturday-Friday reporting week, so a
     run in the middle of the week and a run on the Saturday describe exactly
     the same seven days.
     """

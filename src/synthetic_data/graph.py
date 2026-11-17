@@ -122,7 +122,7 @@ def _run_date(state: AgentState) -> date:
     """The run date carried in state (a replay hook), or today.
 
     Every stage reads this one value, so collect, fetch and compose describe
-    the same Sunday–Saturday week instead of drifting apart.
+    the same Saturday-Friday week instead of drifting apart.
     """
     raw = state.get("run_date")
     if isinstance(raw, datetime):
@@ -149,7 +149,7 @@ def collect_node(state: AgentState, config) -> AgentState:
     run_date = _run_date(state)
     week = week_bounds(run_date)
     try:
-        # Collection and reporting share one fixed Sunday–Saturday window, so
+        # Collection and reporting share one fixed Saturday-Friday window, so
         # a rolling 7-day lookback cannot smuggle a previous week's item into
         # the shortlist.
         result = runner.collect_all(_SETTINGS, use_history=True, week=week)
@@ -351,7 +351,7 @@ def fetch_node(state: AgentState, config) -> AgentState:
         return {**state, "shortlist": [], "errors": [*errors, "fetch: no ranked items"]}
     try:
         cap = _as_int(_SETTINGS.get("max_top_picks"), 10)
-        # The same fixed Sunday–Saturday window the collector and the report
+        # The same fixed Saturday-Friday window the collector and the report
         # use. Deriving it from the newest item let the window drift.
         bounds = week_bounds(_run_date(state))
         shortlist = sort_ranked(_eligible_rows(ranked, bounds))
