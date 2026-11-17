@@ -242,7 +242,8 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 
 Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in.
 `.env` is git-ignored and holds `OPENROUTER_API_KEY` (or `LLM_API_KEY`, the name the
-GitHub Actions workflow exports) plus the SMTP credential set. The SMTP keys are
+GitHub Actions workflow exports) plus the SMTP credential set and the optional
+`GITHUB_TOKEN` (raises GitHub's 60 req/h unauthenticated limit). The SMTP keys are
 still empty placeholders, which is why no real email has been sent.
 
 ## Outputs

@@ -6,7 +6,7 @@ broken source never blocks the report.
 
 Two windows exist and they are not interchangeable:
 
-* ``week`` - the fixed Sunday-Saturday reporting week from
+* ``week`` - the fixed Saturday-Friday reporting week from
   ``synthetic_data.week``. Every source is filtered against the same seven
   days, so a run cannot re-publish last week's story.
 * ``lookback_days`` - the rolling fallback used when no week is supplied.
@@ -18,6 +18,7 @@ never retries on top of ``get_with_retry``.
 """
 
 import html
+import os
 import re
 import time
 import urllib.parse
@@ -46,14 +47,16 @@ _TAG_RE = re.compile(r"<[^>]+>")
 # transient-server list.
 RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 
-# The releases API is a "core" GitHub endpoint: 60 requests an hour without a
-# token. The release pass is capped - per query and per run - so one run
-# cannot spend the whole hourly budget (and so every query gets a fair
-# share of it).
+# The GitHub API allows 60 requests an hour without authentication and 5000
+# with a token. GITHUB_TOKEN (falling back to GH_TOKEN) is read from the
+# environment and sent as "Authorization: Bearer <token>" on every GitHub
+# request when set. The release pass is capped - per query and per run - so
+# one run cannot spend the whole hourly budget (and so every query gets a
+# fair share of it).
 MAX_RELEASE_CHECKS = 20
 MAX_RELEASE_CHECKS_PER_QUERY = 5
 
-# A reporting week is (Sunday, Saturday).
+# A reporting week is (Saturday, Friday).
 WeekBounds = Tuple[date, date]
 
 # Hosts Reddit owns. A link to one of these is not an external article.
@@ -75,7 +78,7 @@ def _in_window(
 ) -> bool:
     """True if the date is inside the reporting window.
 
-    With a ``week`` the test is the fixed Sunday-Saturday range, so every
+    With a ``week`` the test is the fixed Saturday-Friday range, so every
     source describes the same seven days. Without one it is the rolling
     lookback window: the cutoff plus an upper bound that rejects items dated
     in the future (scheduled posts and feeds with broken clocks), which would
@@ -586,6 +589,28 @@ def _github_item(
     )
 
 
+def _github_token() -> Optional[str]:
+    """Return the GitHub token from the environment, if any.
+
+    ``GITHUB_TOKEN`` takes precedence over ``GH_TOKEN``. The value is never
+    logged.
+    """
+    token = os.environ.get("GITHUB_TOKEN")
+    if not token:
+        token = os.environ.get("GH_TOKEN")
+    return token or None
+
+
+def _github_headers() -> dict:
+    """Build the headers used for every GitHub API request."""
+    headers = dict(HEADERS)
+    headers["Accept"] = "application/vnd.github+json"
+    token = _github_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def fetch_github_repos(
     queries: Iterable[str] = ("synthetic-data",),
     max_results: int = 15,
@@ -617,8 +642,7 @@ def fetch_github_repos(
     seen_repos: set = set()
     release_checks = 0
 
-    headers = dict(HEADERS)
-    headers["Accept"] = "application/vnd.github+json"
+    headers = _github_headers()
 
     for query in queries:
         # Pass 1 - created inside the window.
