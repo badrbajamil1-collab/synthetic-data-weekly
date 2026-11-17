@@ -970,18 +970,23 @@ print("github token header")
 _old_token = os.environ.pop("GITHUB_TOKEN", None)
 _old_gh = os.environ.pop("GH_TOKEN", None)
 try:
+    _hdr2 = _github_headers()
+    check("Authorization absent when no token set", "Authorization" not in _hdr2, str(_hdr2))
+    os.environ["GH_TOKEN"] = "gh-fallback-value"
+    check("GH_TOKEN is the fallback",
+          _github_headers().get("Authorization") == "Bearer gh-fallback-value")
     os.environ["GITHUB_TOKEN"] = "secret-token-value"
     _hdr = _github_headers()
     check("Authorization present when GITHUB_TOKEN set",
-          _hdr.get("Authorization") == "Bearer secret-token-value", str(_hdr))
+          _hdr.get("Authorization") == "Bearer secret-token-value", "Authorization" in _hdr)
 finally:
+    # Restore the caller's environment exactly; CI exports a real GITHUB_TOKEN.
     os.environ.pop("GITHUB_TOKEN", None)
+    os.environ.pop("GH_TOKEN", None)
     if _old_token is not None:
         os.environ["GITHUB_TOKEN"] = _old_token
     if _old_gh is not None:
         os.environ["GH_TOKEN"] = _old_gh
-_hdr2 = _github_headers()
-check("Authorization absent when no token set", "Authorization" not in _hdr2, str(_hdr2))
 
 print("narrowed github query")
 import yaml as _cfg_yaml

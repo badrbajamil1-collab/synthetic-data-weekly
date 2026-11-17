@@ -60,7 +60,7 @@ def in_week(value, bounds: Bounds) -> bool:
     exception.
     """
     start, end = bounds
-    day = None
+    day: Optional[date] = None
     if isinstance(value, datetime):
         if value.tzinfo is not None:
             value = value.astimezone(timezone.utc)
