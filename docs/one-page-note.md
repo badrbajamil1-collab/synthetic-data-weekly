@@ -161,7 +161,7 @@ be a historical artefact and editing it after the fact would fake the process.
 All six groups of reviewer feedback landed, with tests first (~290 new lines in
 `selftest.py`) and a whole-branch review. Nothing in `web/` changed.
 
-- **One fixed week.** `src/synthetic_data/week.py` derives Sunday–Saturday from
+- **One fixed week.** `src/synthetic_data/week.py` derives Saturday-Friday from
   the run date; collect, fetch, compose and verify all import it, so windows no
   longer overlap or drift. `write_report.py --week-end` still replays a past week.
 - **Collect.** GitHub searches `created:` (plus releases for older repos) instead
@@ -178,7 +178,7 @@ All six groups of reviewer feedback landed, with tests first (~290 new lines in
   pasting together first sentences.
 - **Build.** Per-section score floors (top 7 / tools 6 / worth 5): sections are
   never padded, and `verify_report.py` checks the floor, the why-line in the
-  rendered Markdown/HTML and the Sunday–Saturday shape. Old weeks still verify.
+  rendered Markdown/HTML and the Saturday-Friday shape. Old weeks still verify.
 - **Deliver.** `llm.require_api_key` accepts `OPENROUTER_API_KEY` **or**
   `LLM_API_KEY` (the 7 Nov failure); `history.db` is written atomically with a
   backup merged on read; the workflow saves its cache with `if: always()`.

@@ -1502,8 +1502,8 @@ import subprocess as _subprocess
 import sys as _sys
 
 _fixture_report = {
-    "week_start": _date(2026, 11, 8),
-    "week_end": _date(2026, 11, 14),
+    "week_start": _date(2026, 11, 7),
+    "week_end": _date(2026, 11, 13),
     "week_mode": "run_date",
     "trend": "",
     "top_picks": [{
@@ -1522,8 +1522,8 @@ _fixture_report = {
 _fixture_log = {
     "schema": "2026-11-11",
     "week_mode": "run_date",
-    "week_start": "2026-11-08",
-    "week_end": "2026-11-14",
+    "week_start": "2026-11-07",
+    "week_end": "2026-11-13",
     "items_found": 10,
     "items_after_dedupe": 9,
     "links_dead": 0,
@@ -1646,7 +1646,7 @@ import report_build as _report_build
 _rb_dir = Path(tempfile.mkdtemp())
 (_rb_dir / "raw_run_log.json").write_text(_json.dumps({
     "run_at": "2026-11-12T09:00:00+00:00",
-    "week_end": "2026-11-14",
+    "week_end": "2026-11-13",
     "counts": {"arxiv": 12, "news": 3},
     "found": 15,
     "kept": 15,
@@ -1673,7 +1673,7 @@ finally:
     _report_build.check_link = _orig_check
     _report_build.render_pdf = _orig_pdf
 
-_rb_out = _rb_dir / "progress" / "week-2026-11-14"
+_rb_out = _rb_dir / "progress" / "week-2026-11-13"
 _rb_log = _json.loads((_rb_out / "run_log.json").read_text(encoding="utf-8"))
 check("report_build writes run_log.json with source_counts",
       _rb_log.get("source_counts") == {"arxiv": 12, "news": 3},

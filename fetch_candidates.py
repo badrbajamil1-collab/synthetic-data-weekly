@@ -30,7 +30,7 @@ def load_shortlist(path=RANKED, config_path="config.yaml", week_end=None):
     """Return the ranked, non-duplicate, scored rows, capped at max_top_picks.
 
     `week_end` replays a historical week; the default is the fixed
-    Sunday-Saturday week containing today.
+    Saturday-Friday week containing today.
     """
     file = Path(path)
     if not file.exists():
@@ -45,7 +45,7 @@ def load_shortlist(path=RANKED, config_path="config.yaml", week_end=None):
         if row.get("score_status") == "scored" and not row.get("duplicate_of")
     ]
 
-    # The same fixed Sunday-Saturday window the collector, the graph's fetch
+    # The same fixed Saturday-Friday window the collector, the graph's fetch
     # node and compose_sections use. Without this, an out-of-week item in a
     # stale ranked.json could take a fetch slot from a current one.
     bounds = week_bounds() if week_end is None else week_bounds(week_end)

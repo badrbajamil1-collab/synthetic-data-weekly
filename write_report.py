@@ -9,7 +9,7 @@ fetch_candidates.py, splits the shortlist into the report's three sections by a
 rule (not by asking a model to count), writes summaries whose numbers are
 checked against the source text, and hands a valid source.yaml to report_build.py.
 
-The report covers one fixed Sunday-Saturday week: the week the run date falls
+The report covers one fixed Saturday-Friday week: the week the run date falls
 in, or the week named by --week-end when a past week is replayed. Each section
 has a score floor and is never padded, so a quiet week produces a short report
 rather than a padded one.
@@ -224,7 +224,7 @@ def main(argv=None) -> int:
             print("FAIL  --week-end must be YYYY-MM-DD", file=sys.stderr)
             return 1
 
-    # One fixed week for the whole report: the Sunday-Saturday week the run
+    # One fixed week for the whole report: the Saturday-Friday week the run
     # date falls in. --week-end replays a past week instead. Local date, matching
     # graph.py's week_bounds() so the CLI and pipeline never disagree by a day
     # around midnight (the scheduled task runs at 08:00 local).
@@ -310,7 +310,7 @@ def main(argv=None) -> int:
         "week_end": sections["week_end"],
         # "replay" when --week-end named the week, "run_date" otherwise.
         # report_build records it and verify_report only demands the
-        # Sunday-Saturday shape of a run-date week.
+        # Saturday-Friday shape of a run-date week.
         "week_mode": "replay" if week_end else "run_date",
         "dropped_below_floor": len(sections.get("dropped_below_floor") or []),
         "top_picks": [

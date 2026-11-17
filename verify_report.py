@@ -204,15 +204,15 @@ if week_end is not None:
             )
         except ValueError:
             check(
-                "Sunday-Saturday 7-day window",
+                "Saturday-Friday 7-day window",
                 False,
                 "missing or unparseable week_start",
             )
         else:
             check(
-                "Sunday-Saturday 7-day window",
-                week_start.weekday() == 6
-                and week_end.weekday() == 5
+                "Saturday-Friday 7-day window",
+                week_start.weekday() == 5
+                and week_end.weekday() == 4
                 and (week_end - week_start).days == 6,
                 f"{week_start}..{week_end}",
             )

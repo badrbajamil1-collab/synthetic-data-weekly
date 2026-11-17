@@ -111,7 +111,7 @@ def _week_mode(report: dict) -> str:
     """Label the week without mislabelling a historical replay.
 
     YAML written by the current pipeline says `run_date` explicitly. Older
-    weeks have no key, so infer `replay` when the week start is not a Sunday:
+    weeks have no key, so infer `replay` when the week start is not a Saturday:
     claiming `run_date` made the verifier fail a legitimate historical render.
     """
     declared = str(report.get("week_mode") or "").strip()
@@ -121,7 +121,7 @@ def _week_mode(report: dict) -> str:
         day = date.fromisoformat(str(report.get("week_start") or "")[:10])
     except ValueError:
         return "unknown"
-    return "replay" if day.weekday() != 6 else "run_date"
+    return "replay" if day.weekday() != 5 else "run_date"
 
 
 def run_log_stale_reason(collected: dict, week_end: str) -> str:
