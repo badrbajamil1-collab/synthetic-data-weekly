@@ -3,12 +3,14 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-394%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-414%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
-arXiv, Google News, research blogs, Reddit, Hacker News and GitHub (27 HTTP requests
-per run) — then renders a weekly report for the Well7 team.
+arXiv, Google News, research blogs, Reddit, Hacker News and GitHub (3 arXiv queries,
+2 Google News queries, 13 blog feeds, 1 combined Reddit feed, 4 Hacker News tags and
+6 GitHub queries, plus bounded release lookups) — then renders a weekly report for
+the Well7 team.
 
 **Two versions live in this repo:**
 
@@ -319,6 +321,6 @@ surviving top picks) or missing email fails the run.
 Locally, the suite is two scripts that exit non-zero on failure:
 
 ```powershell
-uv run python selftest.py       # offline (394 checks): parsing, dates, URL normalisation, dedupe, history, email, schedule
+uv run python selftest.py       # offline (414 checks): parsing, dates, URL normalisation, dedupe, history, email, schedule
 uv run python verify_report.py  # structural (30 checks): subject, section order, counts, dates, PDF
 ```

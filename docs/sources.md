@@ -4,9 +4,10 @@ The brief asks for 15–20 sources and 10–15 keywords before any collector cod
 written. `config.yaml` is the authoritative copy; this document records *why* each
 source is in the list, so a future change is a decision rather than a guess.
 
-**18 sources, 6 collectors, 12 keywords.** Several sources issue more than one
-search, so a full run makes 27 HTTP requests: 3 arXiv queries, 2 Google News
-queries, 1 Reddit feed, 4 Hacker News queries, 4 GitHub searches, 13 blog feeds.
+**18 sources, 6 collectors, 22 keywords.** Several sources issue more than one
+search, so a full run issues 3 arXiv queries, 2 Google News queries, 13 blog
+feeds, 1 combined Reddit feed, 4 Hacker News tags and 6 GitHub queries (plus
+bounded release lookups).
 Every collector returns the same `Item` shape, so the rest of the pipeline handles
 an item the same way regardless of origin.
 

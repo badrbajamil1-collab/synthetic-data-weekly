@@ -113,11 +113,6 @@ def load_run_log() -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def source_errors() -> list:
-    """Read the collector failures recorded for this run, if any."""
-    return load_run_log().get("errors", [])
-
-
 def load_score_floors(config_path: str = "config.yaml") -> dict:
     """Read section score floors from config.yaml, or fall back to defaults."""
     floors = {"top": 7, "tools": 6, "worth": 5}

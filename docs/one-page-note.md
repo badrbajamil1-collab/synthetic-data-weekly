@@ -195,8 +195,8 @@ Reader-feedback links remain the deferred Phase 6 idea.
 
 Verified against artefacts, not the older prose above:
 
-- **Phases 0–5 are complete.** `selftest.py` passes 394 checks (375 baseline plus
-  19 Batch 1 audit-fix regressions); `verify_report.py` passes 30/30 against
+- **Phases 0–5 are complete.** `selftest.py` passes 414 checks (375 baseline, 19
+  Batch 1, and 20 Batch 2 audit-fix regressions); `verify_report.py` passes 30/30 against
   `progress/week-2026-11-20/source.yaml` (exit 0). SMTP is configured and a real
   `--test` send landed in the Primary Inbox with no PDF attachment and direct
   publisher links (note: `progress/week-2026-11-20/run_log.json` does not retain
