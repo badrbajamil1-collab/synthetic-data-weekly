@@ -58,8 +58,9 @@ and counted in the summary as `already sent (history)`.
 not the `config.yaml` keys.
 
 `python` is not on PATH on this machine — use `.venv\Scripts\python.exe` or `uv run python`.
-There is no pytest, linter, formatter, typecheck or CI. `selftest.py` + `verify_report.py`
-are the test suite; both exit non-zero on failure.
+There is no pytest, linter, formatter, or typecheck; there is one scheduled GitHub
+Actions workflow (`.github/workflows/weekly-report.yml`). `selftest.py` +
+`verify_report.py` are the test suite; both exit non-zero on failure.
 
 ## Pipeline
 
