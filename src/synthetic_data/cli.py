@@ -43,7 +43,8 @@ def pipeline_exit_code(state: dict, *, no_email: bool = False) -> int:
     stop the report. Those flags stay visible in the printed summary and in
     run_log.json, but only a missing report or a missing email is a failure.
     """
-    report_ok = bool(state.get("report"))
+    report = state.get("report") or {}
+    report_ok = bool(isinstance(report, dict) and report.get("top_picks"))
     email = state.get("email") or {}
     delivery_ok = no_email or bool(email.get("dry_run")) or bool(email.get("sent"))
     return 0 if report_ok and delivery_ok else 1

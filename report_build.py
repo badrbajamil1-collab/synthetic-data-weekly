@@ -254,6 +254,19 @@ def main(argv=None) -> int:
             parsed_candidates = None
         if isinstance(parsed_candidates, dict):
             candidates_read = len(parsed_candidates)
+    raw_warnings = collected.get("warnings")
+    source_warnings = (
+        dict(raw_warnings) if isinstance(raw_warnings, dict) else (raw_warnings or {})
+    )
+    run_log_path = out_dir / "run_log.json"
+    existing_email = None
+    if run_log_path.exists():
+        try:
+            existing_log = json.loads(run_log_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            existing_log = None
+        if isinstance(existing_log, dict) and existing_log.get("email") is not None:
+            existing_email = existing_log["email"]
     counts = {
         "schema": "2026-11-11",
         "week_mode": _week_mode(report),
@@ -277,9 +290,12 @@ def main(argv=None) -> int:
         "links_dead": len(dead),
         "history_recorded": record,
         "urls_recorded": newly_recorded,
-        "source_errors": source_errors(),
+        "source_errors": list(collected.get("errors") or []),
+        "source_warnings": source_warnings,
     }
-    (out_dir / "run_log.json").write_text(json.dumps(counts, indent=2), encoding="utf-8")
+    if existing_email is not None:
+        counts["email"] = existing_email
+    run_log_path.write_text(json.dumps(counts, indent=2), encoding="utf-8")
 
     print(f"Wrote {out_dir}\\report.md, report.html, run_log.json")
     print(json.dumps(counts, indent=2))

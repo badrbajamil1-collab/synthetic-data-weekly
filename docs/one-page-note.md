@@ -5,7 +5,7 @@ Status as of 2026-11-04. Evidence lives in `progress/`.
 ## What works
 
 **Phase 0 — understand the topic and know signal from noise.** The manual report
-exists in two versions (`progress/phase-0-manual/`), the keyword list is 12 terms
+exists in two versions (`progress/phase-0-manual/`), the keyword list is 22 terms
 tuned to tabular, time-series and privacy work rather than generic AI news, and the
 18-source list with a reason per source is in `docs/sources.md`.
 
@@ -90,12 +90,13 @@ output reads better is the next real week's test.
 ## What does not work yet
 
 - **No Saturday run has happened yet.** SMTP credentials are configured, a real
-  `--test` send on 2026-11-18 reached the Primary Inbox (`sent: true` in
-  `progress/week-2026-11-20/run_log.json`, no PDF attached, direct publisher links),
-  and `SyntheticDataWeekly` is now registered for Saturday 08:00 in real-send mode.
-  Watch two Saturdays before tuning. The task is interactive-only: it runs as the
-  current user when signed in, with no stored password, so it will not fire while the
-  machine is signed out.
+  `--test` send on 2026-11-18 reached the Primary Inbox (no PDF attached, direct
+  publisher links; note that `progress/week-2026-11-20/run_log.json` currently lacks
+  the `email` block because a subsequent `report_build.py` re-render overwrote it
+  before `report_build.py` was fixed to preserve `email`), and `SyntheticDataWeekly`
+  is now registered for Saturday 08:00 in real-send mode. Watch two Saturdays before
+  tuning. The task is interactive-only: it runs as the current user when signed in,
+  with no stored password, so it will not fire while the machine is signed out.
 - **Reddit is currently blocked from this host.** Both the multi-subreddit RSS feed and
   the JSON API now return 404/403. The collector records the outage as a `[warn]` in
   `raw_run_log.json` and contributes 0 items; it no longer raises a fatal source error
@@ -105,20 +106,19 @@ output reads better is the next real week's test.
   the shortlist caps GitHub's share. Whether that fixes the judgement is the next
   real week's test.)*
 
-## Three next steps
+## Next steps (Phase 6 pilot)
 
-1. **Fill the SMTP set and prove receipt (finishes Phase 5).** Add `SMTP_HOST`,
-   `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` to `.env`, then run
-   `python send_report.py --test`. The test send goes only to `DRY_RUN_RECIPIENT` and
-   records no history. Check the HTML body renders in the mail client and the PDF
-   attachment opens. Until then the Saturday task stays dry.
-2. **Flip the task to real sending, then watch two Saturdays (Phase 6).** After the test
-   email arrives, run `python schedule_task.py --register --send`. Watch
-   `logs/weekly.log` (it records `mode: send`), `run_log.json` and the recipients'
-   replies; do not tune anything from a single week.
+1. **Phase 5 is complete.** SMTP credentials are configured in `.env`, a real
+   `send_report.py --test` email arrived in Primary Inbox, and
+   `schedule_task.py --register --send` registered `SyntheticDataWeekly` for
+   Saturday 08:00 in real-send mode (keep GitHub Actions `SMTP_*` secrets unset
+   while the local task is live so only one scheduler sends).
+2. **Watch two Saturdays (Phase 6).** Check `logs/weekly.log` (`mode: send`),
+   `run_log.json` (`email` block) and the recipients' replies; do not tune anything
+   from a single week.
 3. **Tune the ranking on that feedback (Phase 6).** Decide whether GitHub repos should
-   be discounted by stars, whether the top 10 must contain at least one paper, and
-   whether the 1–2 band is too wide.
+   be discounted by stars, whether the top 7 shortlist must contain at least one paper,
+   and whether the 1–2 band is too wide.
 
 Phase 4 is no longer deferred: the pipeline is a LangGraph state machine
 (`collect → clean → rank → fetch → report → render → send`) over one shared
@@ -131,9 +131,9 @@ Both are recorded rather than quietly fixed, because the Phase 0 report is meant
 be a historical artefact and editing it after the fact would fake the process.
 
 - **Six top picks, not seven.** The brief says "pick the top 7 items"; the manual
-  report carries 6 picks, 2 tools and 2 worth-a-look. That is inside the report
-  format's own 5–10 bound, so it does not fail the format check, but it is one short
-  of the brief's example.
+  report carries 6 picks, 2 tools and 2 worth-a-look. That is inside the brief's
+  5–10 range (the current `2026-11-11` report format bound is 1–10 picks), so it
+  does not fail the format check, but it is one short of the brief's example.
 - **No record of the 3–5 introductory readings.** The brief starts Phase 0 with
   "read 3 to 5 introductions to synthetic data". Nothing in the repo records which
   five, or what each one contributed. Unlike the source list, this cannot be
@@ -195,11 +195,14 @@ Reader-feedback links remain the deferred Phase 6 idea.
 
 Verified against artefacts, not the older prose above:
 
-- **Phases 0–5 are complete.** `selftest.py` passes 375 checks; `verify_report.py`
-  passes 30/30 against `progress/week-2026-11-20/source.yaml` (exit 0). SMTP is
-  configured and a real `--test` send is recorded as `sent: true` in that week's
-  `run_log.json` — it landed in the Primary Inbox with no PDF attachment and direct
-  publisher links.
+- **Phases 0–5 are complete.** `selftest.py` passes 394 checks (375 baseline plus
+  19 Batch 1 audit-fix regressions); `verify_report.py` passes 30/30 against
+  `progress/week-2026-11-20/source.yaml` (exit 0). SMTP is configured and a real
+  `--test` send landed in the Primary Inbox with no PDF attachment and direct
+  publisher links (note: `progress/week-2026-11-20/run_log.json` does not retain
+  that `email` block because a pre-fix `report_build.py` re-render overwrote it
+  prior to commit `dd6eadd`; `report_build.py` now preserves `email` across future
+  re-renders).
 - **Phase 6 is the only open phase.** `SyntheticDataWeekly` was registered with
   `python schedule_task.py --register --send`; `--query` confirms Saturday 08:00,
   `Status: Ready`, next run 2026-11-21. Watch two Saturdays before tuning.

@@ -41,7 +41,7 @@ Run from the repo root. The venv has the package installed editable
 | Email a rendered report (writes `email.eml`) | `python send_report.py progress/week-<date>/source.yaml --dry-run` |
 | Email the newest report for real | `python send_report.py` |
 | Send one real test email to `DRY_RUN_RECIPIENT` | `python send_report.py --test` |
-| Verify rendered artefacts (22 checks) | `python verify_report.py` |
+| Verify rendered artefacts (30 checks) | `python verify_report.py` |
 | Run the full weekly pipeline (LangGraph) | `python main.py --pipeline` |
 | Full pipeline, email written not sent | `python main.py --pipeline --dry-run` |
 | Full pipeline, stop after rendering | `python main.py --pipeline --no-email` |
@@ -96,7 +96,7 @@ not a Pydantic model — LangGraph requires TypedDict). Nodes:
 `raw_run_log.json` (the same artefacts as the Phase 1 CLI), and carries the
 `already_sent` count into the run log.
 
-`fetch` calls `fetch_candidates.fetch` for the ten best in-window items, so summaries
+`fetch` calls `fetch_candidates.fetch` for the seven best in-window items, so summaries
 are written from the real abstract or page text rather than the ranking snippet. A page
 that cannot be fetched keeps its snippet, and the report discloses that. `render` fills
 `report_markdown` / `report_html` in state from the files `report_build.py` wrote (the
@@ -221,7 +221,7 @@ Three rules that are easy to break:
 ## The report format is contractual
 
 `report.md`, `report.html` and the PDF are checked by `verify_report.py` against the brief:
-subject prefix, section order, footer text, 5–10 picks, tool counts, no duplicate links,
+subject prefix, section order, footer text, 1–10 picks, tool counts, no duplicate links,
 top-pick dates inside the week, PDF over 40 KB. Do not restyle prose to taste — edit the YAML in
 `progress/week-<date>/source.yaml` and re-render.
 
@@ -235,12 +235,12 @@ Markdown follow the spec order exactly.
   `schedule` and `recipients` are all read today; `keywords` drives the cheap
   prefilter (`ranking.prefilter`) before any model call, while the per-source
   queries do the collection work.
-- `.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the SMTP credential set.
-  Model, base URL, batch size and thresholds live in `config.yaml` under `ranking:` and
-  `summarising:` — one source of truth, and no secret in a committed file. The SMTP
-  keys are still empty placeholders, so no real email has been sent. `.env.example`
-  documents the shape of both sets. Never copy a real key into `config.yaml`,
-  `.env.example` or code.
+- `.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the configured SMTP
+  credential set (`send_report.py --test` verified real delivery). Model, base URL,
+  batch size and thresholds live in `config.yaml` under `ranking:` and
+  `summarising:` — one source of truth, and no secret in a committed file.
+  `.env.example` documents the shape of both sets. Never copy a real key into
+  `config.yaml`, `.env.example` or code.
 - The repo has commits now, so `git diff` / `git stash` are meaningful. Do not `git init`:
   `C:\Users\badrf` is already a git worktree and this folder is its own repo. `progress/`
   once contained a second, empty repo — it was removed; do not recreate it.

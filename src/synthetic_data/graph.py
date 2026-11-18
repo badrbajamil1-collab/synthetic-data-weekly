@@ -19,6 +19,7 @@ and print every raw item) so historical weeks stay reproducible.
 
 import concurrent.futures
 import json
+import re
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -304,6 +305,7 @@ def rank_node(state: AgentState, config) -> AgentState:
             errors.append(
                 f"rank: only {scored_count} scored items (need {min_scored})"
             )
+            return {**state, "ranked_items": [], "errors": errors}
         return {**state, "ranked_items": rows, "errors": errors}
     except Exception as exc:  # noqa: BLE001
         return {**state, "ranked_items": [], "errors": [*errors, f"rank: {type(exc).__name__}: {exc}"]}
@@ -394,8 +396,14 @@ def report_node(state: AgentState, config) -> AgentState:
         from synthetic_data.links import is_google_news_redirect, resolve_google_news
 
         bounds = week_bounds(_run_date(state))
+        cap = _as_int(_SETTINGS.get("max_top_picks"), 10)
+        share_cap = _as_int(
+            (_SETTINGS.get("ranking") or {}).get("github_share_cap"), 3
+        )
+        eligible = sort_ranked(_eligible_rows(state.get("ranked_items") or [], bounds))
+        capped = rank.cap_github_share(eligible, share_cap)[:cap]
         items = []
-        for row in _eligible_rows(state.get("ranked_items") or [], bounds):
+        for row in capped:
             entry = dict(row)
             if is_google_news_redirect(entry.get("url") or ""):
                 entry["url"] = resolve_google_news(entry["url"])
@@ -406,6 +414,7 @@ def report_node(state: AgentState, config) -> AgentState:
         return {**state, "report": {}, "errors": [*errors, "report: no ranked items to write"]}
     try:
         summarising = _SETTINGS.get("summarising") or {}
+        ranking = _SETTINGS.get("ranking") or {}
         sections = summarise.compose_sections(
             items,
             picks=_as_int(summarising.get("picks"), 6),
@@ -417,7 +426,7 @@ def report_node(state: AgentState, config) -> AgentState:
             min_score_worth=_as_int(summarising.get("min_score_worth"), 5),
         )
         chat_fn = _chat_for("summarising")
-        model_name = str(summarising.get("model") or MODEL)
+        model_name = str(summarising.get("model") or ranking.get("model") or MODEL)
         # Same cache as write_report.py: a rerun on an unchanged week makes no
         # model calls, and a fallback is never stored, so an outage cannot freeze.
         cache = load_cache(_CACHE_PATH, model_name)
@@ -495,29 +504,95 @@ def report_node(state: AgentState, config) -> AgentState:
         return {**state, "report": {}, "errors": [*errors, f"report: {type(exc).__name__}: {exc}"]}
 
 
+def _usable_week_end(value) -> Optional[str]:
+    """Return an ISO date string when `value` is a usable week_end, else None."""
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text).isoformat()
+    except ValueError:
+        return None
+
+
+def _surviving_top_picks(out_dir: Path, markdown: str, html_body: str) -> bool:
+    """True when rendered artefacts contain at least one surviving top pick."""
+    if not markdown and not html_body:
+        return False
+    run_log_path = out_dir / "run_log.json"
+    if run_log_path.exists():
+        try:
+            log_data = json.loads(run_log_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            log_data = None
+        if isinstance(log_data, dict) and "top_picks" in log_data:
+            return int(log_data.get("top_picks") or 0) > 0
+    if markdown and "## Top picks" in markdown:
+        top_section = markdown.split("## Top picks", 1)[1]
+        if "## New tools and datasets" in top_section:
+            top_section = top_section.split("## New tools and datasets", 1)[0]
+        if re.search(r"(?m)^\s*1\.\s+\[", top_section):
+            return True
+    if html_body and "Top picks" in html_body:
+        top_section = html_body.split("Top picks", 1)[1]
+        if "New tools and datasets" in top_section:
+            top_section = top_section.split("New tools and datasets", 1)[0]
+        if re.search(r"\b1\.\s*<a\s+href=", top_section):
+            return True
+    return False
+
+
 def render_node(state: AgentState, config) -> AgentState:
     """Node 6 - write source.yaml, render, verify, and load the email body."""
     errors = list(state.get("errors") or [])
     report = state.get("report") or {}
-    if not report:
+    if not isinstance(report, dict) or not report:
         return {
             **state,
-            "report_html": state.get("report_html") or "",
-            "report_markdown": state.get("report_markdown") or "",
+            "report": {},
+            "report_html": "",
+            "report_markdown": "",
             "errors": [*errors, "render: no report to render"],
         }
+    if not report.get("top_picks"):
+        return {
+            **state,
+            "report": {},
+            "report_html": "",
+            "report_markdown": "",
+            "errors": [*errors, "render: report has no top_picks"],
+        }
+    week_end = _usable_week_end(report.get("week_end"))
+    if week_end is None:
+        return {
+            **state,
+            "report": {},
+            "report_html": "",
+            "report_markdown": "",
+            "errors": [*errors, "render: report has no usable week_end"],
+        }
     try:
-        source_path = Path("progress") / f"week-{report.get('week_end')}" / "source.yaml"
+        source_path = Path("progress") / f"week-{week_end}" / "source.yaml"
         source_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.write_text(summarise.dump_report(report, generated_at=""), encoding="utf-8")
         # --no-record: the send node records URLs only after a successful email.
         # A render, a dry run or a failed SMTP attempt must not suppress next
         # week's copy of the same link.
         code = report_build_main([str(source_path), "--no-record"])
-        # Exit 1 means "rendered, but dropped dead links" — a successful
-        # filtered render, not a crash. Only other codes are errors.
+        # Exit 1 means "rendered, but dropped dead links" — accept it only if
+        # at least one top pick survives in the rendered artefacts.
         if code not in (0, 1):
-            errors.append(f"render: report_build exited {code}")
+            return {
+                **state,
+                "report": {},
+                "report_html": "",
+                "report_markdown": "",
+                "errors": [*errors, f"render: report_build exited {code}"],
+            }
 
         # The rendered files are the email body: report_build has already
         # dropped dead links, so the state mirrors what is on disk.
@@ -528,6 +603,16 @@ def render_node(state: AgentState, config) -> AgentState:
             markdown = (out_dir / "report.md").read_text(encoding="utf-8")
         if (out_dir / "report.html").exists():
             html_body = (out_dir / "report.html").read_text(encoding="utf-8")
+
+        if not _surviving_top_picks(out_dir, markdown, html_body):
+            return {
+                **state,
+                "report": {},
+                "report_html": "",
+                "report_markdown": "",
+                "errors": [*errors, "render: no top picks survived link verification"],
+            }
+
         return {
             **state,
             "report": report,
@@ -536,7 +621,13 @@ def render_node(state: AgentState, config) -> AgentState:
             "errors": errors,
         }
     except Exception as exc:  # noqa: BLE001
-        return {**state, "errors": [*errors, f"render: {type(exc).__name__}: {exc}"]}
+        return {
+            **state,
+            "report": {},
+            "report_html": "",
+            "report_markdown": "",
+            "errors": [*errors, f"render: {type(exc).__name__}: {exc}"],
+        }
 
 
 def send_node(state: AgentState, config) -> AgentState:

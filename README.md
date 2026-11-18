@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-371%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-394%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
@@ -17,11 +17,13 @@ per run) — then renders a weekly report for the Well7 team.
 - **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + React archive/view
   of the same weekly report, with its own JS pipeline inside the Worker.
 
-**Status:** Phases 0–4 are done, and Phase 5 email delivery is verified (`send_report.py --test`
-landed in Primary Inbox with matching `From == SMTP_USER`, no PDF attachment, and
-direct publisher links). What remains is enabling the weekly scheduler (`schedule_task.py --register --send`
-or GitHub Actions `SMTP_*` secrets), running the two-week Phase 6 pilot, and moving
-long-term production sending to an authenticated company-domain email service. [Build plan and status](#build-plan-and-status) is the
+**Status:** Phases 0–5 are done: SMTP is configured, a real `send_report.py --test`
+send landed in Primary Inbox (matching `From == SMTP_USER`, no PDF attachment, direct
+publisher links), and `SyntheticDataWeekly` is registered for Saturday 08:00 in
+real-send mode (`schedule_task.py --register --send`). What remains is running the
+two-week Phase 6 pilot and moving long-term production sending to an authenticated
+company-domain email service (keep GitHub Actions `SMTP_*` secrets unset while the
+local Windows task sends live, so only one scheduler sends). [Build plan and status](#build-plan-and-status) is the
 honest scoreboard. Running `main.py` with no flags still performs the Phase 1
 "print every raw item" deliverable; `--pipeline` is the one command for the whole
 agent.
@@ -109,7 +111,7 @@ stops the report.
 flowchart LR
     A["Collect - 18 sources, 6 collectors"] --> B["Clean - normalise, dedupe, history filter"]
     B --> C["Rank - LLM score 1-10 + well7 fit"]
-    C --> D["Fetch - full text of the top 10"]
+    C --> D["Fetch - full text of the top 7"]
     D --> E["Report - summaries + sections"]
     E --> F["Render - verify links, MD + HTML + PDF"]
     F --> G["Email - 5 recipients from config.yaml"]
@@ -179,7 +181,7 @@ The individual steps are still runnable by hand:
 ```powershell
 uv run python main.py
 uv run python rank_items.py              # LLM scores 1-10 → ranked.json
-uv run python fetch_candidates.py        # top 10 from ranked.json → candidates.json
+uv run python fetch_candidates.py        # top 7 from ranked.json → candidates.json
 uv run python write_report.py            # summaries + sections → source.yaml
 uv run python report_build.py progress/week-2026-11-05/source.yaml
 uv run python send_report.py progress/week-2026-11-05/source.yaml --dry-run
@@ -190,7 +192,7 @@ uv run python verify_report.py
 |---|---|---|
 | `main.py` | Collects, normalises, dedupes, drops already-published URLs; `--pipeline` runs the whole graph | `raw_items.json`, `raw_run_log.json`, report + email |
 | `rank_items.py` | Scores each item 1–10 for relevance and 1–10 for Well7 fit, with a reason; collapses same-story coverage | `ranked.json`, `score_cache.json`, merges into `raw_run_log.json` |
-| `fetch_candidates.py` | Takes the top 10 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
+| `fetch_candidates.py` | Takes the top 7 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
 | `write_report.py` | Writes summaries from the fetched text and splits the three sections | `source.yaml` |
 | `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs when run standalone | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
 | `send_report.py` | Emails the rendered report as the HTML/plain-text body (PDF omitted by default for deliverability; `--attach-pdf` opts in); `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
@@ -206,17 +208,19 @@ produces a byte-identical `ranked.json`.
 
 ## Scheduling
 
-Two schedulers ship, both reading `config.yaml` → `schedule` (`Saturday 08:00`):
+Two schedulers ship, both configured for weekly runs (only one may have live SMTP
+enabled at a time, so recipients never receive duplicate emails):
 
-- **Windows Task Scheduler** — `uv run python schedule_task.py --register` creates
-  the `SyntheticDataWeekly` task. `scripts/run_weekly.ps1` adds `--dry-run` unless
-  it is called with `-Send`, so a missing credential can never fail the run. It is
-  interactive-only: it runs as the current user when signed in, with no stored
+- **Windows Task Scheduler** — `uv run python schedule_task.py --register --send`
+  registered the `SyntheticDataWeekly` task for Saturday 08:00 in real-send mode
+  (`scripts/run_weekly.ps1 -Send`; manual invocations without `-Send` stay dry-run).
+  It is interactive-only: it runs as the current user when signed in, with no stored
   password, so it will not fire while the machine is signed out. `logs/weekly.log`
   records `mode: dry-run` or `mode: send` plus the command line for every run.
 - **GitHub Actions** — `.github/workflows/weekly-report.yml`, Saturday 05:00 UTC
-  (08:00 UTC+3), also runnable by hand with `workflow_dispatch`. Scheduled runs
-  send the real email once the `SMTP_*` secrets are set, and fall back to
+  (13:00 UTC+8 on this host), also runnable by hand with `workflow_dispatch`.
+  Scheduled runs send the real email only if `SMTP_*` secrets are set (keep them
+  unset while the local Windows task is registered with `-Send`), falling back to
   `--dry-run` when any credential is missing; `send_email` unchecked always forces
   a dry run. `history.db`, `score_cache.json` and `summary_cache.json` are
   persisted through `actions/cache`, so cross-week dedupe keeps working.
@@ -275,15 +279,11 @@ from scratch.
   land in Inbox (with `From == SMTP_USER`, no PDF attachment, and reduced direct
   article links), but long-term production delivery should move to a dedicated
   sending service authenticated on the company domain (SPF/DKIM/DMARC).
-- **The scheduled task runs dry, once it exists.** `SyntheticDataWeekly` is **not
-  currently registered** on this machine; `schedule_task.py --register` creates it.
-  It then calls `scripts/run_weekly.ps1`, which adds `--dry-run` unless invoked with
-  `-Send`, so each Saturday writes a report and `email.eml` and never contacts SMTP.
-  Re-register with `uv run python schedule_task.py --register --send` once ready for
-  the Phase 6 pilot.
-- **The scheduled task is interactive-only.** It runs as the current user when
-  signed in, with no stored password, so it will not fire while the machine is
-  signed out. `logs/weekly.log` is the evidence trail.
+- **The scheduled task is registered in real-send mode and is interactive-only.**
+  `SyntheticDataWeekly` is registered via `schedule_task.py --register --send`
+  for Saturday 08:00 (`scripts/run_weekly.ps1 -Send`), and runs as the current user
+  when signed in with no stored password, so it will not fire while the machine
+  is signed out. `logs/weekly.log` is the evidence trail.
 - **Ranker substance judgement is improved, not proven.** Since 2026-11-06 each
   repo's stars and creation date reach the prompt, the rubric discounts old
   low-star repos, and the shortlist caps GitHub's share at 3; since 2026-11-07
@@ -303,19 +303,22 @@ from scratch.
   not a hang.
 - **arXiv announces nothing Friday or Saturday.** Most weeks end with a date gap.
 - **`report_build.py` exits 1 when it dropped dead links.** That is a successful
-  render of a filtered report, not a crash.
+  render of a filtered report, not a crash, provided at least one top pick survives.
 
 ## Tests
 
 There is no pytest or linter. CI is one scheduled workflow,
-`.github/workflows/weekly-report.yml` (Saturday 05:00 UTC, or manual
-`workflow_dispatch`), which sends the weekly report when SMTP secrets exist and
-falls back to a dry run otherwise; it keeps the report, PDF and (in dry-run mode)
-`email.eml` as build artefacts. A flagged run (an omitted trend, a thin ranking,
-a failed source) still exits 0 — only a missing report or email fails the run.
+`.github/workflows/weekly-report.yml` (Saturday 05:00 UTC / 13:00 UTC+8, or manual
+`workflow_dispatch`), which runs `selftest.py` before the pipeline, runs
+`verify_report.py` after, sends the weekly report only when `SMTP_*` secrets exist
+(falling back to a dry run otherwise; keep Actions `SMTP_*` secrets unset while
+the local Windows task sends live), and uploads `progress/week-*/**` (including
+`email.eml` in dry-run mode) as build artefacts. A flagged run (an omitted trend, a
+thin ranking, a failed source) still exits 0 — only an unpublishable report (no
+surviving top picks) or missing email fails the run.
 Locally, the suite is two scripts that exit non-zero on failure:
 
 ```powershell
-uv run python selftest.py       # offline: parsing, dates, URL normalisation, dedupe, history, email, schedule
-uv run python verify_report.py  # structural: subject, section order, counts, dates, PDF
+uv run python selftest.py       # offline (394 checks): parsing, dates, URL normalisation, dedupe, history, email, schedule
+uv run python verify_report.py  # structural (30 checks): subject, section order, counts, dates, PDF
 ```

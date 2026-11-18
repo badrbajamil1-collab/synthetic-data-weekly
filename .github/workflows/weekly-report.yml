@@ -4,6 +4,12 @@
 # missing secret can never fail the weekly run. A manual "Run workflow" with
 # send_email unchecked always forces a dry run.
 #
+# Only one scheduler may have live SMTP enabled at a time: on this UTC+8 host,
+# Windows Task Scheduler (`SyntheticDataWeekly`) runs live with `-Send` at
+# Saturday 08:00 UTC+8 (00:00 UTC), so keep `SMTP_*` secrets unset here while
+# the local task is live (or delete/disable the local task before enabling
+# Actions `SMTP_*` secrets) so recipients do not receive duplicate emails.
+#
 # history.db / score_cache.json / summary_cache.json are NOT committable
 # (git-ignored); they persist between runs through the cache step instead,
 # so dedupe across weeks keeps working from Actions too.
@@ -12,7 +18,8 @@ name: Weekly synthetic data report
 
 on:
   schedule:
-    # Saturday 05:00 UTC = Saturday 08:00 UTC+3, matching config.yaml "Saturday 08:00"
+    # Saturday 05:00 UTC = Saturday 13:00 UTC+8 (this host's local timezone;
+    # config.yaml's "Saturday 08:00" is 00:00 UTC for the local Windows task).
     - cron: "0 5 * * 6"
   workflow_dispatch:
     inputs:
@@ -37,12 +44,15 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: requirements.txt
 
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
+
+      - name: Run offline self-tests
+        run: python selftest.py
 
       - name: Restore history and score caches (dedupe + rerun cost)
         uses: actions/cache/restore@v4
@@ -91,6 +101,9 @@ jobs:
             python main.py --pipeline --dry-run
           fi
 
+      - name: Verify the rendered report
+        run: python verify_report.py
+
       - name: Save history and score caches
         if: always()
         uses: actions/cache/save@v4
@@ -104,14 +117,13 @@ jobs:
           key: weekly-cache-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload the week's artefacts
-        # A thin run exits 1 by design; the report it wrote is still the
-        # deliverable, so the upload must not be skipped.
+        # A pipeline failure exits 1; upload whatever artefacts exist for
+        # debugging, including email.eml inside progress/week-*/.
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-report-${{ github.run_number }}
           path: |
-            email.eml
             progress/week-*/**
           if-no-files-found: error
           retention-days: 30

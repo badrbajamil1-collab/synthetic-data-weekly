@@ -974,7 +974,7 @@ def _exit_code(state, **kw):
 
 
 _flagged = {
-    "report": {"trend": ""},
+    "report": {"trend": "", "top_picks": [{"title": "p", "url": "https://x"}]},
     "email": {"dry_run": True, "path": "progress/week-x/email.eml"},
     "errors": ["report: trend omitted; the run is flagged"],
     "raw_items": [],
@@ -1421,9 +1421,29 @@ _guard_out = _graph.rank_node(
 check("rank node records a score guard error when nothing could be scored",
       any(str(error).startswith("rank:") for error in _guard_out["errors"]),
       str(_guard_out["errors"]))
-check("rank node leaves an unscored row visible instead of inventing a score",
-      _guard_out["ranked_items"][0]["score_status"] == "unscored",
+check("rank node short-circuits to empty ranked_items below min_scored_to_proceed",
+      _guard_out["ranked_items"] == [],
       str(_guard_out["ranked_items"]))
+_graph.configure(
+    settings={
+        "ranking": {"prefilter": False, "min_scored_to_proceed": 0, "batch_size": 15, "concurrency": 3},
+    },
+    chat_fn=_always_down,
+)
+_unscored_ok = _graph.rank_node(
+    {
+        "errors": [],
+        "deduped_items": [
+            _item("A synthetic data method", "https://rn/guard0",
+                  published="2026-11-11T00:00:00Z")
+        ],
+        "run_date": "2026-11-11",
+    },
+    None,
+)
+check("rank node leaves an unscored row visible instead of inventing a score",
+      _unscored_ok["ranked_items"][0]["score_status"] == "unscored",
+      str(_unscored_ok["ranked_items"]))
 _graph.configure(chat_fn=_rank_node_fake)
 
 print("score_items failure policy")
@@ -1853,6 +1873,246 @@ check("empty reddit feed returns no items",
 check("empty reddit feed is a warning, not an error",
       len(_empty_warnings) == 1 and "0 entries" in _empty_warnings[0],
       str(_empty_warnings))
+
+print("audit batch 1 regressions")
+# Req 5: pipeline_exit_code requires at least one top pick.
+check("pipeline_exit_code rejects a report without top_picks key",
+      _exit_code({"report": {"trend": "ok"}, "email": {"sent": True}}) == 1)
+check("pipeline_exit_code rejects a report with empty top_picks",
+      _exit_code({"report": {"trend": "ok", "top_picks": []}, "email": {"sent": True}}) == 1)
+check("pipeline_exit_code accepts a report with at least one top pick",
+      _exit_code({"report": {"trend": "ok", "top_picks": [{"title": "a"}]}, "email": {"sent": True}}) == 0)
+
+# Req 1: render_node refuses missing top_picks / unusable week_end, and clears
+# report when report_build exit 1 drops every pick.
+_rn_dir = Path(tempfile.mkdtemp())
+_orig_rb_main = _graph.report_build_main
+_orig_cwd_rn = _os.getcwd()
+_rb_called = []
+_sample_render_report = {
+    "week_start": "2026-11-14",
+    "week_end": "2026-11-20",
+    "trend": "A trend.",
+    "top_picks": [{
+        "title": "Pick One",
+        "url": "https://example.com/1",
+        "source": "arXiv",
+        "published": "2026-11-16",
+        "summary": "Summary one.",
+    }],
+    "tools": [],
+    "worth_a_look": [],
+}
+try:
+    _os.chdir(_rn_dir)
+    _graph.report_build_main = lambda argv: (_rb_called.append(argv) or 0)
+    _no_picks = _graph.render_node(
+        {"errors": [], "report": {**_sample_render_report, "top_picks": []}}, None
+    )
+    check("render_node refuses a report with no top_picks",
+          _no_picks["report"] == {}
+          and any(e.startswith("render:") for e in _no_picks["errors"])
+          and not _rb_called,
+          str(_no_picks))
+
+    _bad_date = _graph.render_node(
+        {"errors": [], "report": {**_sample_render_report, "week_end": "not-a-date"}}, None
+    )
+    check("render_node refuses a report with unusable week_end",
+          _bad_date["report"] == {}
+          and any(e.startswith("render:") for e in _bad_date["errors"])
+          and not _rb_called,
+          str(_bad_date))
+
+    def _rb_exit1_survive(argv):
+        out = Path(argv[0]).parent
+        (out / "report.md").write_text(
+            "## Top picks\n\n1. [Pick One](https://example.com/1)\n\n## New tools and datasets\n",
+            encoding="utf-8",
+        )
+        (out / "report.html").write_text("<h1>Top picks</h1>", encoding="utf-8")
+        (out / "run_log.json").write_text(_json.dumps({"top_picks": 1}), encoding="utf-8")
+        return 1
+
+    _graph.report_build_main = _rb_exit1_survive
+    _surv = _graph.render_node({"errors": [], "report": _sample_render_report}, None)
+    check("render_node accepts exit 1 when top picks survive",
+          bool(_surv["report"].get("top_picks"))
+          and not any(e.startswith("render:") for e in _surv["errors"])
+          and "Pick One" in _surv["report_markdown"],
+          str(_surv))
+
+    def _rb_exit1_all_dropped(argv):
+        out = Path(argv[0]).parent
+        (out / "report.md").write_text(
+            "## Top picks\n\n## New tools and datasets\n",
+            encoding="utf-8",
+        )
+        (out / "report.html").write_text("<h1>Top picks</h1>", encoding="utf-8")
+        (out / "run_log.json").write_text(_json.dumps({"top_picks": 0}), encoding="utf-8")
+        return 1
+
+    _graph.report_build_main = _rb_exit1_all_dropped
+    _dropped_all = _graph.render_node({"errors": [], "report": _sample_render_report}, None)
+    check("render_node clears report when exit 1 drops every pick",
+          _dropped_all["report"] == {}
+          and _dropped_all["report_html"] == ""
+          and _dropped_all["report_markdown"] == ""
+          and any(e.startswith("render:") for e in _dropped_all["errors"]),
+          str(_dropped_all))
+    _graph.configure(delivery={"enabled": True, "dry_run": True})
+    _after_drop_send = _graph.send_node(_dropped_all, None)
+    check("send_node refuses to send when render cleared an empty report",
+          "email" not in _after_drop_send
+          and any(e.startswith("send:") for e in _after_drop_send["errors"])
+          and _exit_code(_after_drop_send) == 1,
+          str(_after_drop_send))
+
+    _graph.report_build_main = lambda argv: 2
+    _rb_crash = _graph.render_node({"errors": [], "report": _sample_render_report}, None)
+    check("render_node clears report on non-0/1 report_build exit",
+          _rb_crash["report"] == {}
+          and any("exited 2" in e for e in _rb_crash["errors"]),
+          str(_rb_crash))
+finally:
+    _os.chdir(_orig_cwd_rn)
+    _graph.report_build_main = _orig_rb_main
+
+# Req 2: rank_node short-circuits when scored_count < min_scored_to_proceed even if >=1 scored.
+_graph.configure(
+    settings={
+        "ranking": {
+            "prefilter": False,
+            "min_scored_to_proceed": 2,
+            "batch_size": 1,
+            "concurrency": 1,
+            "editor_pass_size": 0,
+        },
+    },
+    chat_fn=lambda messages: (
+        _json.dumps({"scores": [{"id": 0, "score": 8, "well7_fit": 8, "reason": "ok"}]})
+        if "rn/ok" in messages[0]["content"]
+        else (_ for _ in ()).throw(RuntimeError("down"))
+    ),
+)
+_short_rank = _graph.rank_node(
+    {
+        "errors": [],
+        "deduped_items": [
+            _item("Ok synthetic data paper", "https://rn/ok", published="2026-11-11T00:00:00Z"),
+            _item("Fail synthetic data paper", "https://rn/fail", published="2026-11-11T00:00:00Z"),
+        ],
+        "run_date": "2026-11-11",
+    },
+    None,
+)
+check("rank_node returns empty ranked_items when scored_count < min_scored_to_proceed",
+      _short_rank["ranked_items"] == []
+      and any("need 2" in e for e in _short_rank["errors"]),
+      str(_short_rank))
+
+# Req 3: report_node shortlist=None fallback applies cap_github_share[:cap] and ranking.model fallback.
+_fb_cache_dir = Path(tempfile.mkdtemp())
+_orig_cache_path = _graph._CACHE_PATH
+_graph._CACHE_PATH = str(_fb_cache_dir / "fb_summary_cache.json")
+try:
+    _graph.configure(
+        settings={
+            "max_top_picks": 2,
+            "ranking": {"github_share_cap": 1, "model": "custom/ranking-fallback-model"},
+            "summarising": {"picks": 5, "max_tools": 5, "max_worth_a_look": 5},
+        },
+        chat_fn=_fake_chat,
+    )
+    _fb_ranked = [
+        _item("gh1", "https://github.com/a/1", score=10, well7=10, published="2026-11-11T00:00:00Z", source="github"),
+        _item("gh2", "https://github.com/a/2", score=10, well7=9, published="2026-11-11T00:00:00Z", source="github"),
+        _item("ax1", "https://arxiv.org/abs/2611.00001", score=9, well7=8, published="2026-11-11T00:00:00Z", source="arxiv"),
+        _item("ax2", "https://arxiv.org/abs/2611.00002", score=8, well7=7, published="2026-11-11T00:00:00Z", source="arxiv"),
+    ]
+    _fb_rep = _graph.report_node(
+        {"errors": [], "ranked_items": _fb_ranked, "run_date": "2026-11-11"}, None
+    )
+    _fb_urls = [p["url"] for p in _fb_rep["report"]["top_picks"]] + [
+        t["url"] for t in _fb_rep["report"]["tools"]
+    ]
+    check("report_node shortlist=None fallback enforces github_share_cap and max_top_picks",
+          len(_fb_urls) == 2
+          and sum("github.com" in u for u in _fb_urls) == 1
+          and "https://arxiv.org/abs/2611.00001" in _fb_urls,
+          str(_fb_urls))
+    _fb_cache = _json.loads((_fb_cache_dir / "fb_summary_cache.json").read_text(encoding="utf-8"))
+    check("report_node falls back to ranking.model when summarising.model is unset",
+          _fb_cache.get("model") == "custom/ranking-fallback-model",
+          str(_fb_cache.get("model")))
+finally:
+    _graph._CACHE_PATH = _orig_cache_path
+
+# Req 4: report_build preserves email block, copies warnings, ignores stale errors.
+_rb4_dir = Path(tempfile.mkdtemp())
+(_rb4_dir / "raw_run_log.json").write_text(_json.dumps({
+    "run_at": "2026-11-12T09:00:00+00:00",
+    "week_end": "2026-11-13",
+    "counts": {"arxiv": 12, "news": 3},
+    "found": 15,
+    "kept": 15,
+    "duplicates": 0,
+    "already_sent": 0,
+    "errors": ["collector error"],
+    "warnings": {"reddit": ["404 blocked"]},
+}), encoding="utf-8")
+_rb4_out = _rb4_dir / "progress" / "week-2026-11-13"
+_rb4_out.mkdir(parents=True)
+_preserved_email = {"sent": True, "subject": "Keep me", "recipients": ["a@example.com"]}
+(_rb4_out / "run_log.json").write_text(_json.dumps({"email": _preserved_email}), encoding="utf-8")
+_rb4_source = _rb4_dir / "source.yaml"
+_rb4_source.write_text(_yaml.safe_dump(_fixture_report), encoding="utf-8")
+
+_orig_check4 = _report_build.check_link
+_orig_pdf4 = _report_build.render_pdf
+_orig_cwd4 = _os.getcwd()
+try:
+    _report_build.check_link = lambda url, timeout=30.0: {"status": 200, "ok": True}
+    _report_build.render_pdf = lambda report, path: Path(path).write_bytes(b"%PDF-1.4\n" + b"0" * 50_000)
+    _os.chdir(_rb4_dir)
+    with _contextlib.redirect_stdout(_io.StringIO()):
+        _report_build.main([str(_rb4_source), "--no-record"])
+    _rb4_log = _json.loads((_rb4_out / "run_log.json").read_text(encoding="utf-8"))
+    check("report_build preserves existing email block on re-render",
+          _rb4_log.get("email") == _preserved_email, str(_rb4_log.get("email")))
+    check("report_build copies collector warnings into source_warnings",
+          _rb4_log.get("source_warnings") == {"reddit": ["404 blocked"]},
+          str(_rb4_log.get("source_warnings")))
+    check("report_build records fresh collector errors",
+          _rb4_log.get("source_errors") == ["collector error"],
+          str(_rb4_log.get("source_errors")))
+
+    # Now make raw_run_log.json stale (for another week) and re-render:
+    (_rb4_dir / "raw_run_log.json").write_text(_json.dumps({
+        "run_at": "2026-11-05T09:00:00+00:00",
+        "week_end": "2026-11-06",
+        "counts": {"arxiv": 99},
+        "found": 99,
+        "kept": 99,
+        "errors": ["stale error must be ignored"],
+        "warnings": {"reddit": ["stale warning"]},
+    }), encoding="utf-8")
+    with _contextlib.redirect_stdout(_io.StringIO()):
+        _report_build.main([str(_rb4_source), "--no-record"])
+    _rb4_stale_log = _json.loads((_rb4_out / "run_log.json").read_text(encoding="utf-8"))
+    check("report_build ignores stale raw_run_log errors",
+          _rb4_stale_log.get("source_errors") == [],
+          str(_rb4_stale_log.get("source_errors")))
+    check("report_build ignores stale raw_run_log warnings",
+          _rb4_stale_log.get("source_warnings") == {},
+          str(_rb4_stale_log.get("source_warnings")))
+    check("report_build still preserves email block after stale re-render",
+          _rb4_stale_log.get("email") == _preserved_email,
+          str(_rb4_stale_log.get("email")))
+finally:
+    _os.chdir(_orig_cwd4)
+    _report_build.check_link = _orig_check4
+    _report_build.render_pdf = _orig_pdf4
 
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
