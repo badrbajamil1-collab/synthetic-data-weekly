@@ -43,23 +43,22 @@ This is where each phase stood on 2026-11-18.
 | **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned three times | `rank_items.py` → `ranked.json`; keyword prefilter, one comparative editor pass, structured JSON output; URL normalisation, primary-source dedupe and `history.db` |
 | **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (structural checks plus the 2026-11-11 schema gates) |
 | **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
-| **5 — Email and schedule** | You receive a correct test email | ✅ Email verified; scheduler ready | `send_report.py --test` delivered to Primary Inbox (`From == SMTP_USER`, no PDF attachment); `schedule_task.py --dry-run` & `run_weekly.ps1` verified, `SyntheticDataWeekly` not yet registered |
-| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ Ready to start | Register `schedule_task.py --register --send` (or set GitHub Actions `SMTP_*` secrets), watch two Saturdays, and move to a company-domain sending service if spam filtering appears |
+| **5 — Email and schedule** | You receive a correct test email | ✅ Email verified; scheduler registered | `send_report.py --test` delivered to Primary Inbox (`From == SMTP_USER`, no PDF attachment); `SyntheticDataWeekly` registered for Saturday 08:00 in real-send mode |
+| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ In progress | `schedule_task.py --register --send` is done, next run 2026-11-21 08:00. Watch two Saturdays, gather feedback, then tune; move to a company-domain sending service if spam filtering appears |
 
 **Where that leaves the project:** ready for the two-week Phase 6 pilot.
 
 **The brief's "done" test** is that the agent runs unattended for two Saturdays and
-the team finds the reports useful. Neither Saturday run has happened yet: the Windows task is
-**not currently registered** on this machine (`schtasks /query /tn SyntheticDataWeekly`
-reports no such task), and `.github/workflows/weekly-report.yml` needs `SMTP_*` secrets
-for unattended cloud runs.
+the team finds the reports useful. The Windows task **is registered** in real-send mode
+(`schedule_task.py --query` shows `SyntheticDataWeekly`, Saturday 08:00, `Status: Ready`,
+next run 2026-11-21), but neither Saturday run has happened yet. Unattended cloud runs
+would additionally need `SMTP_*` secrets in `.github/workflows/weekly-report.yml`.
 
 What is still next, in order:
 
-1. Register the Saturday task (`uv run python schedule_task.py --register --send`)
-   or configure the `SMTP_*` secrets in GitHub Actions.
-2. Run two unattended Saturdays with recipient feedback, then tune keywords,
-   sources and prompts (Phase 6).
+1. Let two Saturday runs complete and check `logs/weekly.log` (`mode: send`) plus the
+   recipients' feedback. Do not tune from a single week.
+2. Then tune keywords, sources and prompts (Phase 6).
 3. If consumer SMTP starts hitting spam on multi-recipient sends, move delivery
    to a dedicated sending service on the company domain (SPF/DKIM/DMARC).
 

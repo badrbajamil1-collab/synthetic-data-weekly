@@ -183,13 +183,13 @@ Three rules that are easy to break:
   succeeded and landed in Primary Inbox (`From == SMTP_USER`, no PDF attachment, direct
   article links), but long-term production delivery should move to an authenticated
   company-domain sending service (SPF/DKIM/DMARC).
-- **The scheduled task is not currently registered.** `schedule_task.py --register`
-  creates `SyntheticDataWeekly` in dry-run mode: `scripts/run_weekly.ps1` adds
-  `--dry-run` unless it is called with `-Send`, so each Saturday writes a report and
-  `email.eml` without touching SMTP. Register with
-  `python schedule_task.py --register --send` to enable weekly delivery.
-  `logs/weekly.log` records `mode: dry-run` or `mode: send` plus the exact command line
-  for every run.
+- **The scheduled task is registered in real-send mode.** `schedule_task.py --register
+  --send` created `SyntheticDataWeekly` for Saturday 08:00, running
+  `scripts/run_weekly.ps1 -Send`. `schedule_task.py --query` confirms
+  `Next Run Time: 11/21/2026 8:00:00 AM`, `Status: Ready`, `Scheduled Task State: Enabled`.
+  Use `python schedule_task.py --query` to check it and `--delete` to remove it.
+  `logs/weekly.log` records `mode: send` plus the exact command line for every run.
+  No Saturday run has happened yet, so Phase 6 is still unverified.
 - The scheduled task is **interactive-only**: it runs as the current user when signed
   in, with no stored password. It will not fire while the machine is signed out.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that

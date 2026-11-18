@@ -89,12 +89,13 @@ output reads better is the next real week's test.
 
 ## What does not work yet
 
-- **The scheduled task is not registered.** SMTP credentials are configured and a real
+- **No Saturday run has happened yet.** SMTP credentials are configured, a real
   `--test` send on 2026-11-18 reached the Primary Inbox (`sent: true` in
-  `progress/week-2026-11-20/run_log.json`, no PDF attached, direct publisher links).
-  Register with `python schedule_task.py --register --send` for live Saturday delivery.
-  The task is interactive-only: it runs as the current user when signed in, with no
-  stored password, so it will not fire while the machine is signed out.
+  `progress/week-2026-11-20/run_log.json`, no PDF attached, direct publisher links),
+  and `SyntheticDataWeekly` is now registered for Saturday 08:00 in real-send mode.
+  Watch two Saturdays before tuning. The task is interactive-only: it runs as the
+  current user when signed in, with no stored password, so it will not fire while the
+  machine is signed out.
 - **Reddit is currently blocked from this host.** Both the multi-subreddit RSS feed and
   the JSON API now return 404/403. The collector records the outage as a `[warn]` in
   `raw_run_log.json` and contributes 0 items; it no longer raises a fatal source error
@@ -199,9 +200,9 @@ Verified against artefacts, not the older prose above:
   configured and a real `--test` send is recorded as `sent: true` in that week's
   `run_log.json` — it landed in the Primary Inbox with no PDF attachment and direct
   publisher links.
-- **Phase 6 is the only open phase.** `SyntheticDataWeekly` is not registered in Task
-  Scheduler (`schedule_task.py --query` returns "cannot find the file"). Register with
-  `python schedule_task.py --register --send`, then watch two Saturdays before tuning.
+- **Phase 6 is the only open phase.** `SyntheticDataWeekly` was registered with
+  `python schedule_task.py --register --send`; `--query` confirms Saturday 08:00,
+  `Status: Ready`, next run 2026-11-21. Watch two Saturdays before tuning.
 - **Deliverability changes from this pass:** `From == SMTP_USER`, PDF attachment off by
   default (`--attach-pdf` opts in), headline caps tightened, Google News redirects
   unwrapped to original publishers (or dropped).
