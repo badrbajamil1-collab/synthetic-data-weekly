@@ -371,6 +371,12 @@ def fetch_reddit(
     subreddits are fetched through a single multi-subreddit feed
     (r/A+B+C.rss) instead of one request each. The backoff is 15/30/45 s
     because a minute is the real limit.
+
+    Reddit is an optional upstream. When its feed is blocked or empty the
+    outage goes to ``warnings`` (visible in the run log and console as
+    ``[warn]``), never to the fatal ``errors`` list: one dead external site
+    must not fail an otherwise good weekly report. The other five collectors
+    still run and the report discloses that reddit contributed 0 items.
     """
     subs = [s.strip() for s in subreddits if s and s.strip()]
     if not subs:
@@ -378,8 +384,12 @@ def fetch_reddit(
 
     cutoff = cutoff_for(lookback_days)
     url = f"https://www.reddit.com/r/{'+'.join(subs)}.rss"
-    failures: List[str] = []
+    label = f"reddit r/{'+'.join(subs)}"
     items: List[Item] = []
+
+    def warn(message: str) -> None:
+        if warnings is not None:
+            warnings.append(f"{label}: {message}")
 
     try:
         response = get_with_retry(
@@ -387,12 +397,12 @@ def fetch_reddit(
         )
         feed = feedparser.parse(response.content)
     except Exception as exc:  # noqa: BLE001
-        failures.append(f"reddit r/{'+'.join(subs)}: {exc}")
-        return _finish(items, failures, warnings)
+        warn(str(exc))
+        return _finish(items, [], warnings)
 
     if not feed.entries:
-        failures.append(f"reddit r/{'+'.join(subs)}: feed returned 0 entries")
-        return _finish(items, failures, warnings)
+        warn("feed returned 0 entries")
+        return _finish(items, [], warnings)
 
     per_sub: dict = {}
     for entry in feed.entries:
@@ -417,7 +427,7 @@ def fetch_reddit(
             )
         )
 
-    return _finish(items, failures, warnings)
+    return _finish(items, [], warnings)
 
 
 # --------------------------------------------------------------------------

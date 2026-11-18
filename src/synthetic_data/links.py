@@ -93,6 +93,14 @@ def normalize_url(url: str) -> str:
     return _ARXIV_VERSION.sub(r"\1", normalized)
 
 
+def is_google_news_redirect(url: str) -> bool:
+    """True when `url` is an opaque Google News redirect rather than the article."""
+    if not url:
+        return False
+    host = (urllib.parse.urlsplit(url.strip()).hostname or "").lower()
+    return host == "news.google.com" or host.endswith(".news.google.com")
+
+
 def resolve_google_news(url: str, timeout: float = 30.0) -> str:
     """Turn a ``news.google.com/rss/articles/...`` redirect into the real URL.
 

@@ -1,6 +1,6 @@
 schedule: "Saturday 08:00"  # read by schedule_task.py (Windows Task Scheduler)
 lookback_days: 7
-max_top_picks: 10
+max_top_picks: 7
 
 # Phase 2 — ranking. The model is scored 1-10 for relevance and 1-10 for Well7
 # fit; `max_top_picks` above is the shortlist size, so there is only one owner
@@ -67,9 +67,9 @@ summarising:
   timeout_seconds: 180
   max_attempts: 2
   concurrency: 3
-  picks: 6
-  max_tools: 5
-  max_worth_a_look: 5
+  picks: 5
+  max_tools: 1
+  max_worth_a_look: 1
   # Minimum score for each section. Sections are never padded to a count: if
   # fewer items clear the floor, the section is shorter. verify_report.py
   # checks the floor instead of demanding five picks.

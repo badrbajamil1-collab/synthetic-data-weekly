@@ -20,7 +20,7 @@ from pathlib import Path
 import yaml
 
 from synthetic_data import memory
-from synthetic_data.links import check_link
+from synthetic_data.links import check_link, is_google_news_redirect, resolve_google_news
 from synthetic_data.render import render_all_links, render_html, render_markdown, subject_line
 from synthetic_data.render_pdf import render_pdf
 
@@ -30,12 +30,41 @@ def load_report(path: str) -> dict:
         return yaml.safe_load(handle)
 
 
+def _unwrap_google_news_links(report: dict) -> dict:
+    """Resolve any remaining Google News redirect URLs to original articles."""
+    updated = dict(report)
+    for section in ("top_picks", "tools", "worth_a_look"):
+        entries = []
+        for entry in report.get(section, []):
+            item = dict(entry)
+            url = item.get("url") or ""
+            if is_google_news_redirect(url):
+                resolved = resolve_google_news(url)
+                if not is_google_news_redirect(resolved):
+                    item["url"] = resolved
+            entries.append(item)
+        updated[section] = entries
+    return updated
+
+
 def verify_links(report: dict) -> tuple:
+    report = _unwrap_google_news_links(report)
     links = render_all_links(report)
     results = {}
 
+    to_check = []
+    for link in links:
+        if is_google_news_redirect(link["url"]):
+            results[link["url"]] = {
+                "status": "redirect",
+                "ok": False,
+                "note": "unresolved Google News redirect",
+            }
+        else:
+            to_check.append(link)
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
-        futures = {pool.submit(check_link, link["url"]): link for link in links}
+        futures = {pool.submit(check_link, link["url"]): link for link in to_check}
         for future in concurrent.futures.as_completed(futures):
             link = futures[future]
             results[link["url"]] = future.result()

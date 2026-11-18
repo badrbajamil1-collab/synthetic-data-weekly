@@ -1,10 +1,11 @@
 """Phase 5 - send the rendered weekly report as an email.
 
-The email body is the report itself, not a link to it and not only a PDF:
+The email body is the report itself, not a link to it:
 
 * ``text/plain`` - ``report.md`` (the same words as the Markdown deliverable)
 * ``text/html``  - ``report.html`` (the formatted body recipients actually read)
-* ``application/pdf`` - the PDF is attached as a convenience copy
+* ``application/pdf`` - omitted by default for deliverability (pass
+  ``attach_pdf=True`` / ``--attach-pdf`` to include it)
 
 Recipients come from ``config.yaml``. Credentials come from ``.env`` (see
 ``.env.example``) and never from a committed file. ``--dry-run`` composes the
@@ -22,7 +23,7 @@ import ssl
 from datetime import datetime, timezone
 from email import policy
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
+from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
@@ -32,6 +33,18 @@ from synthetic_data import llm, memory, render
 
 DEFAULT_SENDER = "Synthetic Data Weekly <weekly@example.com>"
 DEFAULT_TIMEOUT = 60.0
+_CONSUMER_MAIL_DOMAINS = frozenset({
+    "gmail.com",
+    "googlemail.com",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+})
+_CONSUMER_SMTP_HOSTS = (
+    "smtp.gmail.com",
+    "smtp.office365.com",
+    "smtp-mail.outlook.com",
+)
 
 
 class EmailError(Exception):
@@ -54,6 +67,34 @@ def _require(env: dict, name: str) -> str:
             ".env.example documents the shape."
         )
     return value
+
+
+def resolve_sender(raw_sender: str, user: str, host: str = "") -> str:
+    """Keep MAIL_FROM aligned with SMTP_USER on Gmail and Outlook.
+
+    Sending with a MAIL_FROM address/domain that differs from SMTP_USER looks
+    like spoofing to Gmail and Outlook and sends mail to spam. On consumer
+    webmail logins/hosts, force the email address to match SMTP_USER while
+    preserving any display name.
+    """
+    sender = (raw_sender or "").strip()
+    login = (user or "").strip()
+    if not sender:
+        return login or DEFAULT_SENDER
+    if "@" not in login:
+        return sender
+    login_domain = login.rsplit("@", 1)[1].lower()
+    host_lower = (host or "").strip().lower()
+    enforce_match = (
+        login_domain in _CONSUMER_MAIL_DOMAINS
+        or any(h in host_lower for h in _CONSUMER_SMTP_HOSTS)
+    )
+    if not enforce_match:
+        return sender
+    display_name, from_addr = parseaddr(sender)
+    if from_addr.lower() == login.lower():
+        return sender
+    return formataddr((display_name, login)) if display_name else login
 
 
 def resolve_recipients(
@@ -103,7 +144,7 @@ def smtp_settings(env: dict) -> dict:
         raise EmailError(f"SMTP_PORT must be a number, got {port_text!r}") from exc
     user = _require(env, "SMTP_USER")
     password = _require(env, "SMTP_PASSWORD")
-    sender = (env.get("MAIL_FROM") or "").strip() or user
+    sender = resolve_sender(env.get("MAIL_FROM") or "", user, host)
     return {
         "host": host,
         "port": port,
@@ -120,6 +161,7 @@ def compose(
     *,
     recipients: Sequence[str],
     sender: str,
+    attach_pdf: bool = False,
 ) -> EmailMessage:
     """Build the multipart message from the rendered files in ``out_dir``."""
     folder = Path(out_dir)
@@ -143,14 +185,15 @@ def compose(
     message.set_content(markdown_path.read_text(encoding="utf-8"), subtype="plain", charset="utf-8")
     message.add_alternative(html_path.read_text(encoding="utf-8"), subtype="html", charset="utf-8")
 
-    pdf_path = folder / f"Synthetic_Data_Weekly_{report['week_end']}.pdf"
-    if pdf_path.exists():
-        message.add_attachment(
-            pdf_path.read_bytes(),
-            maintype="application",
-            subtype="pdf",
-            filename=pdf_path.name,
-        )
+    if attach_pdf:
+        pdf_path = folder / f"Synthetic_Data_Weekly_{report['week_end']}.pdf"
+        if pdf_path.exists():
+            message.add_attachment(
+                pdf_path.read_bytes(),
+                maintype="application",
+                subtype="pdf",
+                filename=pdf_path.name,
+            )
     return message
 
 
@@ -229,6 +272,7 @@ def deliver(
     test: bool = False,
     to: Optional[Iterable[str]] = None,
     record: bool = True,
+    attach_pdf: bool = False,
     env: Optional[dict] = None,
     smtp_factory=None,
     db_path: Optional[str] = None,
@@ -246,9 +290,19 @@ def deliver(
 
     env = llm.load_env() if env is None else env
     recipients = resolve_recipients(config, env, test=test, to=to)
-    sender = (env.get("MAIL_FROM") or "").strip() or (env.get("SMTP_USER") or "").strip() or DEFAULT_SENDER
+    sender = resolve_sender(
+        env.get("MAIL_FROM") or "",
+        env.get("SMTP_USER") or "",
+        env.get("SMTP_HOST") or "",
+    )
 
-    message = compose(report, out_dir, recipients=recipients, sender=sender)
+    message = compose(
+        report,
+        out_dir,
+        recipients=recipients,
+        sender=sender,
+        attach_pdf=attach_pdf,
+    )
     summary = {
         "subject": str(message["Subject"]),
         "recipients": recipients,

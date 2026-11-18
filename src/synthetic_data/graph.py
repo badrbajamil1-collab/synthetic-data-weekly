@@ -391,8 +391,15 @@ def report_node(state: AgentState, config) -> AgentState:
     # out-of-week item cannot slip into the report through the fallback.
     shortlist = state.get("shortlist")
     if shortlist is None:
+        from synthetic_data.links import is_google_news_redirect, resolve_google_news
+
         bounds = week_bounds(_run_date(state))
-        items = _eligible_rows(state.get("ranked_items") or [], bounds)
+        items = []
+        for row in _eligible_rows(state.get("ranked_items") or [], bounds):
+            entry = dict(row)
+            if is_google_news_redirect(entry.get("url") or ""):
+                entry["url"] = resolve_google_news(entry["url"])
+            items.append(entry)
     else:
         items = list(shortlist)
     if not items:

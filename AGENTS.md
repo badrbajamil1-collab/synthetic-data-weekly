@@ -76,9 +76,11 @@ are the test suite; both exit non-zero on failure.
 `verify_report.py` defaults to the newest `progress/week-*/source.yaml`. The old
 top-level `reports/` directory no longer exists.
 
-`send_report.py` → `synthetic_data/emailer.py` builds a multipart message: `report.md`
-as `text/plain`, `report.html` as the `text/html` body, and the week's PDF attached.
-Recipients come from `config.yaml`; SMTP credentials come from `.env`. A standalone
+`send_report.py` → `synthetic_data/emailer.py` builds a `multipart/alternative` message:
+`report.md` as `text/plain` and `report.html` as the `text/html` body (the PDF is
+omitted by default for deliverability; `--attach-pdf` opts in). On Gmail/Outlook,
+`emailer.resolve_sender` aligns `MAIL_FROM` with `SMTP_USER` to avoid spoofing/spam
+flags. Recipients come from `config.yaml`; SMTP credentials come from `.env`. A standalone
 send records the report's URLs in `history.db` (`--no-record` opts out). `--dry-run`
 writes `progress/week-<date>/email.eml` and touches neither SMTP nor history;
 `--test` sends only to `DRY_RUN_RECIPIENT` and also records no history.
@@ -144,7 +146,11 @@ Three rules that are easy to break:
   unwraps them via Google's `batchexecute` RPC.
 - **Reddit:** use `.rss` with no trailing slash — `/.rss` returns 429. Roughly 1 request
   per minute per IP, so the collector backs off 15/30/45 s. A second full run inside a
-  minute stalls ~90 s; that is rate limiting, not a hang.
+  minute stalls ~90 s; that is rate limiting, not a hang. **As of 2026-11-18 both the
+  multi-sub `.rss` feed and the JSON API are blocked from this host (404/403).** Reddit
+  is treated as an optional upstream: `fetch_reddit` records the outage in `warnings`
+  and returns `[]` instead of raising, so it shows `[warn]` / 0 items in the run log but
+  never fails `verify_report.py`. Do not "fix" this back into a fatal source error.
 - **arXiv announces nothing Friday or Saturday**, so most weeks end with a date gap.
   Expected. Its `all:` search also matches loosely — expect off-topic papers in the raw list.
 - **GitHub search filters on creation and push dates**, not publication date, and
@@ -173,17 +179,17 @@ Three rules that are easy to break:
 
 ## Not implemented / untested
 
-- **A real email has not been sent yet.** The send path is implemented and covered by
-  offline tests plus a real `--dry-run` render, but `.env` has no SMTP credentials. Fill
-  `SMTP_*` / `MAIL_FROM` and run `python send_report.py --test` before trusting the
-  weekly task. `send_report.py --dry-run` needs no credentials.
+- **Company-domain sending service not yet wired.** Real `--test` delivery via Gmail SMTP
+  succeeded and landed in Primary Inbox (`From == SMTP_USER`, no PDF attachment, direct
+  article links), but long-term production delivery should move to an authenticated
+  company-domain sending service (SPF/DKIM/DMARC).
 - **The scheduled task is not currently registered.** `schedule_task.py --register`
   creates `SyntheticDataWeekly` in dry-run mode: `scripts/run_weekly.ps1` adds
   `--dry-run` unless it is called with `-Send`, so each Saturday writes a report and
-  `email.eml` without touching SMTP. That is deliberate while `.env` is empty: a missing
-  credential cannot make the weekly run fail. After a test email arrives, re-register
-  with `python schedule_task.py --register --send`. `logs/weekly.log` records
-  `mode: dry-run` or `mode: send` plus the exact command line for every run.
+  `email.eml` without touching SMTP. Register with
+  `python schedule_task.py --register --send` to enable weekly delivery.
+  `logs/weekly.log` records `mode: dry-run` or `mode: send` plus the exact command line
+  for every run.
 - The scheduled task is **interactive-only**: it runs as the current user when signed
   in, with no stored password. It will not fire while the machine is signed out.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that

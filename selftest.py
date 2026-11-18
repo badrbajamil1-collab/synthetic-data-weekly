@@ -588,19 +588,27 @@ with tempfile.TemporaryDirectory() as _tmp:
     check("recipients are the configured ones", _msg["To"] == "a@example.com, b@example.com", str(_msg["To"]))
     check("sender is the configured From", "weekly@example.com" in _msg["From"], str(_msg["From"]))
     check("message has a Message-ID", bool(_msg["Message-ID"]))
-    check("message is multipart/mixed", _msg.get_content_type() == "multipart/mixed", _msg.get_content_type())
-    _alternative = _msg.get_payload(0)
     check(
-        "body is multipart/alternative",
-        _alternative.get_content_type() == "multipart/alternative",
-        _alternative.get_content_type(),
+        "default email is multipart/alternative with no attachment",
+        _msg.get_content_type() == "multipart/alternative",
+        _msg.get_content_type(),
     )
-    _types = [part.get_content_type() for part in _alternative.get_payload()]
+    _types = [part.get_content_type() for part in _msg.get_payload()]
     check("plain text then html", _types == ["text/plain", "text/html"], str(_types))
     check("plain text body is present", "plain body" in _msg.get_body(("plain",)).get_content())
     check("html body is present", "html body" in _msg.get_body(("html",)).get_content())
-    _attachments = list(_msg.iter_attachments())
-    check("pdf attached", len(_attachments) == 1, str(len(_attachments)))
+    check("no pdf attached by default", len(list(_msg.iter_attachments())) == 0)
+
+    _msg_pdf = _mail.compose(
+        _mail_report,
+        _out,
+        recipients=["a@example.com"],
+        sender="Weekly <weekly@example.com>",
+        attach_pdf=True,
+    )
+    check("attach_pdf=True produces multipart/mixed", _msg_pdf.get_content_type() == "multipart/mixed")
+    _attachments = list(_msg_pdf.iter_attachments())
+    check("pdf attached when opted in", len(_attachments) == 1, str(len(_attachments)))
     check(
         "attachment is the report pdf",
         _attachments[0].get_content_type() == "application/pdf"
@@ -653,6 +661,56 @@ with tempfile.TemporaryDirectory() as _tmp:
     )
     check("smtp port is an integer", _settings["port"] == 587, str(_settings["port"]))
     check("smtp sender is mail-from", _settings["sender"] == "Weekly <weekly@example.com>", _settings["sender"])
+
+    _gmail_aligned = _mail.resolve_sender(
+        "Weekly Synthetic Data <other@example.com>",
+        "sender@gmail.com",
+        "smtp.gmail.com",
+    )
+    check(
+        "gmail login aligns mismatched MAIL_FROM to SMTP_USER",
+        _gmail_aligned == "Weekly Synthetic Data <sender@gmail.com>",
+        _gmail_aligned,
+    )
+    _gmail_bare = _mail.resolve_sender("", "sender@gmail.com", "smtp.gmail.com")
+    check("empty MAIL_FROM falls back to SMTP_USER", _gmail_bare == "sender@gmail.com", _gmail_bare)
+
+    from synthetic_data import links as _links
+    import report_build as _rb_links
+
+    check("is_google_news_redirect detects news.google.com",
+          _links.is_google_news_redirect("https://news.google.com/rss/articles/CBMi123"))
+    check("is_google_news_redirect ignores publisher url",
+          not _links.is_google_news_redirect("https://example.com/article"))
+
+    _orig_resolve = _rb_links.resolve_google_news
+    _orig_check = _rb_links.check_link
+    try:
+        _rb_links.resolve_google_news = (
+            lambda u: "https://publisher.example.com/story" if "good" in u else u
+        )
+        _rb_links.check_link = lambda u: {"status": 200, "ok": True, "final_url": u}
+        _gn_report, _gn_res, _gn_dead = _rb_links.verify_links({
+            "top_picks": [
+                {"title": "Resolved", "url": "https://news.google.com/rss/articles/good"},
+                {"title": "Unresolved", "url": "https://news.google.com/rss/articles/bad"},
+            ],
+            "tools": [],
+            "worth_a_look": [],
+        })
+        check(
+            "resolved Google News link becomes publisher URL",
+            [p["url"] for p in _gn_report["top_picks"]] == ["https://publisher.example.com/story"],
+            str(_gn_report["top_picks"]),
+        )
+        check(
+            "unresolved Google News redirect is dropped",
+            "https://news.google.com/rss/articles/bad" in _gn_dead,
+            str(_gn_dead),
+        )
+    finally:
+        _rb_links.resolve_google_news = _orig_resolve
+        _rb_links.check_link = _orig_check
 
     _sent = {}
 
@@ -1753,6 +1811,48 @@ _bad_clean = _graph.clean_node(
 )
 check("clean_node error path keeps the collected duplicate count",
       _bad_clean.get("duplicates") == 7, str(_bad_clean.get("duplicates")))
+
+# Reddit is an optional upstream. An outage used to raise out of fetch_reddit,
+# which the runner recorded as a fatal source error and verify_report then
+# failed the whole (otherwise good) report. It must now be a warning only.
+from synthetic_data import collectors as _collectors
+from synthetic_data.collectors import fetch_reddit as _fetch_reddit
+
+_orig_get_with_retry = _collectors.get_with_retry
+try:
+    def _reddit_down(*a, **k):
+        raise RuntimeError("Client error '404 Not Found' for url reddit.rss")
+
+    _collectors.get_with_retry = _reddit_down
+    _reddit_warnings = []
+    _reddit_items = _fetch_reddit(("MachineLearning",), warnings=_reddit_warnings)
+finally:
+    _collectors.get_with_retry = _orig_get_with_retry
+
+check("reddit outage returns no items without raising",
+      _reddit_items == [], str(_reddit_items))
+check("reddit outage is recorded only as a warning",
+      len(_reddit_warnings) == 1 and "404" in _reddit_warnings[0]
+      and "reddit r/MachineLearning" in _reddit_warnings[0],
+      str(_reddit_warnings))
+
+
+class _EmptyFeedResponse:
+    content = b'<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+
+
+try:
+    _collectors.get_with_retry = lambda *a, **k: _EmptyFeedResponse()
+    _empty_warnings = []
+    _empty_items = _fetch_reddit(("MachineLearning",), warnings=_empty_warnings)
+finally:
+    _collectors.get_with_retry = _orig_get_with_retry
+
+check("empty reddit feed returns no items",
+      _empty_items == [], str(_empty_items))
+check("empty reddit feed is a warning, not an error",
+      len(_empty_warnings) == 1 and "0 entries" in _empty_warnings[0],
+      str(_empty_warnings))
 
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")

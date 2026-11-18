@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-364%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-371%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
@@ -17,11 +17,11 @@ per run) — then renders a weekly report for the Well7 team.
 - **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + React archive/view
   of the same weekly report, with its own JS pipeline inside the Worker.
 
-**Status:** the pipeline is automated end to end — one command collects, cleans,
-ranks, fetches, writes, renders and (once credentials exist) sends. What is *not*
-proven is delivery: no real email has been sent yet, so Phases 0–4 are done,
-Phase 5 is code-complete but untested against SMTP, and the two-week Phase 6
-pilot has not started. [Build plan and status](#build-plan-and-status) is the
+**Status:** Phases 0–4 are done, and Phase 5 email delivery is verified (`send_report.py --test`
+landed in Primary Inbox with matching `From == SMTP_USER`, no PDF attachment, and
+direct publisher links). What remains is enabling the weekly scheduler (`schedule_task.py --register --send`
+or GitHub Actions `SMTP_*` secrets), running the two-week Phase 6 pilot, and moving
+long-term production sending to an authenticated company-domain email service. [Build plan and status](#build-plan-and-status) is the
 honest scoreboard. Running `main.py` with no flags still performs the Phase 1
 "print every raw item" deliverable; `--pipeline` is the one command for the whole
 agent.
@@ -34,7 +34,7 @@ agent.
 ## Build plan and status
 
 The brief builds the agent in seven phases (0–6) and calls week 4 "the pilot".
-This is where each phase stood on 2026-11-07.
+This is where each phase stood on 2026-11-18.
 
 | Phase | Brief deliverable | Status | Evidence |
 |---|---|---|---|
@@ -43,26 +43,25 @@ This is where each phase stood on 2026-11-07.
 | **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned three times | `rank_items.py` → `ranked.json`; keyword prefilter, one comparative editor pass, structured JSON output; URL normalisation, primary-source dedupe and `history.db` |
 | **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (structural checks plus the 2026-11-11 schema gates) |
 | **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
-| **5 — Email and schedule** | You receive a correct test email | ⚠️ Code complete, **not proven** | send path and a dry-run `email.eml` exist; `SyntheticDataWeekly` is **not registered on this machine**; the `.env` SMTP block is empty |
-| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⛔ Not started | blocked on Phase 5; then `schedule_task.py --register --send` and two watched weeks |
+| **5 — Email and schedule** | You receive a correct test email | ✅ Email verified; scheduler ready | `send_report.py --test` delivered to Primary Inbox (`From == SMTP_USER`, no PDF attachment); `schedule_task.py --dry-run` & `run_weekly.ps1` verified, `SyntheticDataWeekly` not yet registered |
+| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ Ready to start | Register `schedule_task.py --register --send` (or set GitHub Actions `SMTP_*` secrets), watch two Saturdays, and move to a company-domain sending service if spam filtering appears |
 
-**Where that leaves the project:** end of week 3 of the brief's timetable. The
-remaining work is not code — it is credentials and two observed Saturdays.
+**Where that leaves the project:** ready for the two-week Phase 6 pilot.
 
 **The brief's "done" test** is that the agent runs unattended for two Saturdays and
-the team finds the reports useful. Neither has happened yet: the Windows task is
+the team finds the reports useful. Neither Saturday run has happened yet: the Windows task is
 **not currently registered** on this machine (`schtasks /query /tn SyntheticDataWeekly`
-reports no such task). Once registered it deliberately runs `--dry-run` until SMTP is
-configured, and it is interactive-only (it will not fire while the machine is signed out).
+reports no such task), and `.github/workflows/weekly-report.yml` needs `SMTP_*` secrets
+for unattended cloud runs.
 
-What is still missing, in order:
+What is still next, in order:
 
-1. `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` and
-   `DRY_RUN_RECIPIENT` in `.env`; without them `send_report.py` fails loudly.
-2. A test email that proves the HTML body and PDF attachment render in a real
-   mail client (`send_report.py --test`).
-3. Two unattended Saturdays with recipient feedback, then a tuning pass on
-   keywords, sources and prompts.
+1. Register the Saturday task (`uv run python schedule_task.py --register --send`)
+   or configure the `SMTP_*` secrets in GitHub Actions.
+2. Run two unattended Saturdays with recipient feedback, then tune keywords,
+   sources and prompts (Phase 6).
+3. If consumer SMTP starts hitting spam on multi-recipient sends, move delivery
+   to a dedicated sending service on the company domain (SPF/DKIM/DMARC).
 
 The two Phase 0 blemishes are recorded in `docs/one-page-note.md`: six top picks
 instead of the brief's example seven, and no record of which 3–5 introductions were
@@ -195,7 +194,7 @@ uv run python verify_report.py
 | `fetch_candidates.py` | Takes the top 10 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
 | `write_report.py` | Writes summaries from the fetched text and splits the three sections | `source.yaml` |
 | `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs when run standalone | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
-| `send_report.py` | Emails the rendered report as the body plus a PDF attachment; `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
+| `send_report.py` | Emails the rendered report as the HTML/plain-text body (PDF omitted by default for deliverability; `--attach-pdf` opts in); `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
 | `schedule_task.py` | Registers/query/deletes the Saturday Windows task from `config.yaml`; dry-run by default, `--send` for real email | Windows Task Scheduler |
 | `verify_report.py` | Checks the rendered report against the brief | exit code only |
 | `selftest.py` | Offline unit tests for parsing, dates, dedupe, history, ranking, email, scheduling | exit code only |
@@ -223,8 +222,6 @@ Two schedulers ship, both reading `config.yaml` → `schedule` (`Saturday 08:00`
   a dry run. `history.db`, `score_cache.json` and `summary_cache.json` are
   persisted through `actions/cache`, so cross-week dedupe keeps working.
 
-Neither scheduler has sent a real email yet.
-
 ## Configuration
 
 Everything tunable lives in `config.yaml`, never in the collectors.
@@ -243,8 +240,9 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in.
 `.env` is git-ignored and holds `OPENROUTER_API_KEY` (or `LLM_API_KEY`, the name the
 GitHub Actions workflow exports) plus the SMTP credential set and the optional
-`GITHUB_TOKEN` (raises GitHub's 60 req/h unauthenticated limit). The SMTP keys are
-still empty placeholders, which is why no real email has been sent.
+`GITHUB_TOKEN` (raises GitHub's 60 req/h unauthenticated limit). On Gmail/Outlook
+logins, `emailer.py` keeps the `From` address aligned with `SMTP_USER` so
+mismatched `MAIL_FROM` values are not flagged as spoofing.
 
 ## Outputs
 
@@ -260,7 +258,7 @@ progress/week-<week_end>/
   source.yaml                      report content (trend, picks, tools, worth a look)
   report.md                        plain-text email body / Markdown deliverable
   report.html                      HTML email body, spec format
-  Synthetic_Data_Weekly_<date>.pdf glossary first, then the report (email attachment)
+  Synthetic_Data_Weekly_<date>.pdf glossary first, then the report (disk archive; attach with --attach-pdf)
   email.eml                        dry-run email; never sent, for inspection
   run_log.json                     counts for the render, plus the `email` block
 ```
@@ -274,15 +272,16 @@ from scratch.
 
 ## What it does not do yet
 
-- **No real email has been sent.** The send path is implemented and dry-run tested,
-  but `.env` still has empty SMTP placeholders. `send_report.py` fails loudly without
-  them, and `main.py --pipeline` records `send: EmailError: SMTP_HOST is not set ...`.
+- **Company-domain sending service not yet wired.** Test emails via Gmail SMTP
+  land in Inbox (with `From == SMTP_USER`, no PDF attachment, and reduced direct
+  article links), but long-term production delivery should move to a dedicated
+  sending service authenticated on the company domain (SPF/DKIM/DMARC).
 - **The scheduled task runs dry, once it exists.** `SyntheticDataWeekly` is **not
   currently registered** on this machine; `schedule_task.py --register` creates it.
   It then calls `scripts/run_weekly.ps1`, which adds `--dry-run` unless invoked with
   `-Send`, so each Saturday writes a report and `email.eml` and never contacts SMTP.
-  Re-register with `uv run python schedule_task.py --register --send` once a test
-  email has arrived.
+  Re-register with `uv run python schedule_task.py --register --send` once ready for
+  the Phase 6 pilot.
 - **The scheduled task is interactive-only.** It runs as the current user when
   signed in, with no stored password, so it will not fire while the machine is
   signed out. `logs/weekly.log` is the evidence trail.

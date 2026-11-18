@@ -15,6 +15,7 @@ this folder is the evidence.
 | `week-2026-11-01/` | First real week, end to end: source YAML → Markdown, HTML, PDF, run log | 1 + 3 |
 | `week-2026-11-05/` | First fully automatic week: 214 items → 6 picks, 1 tool, 3 worth a look; dry-run email | 4 + 5 |
 | `week-2026-11-06/` | First run with the all-fallback guard firing: model quota exhausted mid-run, so every summary is extractive; 0 dead links | 4 + 5 |
+| `week-2026-11-20/` | Current week: 4 picks, 1 tool, 1 worth-a-look, 6/6 links live, real `--test` send to Gmail (Primary Inbox), 30/30 verification checks | 4 + 5 + 6 |
 | `review/` | Build review page (progress + flow diagram + code verdict) and PDF page renders. The page is a 1 Nov snapshot; a banner on it lists what changed on 4 Nov. | — |
 
 ### `week-2026-11-01/`
@@ -45,19 +46,19 @@ this folder is the evidence.
 | Phase | Name | State |
 |---|---|---|
 | 0 | Manual report + sources | **done**, with two blemishes — 6 picks instead of 7, no record of the intro readings (see `docs/one-page-note.md`) |
-| 1 | One collector per source | **done** — 6 collectors / 18 sources / 27 requests, 223 items, 0 errors |
+| 1 | One collector per source | **done** — 6 collectors / 18 sources. Reddit RSS/JSON is currently blocked from this host (404/403), so it reports `[warn]` and contributes 0 items; the other five sources are healthy |
 | 2 | Normalise, dedupe, score | **done** — 222/222 scored, 15 calls, 4 duplicate stories collapsed; evidence in `phase-2-ranking/` |
 | 3 | Fetch, summarise, render | **done** — summaries written from fetched text, with a number guard and extractive fallback |
 | 4 | LangGraph pipeline | **done** — `collect → clean → rank → fetch → report → render → send`, one shared state |
-| 5 | Dry-run, schedule, email | **implemented and dry-run verified**; real test send blocked on SMTP credentials |
-| 6 | Two unattended Saturdays | blocked on the Phase 5 test send; the task is registered in dry-run mode until then |
+| 5 | Dry-run, schedule, email | **done** — SMTP keys are configured; a real `--test` send on 18 Nov landed in the Primary Inbox (`sent: true` in `week-2026-11-20/run_log.json`), no PDF attached, direct publisher links |
+| 6 | Two unattended Saturdays | **in progress** — delivery itself works, but `SyntheticDataWeekly` is **not registered** in Task Scheduler. Register with `python schedule_task.py --register --send`, then watch two Saturdays |
 
-The honest summary: **collection, ranking, writing, rendering and email composition are
-automatic.** `python main.py --pipeline --dry-run` produced the week of 5 Nov and wrote
-`email.eml`; the only missing link is a real SMTP send, because `.env` has no credentials
-yet. The Saturday task is registered for 08:00 and runs the pipeline in dry-run mode, so
-it keeps producing weekly evidence without a credential failure; `schedule_task.py
---register --send` flips it to real delivery.
+The honest summary: **the whole chain runs unattended, and real email delivery has been
+proved.** `python main.py --pipeline --dry-run` writes `email.eml`; a real `--test` send
+reached Gmail's Primary Inbox. Two things remain: register the Saturday task for live
+delivery, and monitor two real Saturdays before tuning anything. Reddit is an optional
+upstream whose outage is now disclosed as a `[warn]` in the run log rather than failing
+the report; `verify_report.py` passes 30/30 with reddit at 0 items.
 
 The close-out work that made Phase 0–1 defensible is in git history: the baseline
 commit, then `fix: make dedupe, history and run-log counts real`, then the docs

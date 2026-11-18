@@ -89,13 +89,16 @@ output reads better is the next real week's test.
 
 ## What does not work yet
 
-- **No real email has been sent.** The send path exists and `--dry-run` writes the exact
-  message (HTML body, plain-text alternative, PDF attachment), but `.env` still has no
-  SMTP credentials, so a real send is untested.
-- **The scheduled task runs in dry-run mode.** It produces the weekly report and
-  `email.eml` every Saturday without contacting SMTP, by design, until credentials are
-  configured. It is also interactive-only: it runs as the current user when signed in,
-  with no stored password, so it will not fire while the machine is signed out.
+- **The scheduled task is not registered.** SMTP credentials are configured and a real
+  `--test` send on 2026-11-18 reached the Primary Inbox (`sent: true` in
+  `progress/week-2026-11-20/run_log.json`, no PDF attached, direct publisher links).
+  Register with `python schedule_task.py --register --send` for live Saturday delivery.
+  The task is interactive-only: it runs as the current user when signed in, with no
+  stored password, so it will not fire while the machine is signed out.
+- **Reddit is currently blocked from this host.** Both the multi-subreddit RSS feed and
+  the JSON API now return 404/403. The collector records the outage as a `[warn]` in
+  `raw_run_log.json` and contributes 0 items; it no longer raises a fatal source error
+  that failed `verify_report.py`. The other five sources are unaffected.
 - **The ranker cannot judge substance**, per the comparison above. *(Updated
   2026-11-06: substance evidence — stars and project age — is now in the prompt, and
   the shortlist caps GitHub's share. Whether that fixes the judgement is the next
@@ -186,3 +189,22 @@ All six groups of reviewer feedback landed, with tests first (~290 new lines in
 Spec: `docs/superpowers/specs/2026-11-11-pipeline-improvements-design.md`.
 Plan: `docs/superpowers/plans/2026-11-11-pipeline-improvements.md`.
 Reader-feedback links remain the deferred Phase 6 idea.
+
+## Update — 2026-11-18 (phase audit)
+
+Verified against artefacts, not the older prose above:
+
+- **Phases 0–5 are complete.** `selftest.py` passes 375 checks; `verify_report.py`
+  passes 30/30 against `progress/week-2026-11-20/source.yaml` (exit 0). SMTP is
+  configured and a real `--test` send is recorded as `sent: true` in that week's
+  `run_log.json` — it landed in the Primary Inbox with no PDF attachment and direct
+  publisher links.
+- **Phase 6 is the only open phase.** `SyntheticDataWeekly` is not registered in Task
+  Scheduler (`schedule_task.py --query` returns "cannot find the file"). Register with
+  `python schedule_task.py --register --send`, then watch two Saturdays before tuning.
+- **Deliverability changes from this pass:** `From == SMTP_USER`, PDF attachment off by
+  default (`--attach-pdf` opts in), headline caps tightened, Google News redirects
+  unwrapped to original publishers (or dropped).
+- **Reddit outage is now non-fatal:** the feed is blocked from this host, so
+  `fetch_reddit` records a warning instead of raising. The report discloses 0 Reddit
+  items and still verifies cleanly.
