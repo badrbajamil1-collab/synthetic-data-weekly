@@ -90,12 +90,13 @@ output reads better is the next real week's test.
 ## What does not work yet
 
 - **No Saturday run has happened yet.** SMTP credentials are configured, a real
-  `--test` send on 2026-11-18 reached the Primary Inbox (`sent: true` in
-  `progress/week-2026-11-20/run_log.json`, no PDF attached, direct publisher links),
-  and `SyntheticDataWeekly` is now registered for Saturday 08:00 in real-send mode.
-  Watch two Saturdays before tuning. The task is interactive-only: it runs as the
-  current user when signed in, with no stored password, so it will not fire while the
-  machine is signed out.
+  `--test` send on 2026-11-18 reached the Primary Inbox (no PDF attached, direct
+  publisher links; note that `progress/week-2026-11-20/run_log.json` currently lacks
+  the `email` block because a subsequent `report_build.py` re-render overwrote it
+  before `report_build.py` was fixed to preserve `email`), and `SyntheticDataWeekly`
+  is now registered for Saturday 08:00 in real-send mode. Watch two Saturdays before
+  tuning. The task is interactive-only: it runs as the current user when signed in,
+  with no stored password, so it will not fire while the machine is signed out.
 - **Reddit is currently blocked from this host.** Both the multi-subreddit RSS feed and
   the JSON API now return 404/403. The collector records the outage as a `[warn]` in
   `raw_run_log.json` and contributes 0 items; it no longer raises a fatal source error
@@ -197,9 +198,11 @@ Verified against artefacts, not the older prose above:
 - **Phases 0–5 are complete.** `selftest.py` passes 394 checks (375 baseline plus
   19 Batch 1 audit-fix regressions); `verify_report.py` passes 30/30 against
   `progress/week-2026-11-20/source.yaml` (exit 0). SMTP is configured and a real
-  `--test` send is recorded as `sent: true` in `progress/week-2026-11-20/run_log.json`
-  (preserved across `report_build.py` re-renders) — it landed in the Primary Inbox
-  with no PDF attachment and direct publisher links.
+  `--test` send landed in the Primary Inbox with no PDF attachment and direct
+  publisher links (note: `progress/week-2026-11-20/run_log.json` does not retain
+  that `email` block because a pre-fix `report_build.py` re-render overwrote it
+  prior to commit `dd6eadd`; `report_build.py` now preserves `email` across future
+  re-renders).
 - **Phase 6 is the only open phase.** `SyntheticDataWeekly` was registered with
   `python schedule_task.py --register --send`; `--query` confirms Saturday 08:00,
   `Status: Ready`, next run 2026-11-21. Watch two Saturdays before tuning.

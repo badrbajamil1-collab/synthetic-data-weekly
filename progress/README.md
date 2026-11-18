@@ -50,7 +50,7 @@ this folder is the evidence.
 | 2 | Normalise, dedupe, score | **done** — 222/222 scored, 15 calls, 4 duplicate stories collapsed; evidence in `phase-2-ranking/` |
 | 3 | Fetch, summarise, render | **done** — summaries written from fetched text, with a number guard and extractive fallback |
 | 4 | LangGraph pipeline | **done** — `collect → clean → rank → fetch → report → render → send`, one shared state |
-| 5 | Dry-run, schedule, email | **done** — SMTP keys are configured; a real `--test` send on 18 Nov landed in the Primary Inbox (`sent: true` in `week-2026-11-20/run_log.json`, preserved across `report_build.py` re-renders), no PDF attached, direct publisher links |
+| 5 | Dry-run, schedule, email | **done** — SMTP keys are configured; a real `--test` send on 18 Nov landed in the Primary Inbox (no PDF attached, direct publisher links; `week-2026-11-20/run_log.json` lost its `email` block during a pre-fix `report_build.py` re-render, and `report_build.py` now preserves `email`) |
 | 6 | Two unattended Saturdays | **in progress** — `SyntheticDataWeekly` is registered for Saturday 08:00 in real-send mode; next run 2026-11-21. Watch two Saturdays before tuning |
 
 The honest summary: **the whole chain runs unattended, and real email delivery has been

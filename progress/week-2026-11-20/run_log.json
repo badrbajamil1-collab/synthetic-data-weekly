@@ -3,7 +3,7 @@
   "week_mode": "run_date",
   "week_start": "2026-11-14",
   "week_end": "2026-11-20",
-  "run_at": "2026-11-18T12:11:33+00:00",
+  "run_at": "2026-11-18T11:27:38+00:00",
   "items_found": 155,
   "items_after_dedupe": 155,
   "duplicates_removed": 0,
@@ -32,29 +32,5 @@
   "links_dead": 0,
   "history_recorded": false,
   "urls_recorded": 0,
-  "source_errors": [],
-  "source_warnings": {
-    "reddit": [
-      "reddit r/MachineLearning+LocalLLaMA+datascience: Client error '404 Not Found' for url 'https://www.reddit.com/r/MachineLearning+LocalLLaMA+datascience.rss'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
-    ],
-    "github": [
-      "github 'synthetic-data': 10 older repositories were not checked for a release (GitHub API rate limit)",
-      "github 'differential-privacy': 10 older repositories were not checked for a release (GitHub API rate limit)",
-      "github 'text data augmentation': Client error '403 rate limit exceeded' for url 'https://api.github.com/search/repositories?q=text+data+augmentation+created:%3E=2026-11-14&sort=created&order=desc&per_page=15'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"
-    ]
-  },
-  "email": {
-    "subject": "Synthetic Data Weekly \u2014 Week of 14 Nov \u2013 20 2026",
-    "recipients": [
-      "badrbajamil1@gmail.com"
-    ],
-    "message_id": "<179499944683.392.8500840763593798208@BadrRealLove>",
-    "dry_run": false,
-    "test": true,
-    "sent": true,
-    "sent_at": "2026-11-18T10:57:26+00:00",
-    "pdf_attached": false,
-    "urls_recorded": 0,
-    "path": ""
-  }
+  "source_errors": []
 }
