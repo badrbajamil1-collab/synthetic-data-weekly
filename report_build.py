@@ -20,7 +20,12 @@ from pathlib import Path
 import yaml
 
 from synthetic_data import memory
-from synthetic_data.links import check_link, is_google_news_redirect, resolve_google_news
+from synthetic_data.links import (
+    check_link,
+    is_google_news_redirect,
+    normalize_url,
+    resolve_google_news,
+)
 from synthetic_data.render import render_all_links, render_html, render_markdown, subject_line
 from synthetic_data.render_pdf import render_pdf
 
@@ -47,8 +52,26 @@ def _unwrap_google_news_links(report: dict) -> dict:
     return updated
 
 
+def _dedupe_report_urls(report: dict) -> dict:
+    """Drop later entries whose URL duplicates an earlier entry across sections."""
+    updated = dict(report)
+    seen = set()
+    for section in ("top_picks", "tools", "worth_a_look"):
+        kept = []
+        for entry in updated.get(section, []) or []:
+            url = entry.get("url") or ""
+            key = normalize_url(url) or url
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            kept.append(entry)
+        updated[section] = kept
+    return updated
+
+
 def verify_links(report: dict) -> tuple:
-    report = _unwrap_google_news_links(report)
+    report = _dedupe_report_urls(_unwrap_google_news_links(report))
     links = render_all_links(report)
     results = {}
 
@@ -187,9 +210,10 @@ def main(argv=None) -> int:
     argv = [argument for argument in argv if argument != "--no-record"]
     path = argv[0] if argv else newest_report()
     report = load_report(path)
+    original_links = render_all_links(report)
 
     print(f"Subject: {subject_line(report)}")
-    print(f"Links to check: {len(render_all_links(report))}\n")
+    print(f"Links to check: {len(original_links)}\n")
 
     report, results, dead = verify_links(report)
 
@@ -211,17 +235,31 @@ def main(argv=None) -> int:
             "its counts are ignored."
         )
         collected = {}
+
+    out_dir = Path("progress") / f"week-{report['week_end']}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Persist the unwrapped, deduplicated, dead-link-filtered report to this
+    # week's source.yaml before attaching runtime-only `source_counts`, so
+    # emailer.deliver() reads and records the exact URLs published in the email.
+    out_source = out_dir / "source.yaml"
+    try:
+        same_file = Path(path).resolve() == out_source.resolve()
+    except OSError:
+        same_file = False
+    if not out_source.exists() or not same_file or render_all_links(report) != original_links:
+        clean_report = {k: v for k, v in report.items() if k != "source_counts"}
+        out_source.write_text(
+            yaml.safe_dump(clean_report, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+
     report = dict(report)
     source_counts = dict(collected.get("counts") or {})
     report["source_counts"] = source_counts
 
     markdown = render_markdown(report)
     html = render_html(report)
-
-    # Everything a run produces lands in its own dated folder, so weeks never
-    # overwrite each other and progress/ is the whole history.
-    out_dir = Path("progress") / f"week-{report['week_end']}"
-    out_dir.mkdir(parents=True, exist_ok=True)
 
     (out_dir / "report.md").write_text(markdown, encoding="utf-8")
     (out_dir / "report.html").write_text(html, encoding="utf-8")

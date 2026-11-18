@@ -99,8 +99,8 @@ def save_cache(path: str, model: str, entries: dict) -> None:
 # ---------------------------------------------------------------------------
 
 def display_url(item: dict) -> str:
-    """The canonical form, so arXiv v1 and v2 never both reach the report."""
-    return item.get("normalized") or item.get("url") or ""
+    """Return the display URL, falling back to the dedupe key only if absent."""
+    return item.get("url") or item.get("normalized") or ""
 
 
 def pick_entry(item: dict, result: dict) -> dict:

@@ -259,7 +259,7 @@ def published_links(report: dict, out_dir) -> List[Dict[str, str]]:
     links = render.render_all_links(report)
     markdown = Path(out_dir) / "report.md"
     if not markdown.exists():
-        return links
+        return []
     text = markdown.read_text(encoding="utf-8")
     return [link for link in links if link["url"] in text]
 

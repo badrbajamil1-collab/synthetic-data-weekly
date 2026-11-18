@@ -148,7 +148,13 @@ def get_with_retry(
     retry_statuses = frozenset(statuses) if statuses is not None else RETRY_STATUSES
     last_status: Optional[int] = None
     for attempt in range(attempts):
-        response = httpx.get(url, headers=headers, timeout=timeout, follow_redirects=True)
+        try:
+            response = httpx.get(url, headers=headers, timeout=timeout, follow_redirects=True)
+        except httpx.HTTPError:
+            if attempt < attempts - 1:
+                time.sleep(base_delay * (attempt + 1))
+                continue
+            raise
         if response.status_code == 200:
             return response
         last_status = response.status_code
@@ -709,10 +715,16 @@ def fetch_github_repos(
             if not full_name or full_name.lower() in seen_repos:
                 continue
             # A release published inside the week means the repository was
-            # pushed to inside the week, so this cheap check keeps the number
-            # of releases calls down.
+            # pushed to no earlier than the start of the week; a later push
+            # after week_end must still reach _github_release_in_window, which
+            # enforces the in-week rule on the release's own published_at.
             touched = parse_iso_or_utc(repo.get("pushed_at")) or parse_iso_or_utc(repo.get("updated_at"))
-            if touched is None or not _in_window(touched, cutoff, week):
+            if touched is None:
+                continue
+            if week is not None:
+                if touched.astimezone(timezone.utc).date() < week[0]:
+                    continue
+            elif touched < cutoff:
                 continue
             if query_checks >= MAX_RELEASE_CHECKS_PER_QUERY or release_checks >= MAX_RELEASE_CHECKS:
                 skipped += 1

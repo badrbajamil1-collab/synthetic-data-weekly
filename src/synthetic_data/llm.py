@@ -133,12 +133,12 @@ def chat(
         payload["response_format"] = {"type": "json_object"}
 
     retries = 0
+    transport_attempt = 0
     last_error = ""
 
-    # Two extra iterations cover the two possible 400-field strips below
-    # (response_format, then reasoning). Those retries are free: they must not
-    # consume the caller's transport-retry budget.
-    for attempt in range(attempts + 2):
+    # Up to two free HTTP-400 field strips (response_format, then reasoning)
+    # do not consume the caller's transport-retry budget.
+    for _ in range(attempts + 2):
         try:
             if client is not None:
                 response = client.post(url, headers=headers, json=payload, timeout=timeout)
@@ -146,10 +146,11 @@ def chat(
                 response = httpx.post(url, headers=headers, json=payload, timeout=timeout)
         except httpx.HTTPError as exc:
             last_error = f"{type(exc).__name__}: {exc}"
-            if attempt >= attempts - 1:
+            if transport_attempt >= attempts - 1:
                 break
             retries += 1
-            sleep(5.0 * (2 ** attempt))
+            sleep(5.0 * (2 ** transport_attempt))
+            transport_attempt += 1
             continue
 
         if response.status_code == 200:
@@ -179,10 +180,11 @@ def chat(
                 retries += 1
                 continue
 
-        if response.status_code in RETRY_STATUSES and attempt < attempts - 1:
+        if response.status_code in RETRY_STATUSES and transport_attempt < attempts - 1:
             last_error = f"HTTP {response.status_code}: {response.text[:160]}"
             retries += 1
-            sleep(5.0 * (2 ** attempt))
+            sleep(5.0 * (2 ** transport_attempt))
+            transport_attempt += 1
             continue
 
         raise LLMError(f"HTTP {response.status_code} from {model}: {response.text[:240]}")

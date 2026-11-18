@@ -166,17 +166,13 @@ def extract_numbers(text: str) -> set:
 
 
 def unsupported_numbers(summary: str, source: str) -> List[str]:
-    """Numbers in `summary` that do not appear as numbers in `source`.
+    """Numbers in `summary` that do not appear as whole tokens in `source`.
 
     The boundary check matters: a summary saying "5" must not pass because the
-    source happens to contain "15" or "1979".
+    source happens to contain "15", "1979", or "10.5".
     """
-    cleaned = (source or "").replace(",", "")
-    missing = []
-    for token in sorted(extract_numbers(summary)):
-        if not re.search(r"(?<!\d)" + re.escape(token) + r"(?!\d)", cleaned):
-            missing.append(token)
-    return missing
+    source_numbers = extract_numbers(source)
+    return sorted(token for token in extract_numbers(summary) if token not in source_numbers)
 
 
 # ---------------------------------------------------------------------------

@@ -2114,6 +2114,389 @@ finally:
     _report_build.check_link = _orig_check4
     _report_build.render_pdf = _orig_pdf4
 
+print("audit batch 2 regressions")
+# Req 1: llm.chat separates transport retries from free HTTP-400 field strips.
+import httpx as _httpx
+
+
+class _SequenceClient:
+    def __init__(self, steps):
+        self.steps = list(steps)
+        self.payloads = []
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        self.payloads.append(dict(json or {}))
+        step = self.steps.pop(0)
+        if isinstance(step, Exception):
+            raise step
+        return _FakeResponse(*step)
+
+
+_c1 = _SequenceClient([
+    (400, "response_format unsupported"),
+    (400, "reasoning unsupported"),
+    (429, "rate limited"),
+    (200, '{"scores": []}'),
+])
+_t1, _ = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m",
+    json_mode=True,
+    reasoning_effort="low",
+    attempts=2,
+    client=_c1,
+    sleep=lambda _s: None,
+)
+check("llm.chat survives two 400 strips plus a 429 retry with attempts=2",
+      _t1 == '{"scores": []}' and len(_c1.payloads) == 4
+      and "response_format" in _c1.payloads[0]
+      and "response_format" not in _c1.payloads[1]
+      and "reasoning" in _c1.payloads[1]
+      and "reasoning" not in _c1.payloads[2],
+      str(_c1.payloads))
+
+_c2 = _SequenceClient([
+    (400, "response_format unsupported"),
+    (400, "reasoning unsupported"),
+    (429, "rate limited 1"),
+    (429, "rate limited 2"),
+])
+try:
+    _llm.chat(
+        [{"role": "user", "content": "hi"}],
+        api_key="k",
+        model="m",
+        json_mode=True,
+        reasoning_effort="low",
+        attempts=2,
+        client=_c2,
+        sleep=lambda _s: None,
+    )
+    check("llm.chat exhausts two transport attempts after two 400 strips", False)
+except _llm.LLMError:
+    check("llm.chat exhausts two transport attempts after two 400 strips",
+          len(_c2.payloads) == 4, str(len(_c2.payloads)))
+
+_c3 = _SequenceClient([
+    (400, "response_format unsupported"),
+    (400, "reasoning unsupported"),
+    _httpx.ReadTimeout("timed out"),
+    (200, '{"scores": []}'),
+])
+_t3, _ = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m",
+    json_mode=True,
+    reasoning_effort="low",
+    attempts=2,
+    client=_c3,
+    sleep=lambda _s: None,
+)
+check("llm.chat retries network error after two 400 strips with attempts=2",
+      _t3 == '{"scores": []}' and len(_c3.payloads) == 4,
+      str(len(_c3.payloads)))
+
+# Req 2: collectors.get_with_retry catches httpx.HTTPError and retries with backoff.
+import time as _time
+
+_orig_httpx_get = _httpx.get
+_orig_time_sleep = _time.sleep
+try:
+    _get_calls = []
+    _sleeps = []
+
+    def _flaky_get(url, headers=None, timeout=None, follow_redirects=True):
+        _get_calls.append(url)
+        if len(_get_calls) == 1:
+            raise _httpx.ReadTimeout("read timeout")
+        if len(_get_calls) == 2:
+            raise _httpx.ConnectError("connect error")
+        return _httpx.Response(200, request=_httpx.Request("GET", url), text="ok")
+
+    _httpx.get = _flaky_get
+    _time.sleep = lambda sec: _sleeps.append(sec)
+    _resp = _collectors.get_with_retry("https://example.com/feed", {}, attempts=3, base_delay=2.0)
+    check("get_with_retry retries httpx.HTTPError and succeeds on attempt 3",
+          _resp.status_code == 200 and len(_get_calls) == 3 and _sleeps == [2.0, 4.0],
+          f"calls={len(_get_calls)} sleeps={_sleeps}")
+
+    _get_calls.clear()
+    _sleeps.clear()
+
+    def _always_timeout(url, headers=None, timeout=None, follow_redirects=True):
+        _get_calls.append(url)
+        raise _httpx.RemoteProtocolError("protocol error")
+
+    _httpx.get = _always_timeout
+    try:
+        _collectors.get_with_retry("https://example.com/dead", {}, attempts=3, base_delay=1.5)
+        check("get_with_retry re-raises httpx.HTTPError on exhaustion", False)
+    except _httpx.RemoteProtocolError:
+        check("get_with_retry re-raises httpx.HTTPError on exhaustion",
+              len(_get_calls) == 3 and _sleeps == [1.5, 3.0],
+              f"calls={len(_get_calls)} sleeps={_sleeps}")
+
+    _get_calls.clear()
+    _sleeps.clear()
+    _httpx.get = lambda url, **kw: _httpx.Response(404, request=_httpx.Request("GET", url))
+    try:
+        _collectors.get_with_retry("https://example.com/404", {}, attempts=3, base_delay=1.5)
+        check("get_with_retry does not retry non-retryable 404", False)
+    except _httpx.HTTPStatusError:
+        check("get_with_retry does not retry non-retryable 404",
+              _sleeps == [], str(_sleeps))
+finally:
+    _httpx.get = _orig_httpx_get
+    _time.sleep = _orig_time_sleep
+
+# Req 3: rank.group_duplicates keeps scored secondary over unscored/prefiltered primary.
+_unscored_arxiv = _item(
+    "Tabular DP paper", "https://arxiv.org/abs/2611.12345", score=0, source="arxiv"
+)
+_scored_hn = _item(
+    "HN: Tabular DP paper",
+    "https://news.ycombinator.com/item?id=555",
+    score=8,
+    well7=7,
+    source="hn",
+)
+_scored_hn["target_url"] = "https://arxiv.org/abs/2611.12345"
+_ug = _rank.group_duplicates([_unscored_arxiv, _scored_hn])
+_ug_arxiv = next(r for r in _ug if r["source"] == "arxiv")
+_ug_hn = next(r for r in _ug if r["source"] == "hn")
+check("scored HN secondary survives over unscored arxiv primary",
+      _ug_hn["duplicate_of"] is None and _ug_hn["score"] == 8
+      and _ug_arxiv["duplicate_of"] == _scored_hn["url"] and _ug_arxiv["score"] == 0,
+      str(_ug))
+
+_prefiltered_arxiv = {
+    **_item("Noise title", "https://arxiv.org/abs/2611.22222", score=1, well7=1, source="arxiv"),
+    "score_status": "prefiltered",
+}
+_scored_reddit = _item(
+    "Reddit: Noise title",
+    "https://reddit.com/r/ml/comments/1",
+    score=7,
+    well7=6,
+    source="reddit",
+)
+_scored_reddit["target_url"] = "https://arxiv.org/abs/2611.22222"
+_pg = _rank.group_duplicates([_prefiltered_arxiv, _scored_reddit])
+check("scored reddit secondary survives over prefiltered arxiv primary",
+      next(r for r in _pg if r["source"] == "reddit")["duplicate_of"] is None
+      and next(r for r in _pg if r["source"] == "arxiv")["duplicate_of"] == _scored_reddit["url"],
+      str(_pg))
+
+_stale_dups = [
+    {**_item("Tie Story", "https://tie/b", score=8, well7=7), "duplicate_of": "https://old-rep"},
+    {**_item("Tie Story", "https://tie/a", score=8, well7=7), "duplicate_of": "https://old-rep"},
+]
+_regrouped_ab = _rank.group_duplicates(_stale_dups)
+_regrouped_ba = _rank.group_duplicates(list(reversed(_stale_dups)))
+_win_ab = next(r["url"] for r in _regrouped_ab if r["duplicate_of"] is None)
+_win_ba = next(r["url"] for r in _regrouped_ba if r["duplicate_of"] is None)
+check("group_duplicates resets stale duplicate_of and breaks ties deterministically",
+      _win_ab == "https://tie/a" and _win_ba == "https://tie/a",
+      f"ab={_win_ab} ba={_win_ba}")
+
+# Req 4: summarise.unsupported_numbers rejects decimal substrings.
+check("5 does not pass because 10.5 exists",
+      _sum.unsupported_numbers("It gained 5 points.", "It gained 10.5 points.") == ["5"])
+check("10 does not pass because 10.5 exists",
+      _sum.unsupported_numbers("It gained 10 points.", "It gained 10.5 points.") == ["10"])
+check("10.5 passes when source has 10.5",
+      _sum.unsupported_numbers("It gained 10.5 points.", "It gained 10.5 points.") == [])
+check("5 passes when source ends sentence with 5.",
+      _sum.unsupported_numbers("Uses 5 tables.", "We used 5.") == [])
+check("7 does not pass because Well7 exists in source",
+      _sum.unsupported_numbers("Uses 7 tables.", "Well7 announced tables.") == ["7"])
+
+# Req 5: emailer.published_links returns [] when report.md is missing.
+with tempfile.TemporaryDirectory() as _pl_tmp:
+    _pl_empty = _mail.published_links(_mail_report, _pl_tmp)
+    check("published_links returns [] when report.md is missing",
+          _pl_empty == [], str(_pl_empty))
+
+# Req 6: write_report.display_url prefers display url over normalized dedupe key.
+import write_report as _write_report
+
+check("display_url prefers url over normalized",
+      _write_report.display_url({
+          "url": "https://www.example.com/post/?s=abc",
+          "normalized": "https://example.com/post",
+      }) == "https://www.example.com/post/?s=abc")
+check("display_url falls back to normalized when url missing",
+      _write_report.display_url({"normalized": "https://example.com/post"}) == "https://example.com/post")
+
+# Req 7: collectors.fetch_github_repos pass 2 checks repos pushed after week_end.
+_orig_gh_search = _collectors._github_search
+_orig_gh_release = _collectors._github_release_in_window
+try:
+    _release_checked_repos = []
+
+    def _fake_gh_search(query, qualifier, headers, attempts, sort, per_page):
+        if "created:>=" in qualifier:
+            return []
+        return [
+            {
+                "full_name": "owner/pushed-late",
+                "html_url": "https://github.com/owner/pushed-late",
+                "created_at": "2024-01-01T00:00:00Z",
+                "pushed_at": "2026-11-15T10:00:00Z",
+                "stargazers_count": 42,
+                "description": "Synthetic tabular toolkit",
+            },
+            {
+                "full_name": "owner/pushed-before",
+                "html_url": "https://github.com/owner/pushed-before",
+                "created_at": "2024-01-01T00:00:00Z",
+                "pushed_at": "2026-11-01T10:00:00Z",
+                "stargazers_count": 42,
+                "description": "Old repo",
+            },
+        ]
+
+    def _fake_gh_release(full_name, headers, attempts, cutoff, week):
+        _release_checked_repos.append(full_name)
+        if full_name == "owner/pushed-late":
+            return (
+                datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc),
+                {"name": "v1.2.0", "published_at": "2026-11-10T12:00:00Z"},
+            )
+        return None
+
+    _collectors._github_search = _fake_gh_search
+    _collectors._github_release_in_window = _fake_gh_release
+    _gh_items = _collectors.fetch_github_repos(
+        queries=("synthetic-data",),
+        include_releases=True,
+        week=(_date(2026, 11, 7), _date(2026, 11, 13)),
+    )
+    check("fetch_github_repos pass 2 checks older repo pushed after week_end",
+          _release_checked_repos == ["owner/pushed-late"]
+          and len(_gh_items) == 1
+          and _gh_items[0].url == "https://github.com/owner/pushed-late",
+          f"checked={_release_checked_repos} items={_gh_items}")
+finally:
+    _collectors._github_search = _orig_gh_search
+    _collectors._github_release_in_window = _orig_gh_release
+
+# Req 8: report_build.verify_links dedupes post-unwrap URLs and writes back source.yaml.
+_orig_resolve8 = _report_build.resolve_google_news
+_orig_check8 = _report_build.check_link
+_orig_pdf8 = _report_build.render_pdf
+_orig_cwd8 = _os.getcwd()
+try:
+    _rb8_dir = Path(tempfile.mkdtemp())
+    _rb8_week_dir = _rb8_dir / "progress" / "week-2026-11-13"
+    _rb8_week_dir.mkdir(parents=True)
+    _rb8_cfg = _rb8_dir / "config.yaml"
+    _rb8_cfg.write_text("recipients:\n  - reader@example.com\n", encoding="utf-8")
+    _rb8_source = _rb8_week_dir / "source.yaml"
+    _rb8_input = {
+        "week_start": _date(2026, 11, 7),
+        "week_end": _date(2026, 11, 13),
+        "week_mode": "run_date",
+        "trend": "",
+        "top_picks": [
+            {
+                "title": "Story One",
+                "url": "https://news.google.com/rss/articles/g1",
+                "source": "example.com",
+                "published": _date(2026, 11, 10),
+                "summary": "Unchanged prose summary.",
+                "why_it_matters": "Unchanged why line.",
+                "score": 9,
+            },
+            {
+                "title": "Dead Story",
+                "url": "https://dead.example.com/404",
+                "source": "example.com",
+                "published": _date(2026, 11, 10),
+                "summary": "Dead link summary.",
+                "score": 8,
+            },
+        ],
+        "tools": [],
+        "worth_a_look": [
+            {
+                "title": "Duplicate After Unwrap",
+                "url": "https://news.google.com/rss/articles/g2",
+                "source": "example.com",
+                "published": _date(2026, 11, 10),
+                "note": "Duplicate note.",
+                "score": 6,
+            }
+        ],
+    }
+    _rb8_source.write_text(_yaml.safe_dump(_rb8_input, sort_keys=False), encoding="utf-8")
+
+    _report_build.resolve_google_news = (
+        lambda u: "https://publisher.example.com/story" if "news.google.com" in u else u
+    )
+    _report_build.check_link = (
+        lambda u, timeout=30.0: {"status": 404, "ok": False} if "dead.example.com" in u else {"status": 200, "ok": True}
+    )
+    _report_build.render_pdf = lambda report, path: Path(path).write_bytes(b"%PDF-1.4\n" + b"0" * 50_000)
+
+    _os.chdir(_rb8_dir)
+    with _contextlib.redirect_stdout(_io.StringIO()):
+        _rb8_code = _report_build.main([str(_rb8_source), "--no-record"])
+
+    _rewritten = _yaml.safe_load(_rb8_source.read_text(encoding="utf-8"))
+    check("report_build dedupes post-unwrap URLs and writes filtered/unwrapped source.yaml",
+          _rb8_code == 1
+          and [p["url"] for p in _rewritten["top_picks"]] == ["https://publisher.example.com/story"]
+          and _rewritten["worth_a_look"] == []
+          and _rewritten["top_picks"][0]["summary"] == "Unchanged prose summary."
+          and _rewritten["top_picks"][0]["why_it_matters"] == "Unchanged why line.",
+          str(_rewritten))
+
+    class _NoopSMTP:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def ehlo(self):
+            pass
+
+        def starttls(self, context=None):
+            pass
+
+        def login(self, user, pw):
+            pass
+
+        def send_message(self, msg):
+            pass
+
+    _rb8_db = str(_rb8_dir / "history.db")
+    _rb8_delivery = _mail.deliver(
+        str(_rb8_source),
+        str(_rb8_cfg),
+        env={"SMTP_HOST": "smtp.example.com", "SMTP_PORT": "587", "SMTP_USER": "u", "SMTP_PASSWORD": "p"},
+        smtp_factory=_NoopSMTP,
+        db_path=_rb8_db,
+    )
+    check("emailer.deliver records unwrapped URL after report_build write-back",
+          _rb8_delivery["urls_recorded"] == 1
+          and len(filter_seen_urls(
+              [Item(title="t", url="https://publisher.example.com/story", source="blog", published=NOW)],
+              db_path=_rb8_db,
+          )) == 0,
+          str(_rb8_delivery))
+finally:
+    _os.chdir(_orig_cwd8)
+    _report_build.resolve_google_news = _orig_resolve8
+    _report_build.check_link = _orig_check8
+    _report_build.render_pdf = _orig_pdf8
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

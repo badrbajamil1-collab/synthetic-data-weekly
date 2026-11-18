@@ -296,18 +296,30 @@ SECONDARY_SOURCES = frozenset({"hn", "reddit"})
 
 
 def _grouping_order(item: dict):
-    """Primary source first, then best Well7 fit, score, earliest publication.
+    """Eligible items first, then primary source, Well7 fit, score, earliest publication.
 
-    The brief says to keep the original source: a Hacker News or Reddit post
-    about a paper must not become the story's representative just because the
-    model scored the discussion higher. `dedupe_items` already prefers the
-    primary copy; this extends that rule to same-title / same-target grouping.
+    An unscored or prefiltered primary copy must never become the story's
+    representative over a scored secondary copy. Among eligible items, the brief
+    says to keep the original source: a Hacker News or Reddit post about a
+    paper must not become the story's representative just because the model
+    scored the discussion higher.
     """
+    status = item.get("score_status") or "scored"
+    raw_score = item.get("score")
+    score = 0 if isinstance(raw_score, bool) or raw_score is None else int(raw_score)
+    ineligible = 1 if status in {"prefiltered", "unscored"} or score <= 0 else 0
     secondary = 1 if (item.get("source") or "").lower() in SECONDARY_SOURCES else 0
     well7 = item.get("well7_fit")
-    well7 = -1 if well7 is None else int(well7)
-    score = int(item.get("score") or 0)
-    return (secondary, -well7, -score, _published_key(item))
+    well7 = -1 if well7 is None or isinstance(well7, bool) else int(well7)
+    return (
+        ineligible,
+        secondary,
+        -well7,
+        -score,
+        _published_key(item),
+        (item.get("title") or "").lower(),
+        item.get("url") or "",
+    )
 
 
 def prefilter_indices(items: Iterable[dict], keywords: Iterable[str]) -> Set[int]:
@@ -351,7 +363,7 @@ def group_duplicates(items: Iterable[dict], threshold: float = 0.80) -> List[dic
     """
     out = [dict(item) for item in items]
     for item in out:
-        item.setdefault("duplicate_of", None)
+        item["duplicate_of"] = None
 
     representatives: List[tuple] = []
     for item in sorted(out, key=_grouping_order):
