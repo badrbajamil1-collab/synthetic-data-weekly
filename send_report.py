@@ -7,7 +7,8 @@
 
 Recipients come from ``config.yaml``. SMTP credentials come from ``.env``.
 ``--dry-run`` needs no credentials: it writes ``email.eml`` beside the report so
-the HTML body, plain-text alternative and PDF attachment can be inspected.
+the HTML body and plain-text alternative can be inspected. PDF attachment is
+disabled by default for deliverability (pass ``--attach-pdf`` to attach it).
 
 A real send records the report's URLs in ``history.db`` (``--no-record`` opts
 out). A dry run and a ``--test`` send never record, so neither can suppress the
@@ -59,6 +60,11 @@ def main(argv=None) -> int:
         action="store_true",
         help="do not mark the report's URLs as sent in history.db",
     )
+    parser.add_argument(
+        "--attach-pdf",
+        action="store_true",
+        help="attach the weekly PDF (omitted by default for deliverability)",
+    )
     args = parser.parse_args(argv)
 
     report = args.report or newest_report()
@@ -70,6 +76,7 @@ def main(argv=None) -> int:
             test=args.test,
             to=args.to,
             record=not args.no_record,
+            attach_pdf=args.attach_pdf,
         )
     except emailer.EmailError as exc:
         print(f"FAIL  email: {exc}", file=sys.stderr)

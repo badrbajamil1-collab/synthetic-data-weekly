@@ -4,9 +4,10 @@ The brief asks for 15–20 sources and 10–15 keywords before any collector cod
 written. `config.yaml` is the authoritative copy; this document records *why* each
 source is in the list, so a future change is a decision rather than a guess.
 
-**18 sources, 6 collectors, 12 keywords.** Several sources issue more than one
-search, so a full run makes 27 HTTP requests: 3 arXiv queries, 2 Google News
-queries, 1 Reddit feed, 4 Hacker News queries, 4 GitHub searches, 13 blog feeds.
+**18 sources, 6 collectors, 22 keywords.** Several sources issue more than one
+search, so a full run issues 3 arXiv queries, 2 Google News queries, 13 blog
+feeds, 1 combined Reddit feed, 4 Hacker News tags and 6 GitHub queries (plus
+bounded release lookups).
 Every collector returns the same `Item` shape, so the rest of the pipeline handles
 an item the same way regardless of origin.
 
@@ -16,7 +17,7 @@ an item the same way regardless of origin.
 | 2 | Google News | `news.google.com/rss/search` — `"synthetic data"`, `"synthetic dataset"`, both `when:7d` | continuous | Catches industry news the blogs miss: funding, acquisitions, product launches, regulation. |
 | 3 | Reddit — r/MachineLearning, r/LocalLLaMA, r/datascience | `reddit.com/r/MachineLearning+LocalLLaMA+datascience.rss` — one combined feed, because Reddit allows about one request per minute per IP | continuous | Practitioner argument about whether a method works. Three subreddits: research-heavy, local-model pragmatic, and enterprise/tabular. One request keeps the run under a minute. |
 | 4 | Hacker News | Algolia API — `"synthetic data"`, `"tabular synthesis"`, `"synthetic dataset"`, `"data augmentation"` | continuous | Early signal on tools and posts that later become widely cited. Also the fastest source for "this paper is wrong" threads. |
-| 5 | GitHub | search API — `synthetic-data`, `tabular-synthesis`, `differential-privacy`, `data-augmentation` | continuous | New open-source tooling shows up here before it is written about. Filtered on `pushed_at`, so treat it as noise-tolerant. |
+| 5 | GitHub | search API — `synthetic-data`, `tabular-synthesis`, `differential-privacy`, `data-augmentation llm`, `data-augmentation nlp`, `text data augmentation` | continuous | New open-source tooling shows up here before it is written about. Two passes: repos created inside the week, plus older repos that shipped a release inside the week. Treat it as noise-tolerant. |
 | 6 | OpenAI | `openai.com/news/rss.xml` | irregular | Frontier-lab announcements shape what the field considers possible. |
 | 7 | Google DeepMind | `deepmind.google/blog/rss.xml` | irregular | Same, with a stronger methods focus (diffusion, evaluation). |
 | 8 | Google Research | `research.google/blog/rss/` | weekly-ish | Applied research write-ups, often with released code and benchmarks. |
@@ -36,14 +37,18 @@ an item the same way regardless of origin.
 `synthetic data`, `tabular data synthesis`, `differential privacy synthetic`,
 `synthetic time-series`, `privacy-preserving synthetic data`, `CTGAN`, `PrivBayes`,
 `synthetic document generation`, `data augmentation LLM`, `synthetic training data`,
-`synthetic dataset`, `data synthesizer`.
+`synthetic dataset`, `data synthesizer`, `differential privacy`, `membership inference`,
+`privacy attack`, `tabular data`, `data synthesis`, `time series`,
+`federated learning`, `privacy preserving`, `anonymeter`, `dp-sgd`.
 
 Tuned for enterprise and Well7 priorities: tabular and time-series generation,
 privacy guarantees, and regulated-industry use cases. Generic generative-AI news
 (ChatGPT features, image models) is deliberately not a keyword.
 
-The `keywords` list is the Phase 0 vocabulary; the collectors search each source's
-own `queries`, `tags` or `subreddits` key, not this list directly.
+The `keywords` list started as the Phase 0 vocabulary and is now read at runtime
+by `rank.prefilter_indices` (`ranking.prefilter`) as a cheap keyword gate before
+any model call; the collectors still search each source's own `queries`, `tags`
+or `subreddits` key, not this list directly.
 
 ## What is not on the list, and why
 
@@ -59,7 +64,8 @@ own `queries`, `tags` or `subreddits` key, not this list directly.
   invisible to it, which is why the keyword list is broad rather than exact.
 - arXiv announces nothing on Friday or Saturday, so most weeks end with a date gap.
   That is expected, not a collector failure.
-- GitHub search filters on `pushed_at`, not publication date, and returns repos that
-  merely mention a query term. Its ranking is noise; treat it as a discovery net.
+- GitHub search filters on creation and push dates, not publication date, and returns
+  repos that merely mention a query term. Its ranking is noise; treat it as a
+  discovery net.
 - Reddit allows roughly one request per minute per IP. The collector backs off
   15/30/45 s rather than failing, so a second full run inside a minute takes ~90 s.

@@ -25,9 +25,9 @@ Thumbs.db
 
 # agent tooling — local, not part of the deliverable
 .agents/
+.superpowers/
 skills-lock.json
 .wrangler/
-.superpowers/
 
 # ---------------------------------------------------------------------------
 # Media and page renders. The unrelated experiments that used to produce these
@@ -41,6 +41,7 @@ skills-lock.json
 *_preview.png
 page_*.png
 progress/review/pdf-pages/
+videos/
 .env.bak
 
 .dev.vars*

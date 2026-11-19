@@ -1,0 +1,36 @@
+{
+  "schema": "2026-11-11",
+  "week_mode": "run_date",
+  "week_start": "2026-11-14",
+  "week_end": "2026-11-20",
+  "run_at": "2026-11-18T11:27:38+00:00",
+  "items_found": 155,
+  "items_after_dedupe": 155,
+  "duplicates_removed": 0,
+  "already_sent": 0,
+  "candidates_read": 7,
+  "top_picks": 4,
+  "tools": 1,
+  "worth_a_look": 1,
+  "dropped_below_floor": 1,
+  "trend_omitted": false,
+  "score_floors": {
+    "top": 7,
+    "tools": 6,
+    "worth": 5
+  },
+  "source_counts": {
+    "arxiv": 26,
+    "news": 20,
+    "blog": 59,
+    "reddit": 0,
+    "hn": 15,
+    "github": 35
+  },
+  "why_it_matters": true,
+  "links_checked": 6,
+  "links_dead": 0,
+  "history_recorded": false,
+  "urls_recorded": 0,
+  "source_errors": []
+}

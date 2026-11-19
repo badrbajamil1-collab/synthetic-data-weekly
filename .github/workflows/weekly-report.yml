@@ -1,8 +1,13 @@
 # The workflow the brief lists as a final-submission item (Option A).
-# Scheduled runs are ALWAYS dry-run: they collect, rank and render, and the
-# artefacts (report + email.eml + PDF) go to the Actions artifact list.
-# A real send is only possible by pressing "Run workflow" with
-# "send_email" checked AND the SMTP secrets configured on this repo.
+# Scheduled runs deliver the real report to config.yaml's recipients once the
+# SMTP_* secrets are set; with no credentials they fall back to --dry-run so a
+# missing secret can never fail the weekly run. A manual "Run workflow" with
+# send_email unchecked always forces a dry run.
+#
+# GitHub Actions is the sole live Saturday scheduler (`SMTP_*` and `LLM_API_KEY`
+# secrets are configured on this repo). The local Windows Task Scheduler job
+# (`SyntheticDataWeekly`) is removed so recipients never receive duplicate emails
+# (do not re-register it with `--send` while Actions `SMTP_*` secrets exist).
 #
 # history.db / score_cache.json / summary_cache.json are NOT committable
 # (git-ignored); they persist between runs through the cache step instead,
@@ -12,12 +17,17 @@ name: Weekly synthetic data report
 
 on:
   schedule:
-    # Saturday 05:00 UTC = Saturday 08:00 UTC+3, matching config.yaml "Saturday 08:00"
+    # Saturday 05:00 UTC = Saturday 13:00 UTC+8 (this host's local timezone;
+    # config.yaml's "Saturday 08:00" is 00:00 UTC for the local Windows task).
     - cron: "0 5 * * 6"
   workflow_dispatch:
     inputs:
       send_email:
-        description: "Actually send the email (needs the SMTP_* secrets). Scheduled runs never send."
+        description: "Send the email. Scheduled runs send once the SMTP_* secrets exist; leave unchecked to force a dry run."
+        type: boolean
+        default: false
+      publish_web:
+        description: "Publish the verified report + PDF to the Cloudflare web archive (always enabled on schedule or when send_email is checked)."
         type: boolean
         default: false
 
@@ -37,18 +47,22 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           cache: pip
           cache-dependency-path: requirements.txt
 
       - name: Install runtime dependencies
         run: python -m pip install -r requirements.txt
 
+      - name: Run offline self-tests
+        run: python selftest.py
+
       - name: Restore history and score caches (dedupe + rerun cost)
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: |
             history.db
+            history.db.bak
             score_cache.json
             summary_cache.json
           key: weekly-cache-${{ github.run_id }}
@@ -57,25 +71,70 @@ jobs:
 
       - name: Run the weekly pipeline
         env:
+          # One documented secret feeds both accepted key names, so a repo
+          # that only defines LLM_API_KEY cannot silently lose its key.
+          OPENROUTER_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
+          REPLY_TO: ${{ secrets.REPLY_TO }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ inputs.send_email }}" = "true" ]; then
+          # A real send needs all three SMTP credentials. Anything missing
+          # falls back to --dry-run, which keeps the Saturday run green.
+          ready=false
+          if [ -n "$SMTP_HOST" ] && [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ]; then
+            ready=true
+          fi
+
+          send=false
+          if [ "$ready" = "true" ] && [ "${{ github.event_name }}" = "schedule" ]; then
+            send=true
+          elif [ "$ready" = "true" ] && [ "${{ inputs.send_email }}" = "true" ]; then
+            send=true
+          fi
+
+          if [ "$send" = "true" ]; then
+            echo "mode: send"
             python main.py --pipeline
           else
+            echo "mode: dry-run (SMTP secrets missing or send_email unchecked)"
             python main.py --pipeline --dry-run
           fi
 
+      - name: Verify the rendered report
+        run: python verify_report.py
+
+      - name: Publish verified report to Cloudflare web archive
+        if: github.event_name == 'schedule' || inputs.publish_web == true || inputs.send_email == true
+        env:
+          CF_PUBLISH_TOKEN: ${{ secrets.CF_PUBLISH_TOKEN }}
+          CF_WORKER_URL: ${{ vars.CF_WORKER_URL }}
+        run: python publish_to_cloudflare.py --optional
+
+      - name: Save history and score caches
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            history.db
+            history.db.bak
+            score_cache.json
+            summary_cache.json
+          # run_attempt keeps a re-run from colliding with its own earlier save.
+          key: weekly-cache-${{ github.run_id }}-${{ github.run_attempt }}
+
       - name: Upload the week's artefacts
+        # A pipeline failure exits 1; upload whatever artefacts exist for
+        # debugging, including email.eml inside progress/week-*/.
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: weekly-report-${{ github.run_number }}
           path: |
-            email.eml
             progress/week-*/**
           if-no-files-found: error
           retention-days: 30

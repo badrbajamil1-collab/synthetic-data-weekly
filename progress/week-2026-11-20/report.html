@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Synthetic Data Weekly — Week of 14 Nov – 20 2026</title>
+</head>
+<body style="margin:0;padding:0;background:#f4f5f7;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">This week&#39;s selection spans theoretical advances and practical platforms in synthetic data generation.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+       style="max-width:640px;background:#ffffff;border-radius:6px;padding:32px;
+              font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+              font-size:16px;line-height:1.55;color:#1f2328;">
+
+  <tr><td style="padding-bottom:8px;">
+    <div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;">
+      Well7 Research Lab · Synthetic Data Weekly
+    </div>
+    <h1 style="margin:6px 0 0;font-size:24px;line-height:1.25;color:#111827;">
+      Week of 14 Nov – 20 2026
+    </h1>
+  </td></tr>
+
+  
+  <tr><td style="padding:20px 0 8px;">
+    <h2 style="margin:0 0 8px;font-size:17px;color:#111827;">Trend of the week</h2>
+    <p style="margin:0;color:#374151;">This week&#39;s selection spans theoretical advances and practical platforms in synthetic data generation. New work on copula-based models examines fidelity, utility, and privacy trade-offs for tabular data with missing values. A polynomial-time algorithm improves bounds for differentially private synthetic graph release, establishing matching upper and lower limits. Meanwhile, repositories such as PrivRecon and SynthAI Studio provide reproducibility artifacts and enterprise-grade tooling with compliance features for sensitive domains.</p>
+  </td></tr>
+  
+
+  <tr><td style="padding:20px 0 0;">
+    <h2 style="margin:0 0 12px;font-size:17px;color:#111827;">Top picks</h2>
+  </td></tr>
+  
+  <tr><td style="padding:0 0 20px;">
+    <div style="font-weight:600;font-size:17px;color:#111827;">
+      1. <a href="https://github.com/MoSanPan/PrivRecon" style="color:#1a56db;text-decoration:none;">MoSanPan/PrivRecon</a>
+    </div>
+    <div style="font-size:13px;color:#6b7280;padding:2px 0 6px;">
+      GitHub &middot; 16 Nov 2026
+    </div>
+    
+    <p style="margin:0 0 6px;color:#374151;">PrivRecon is a GitHub repository providing code and reproducibility artifacts for reconstructing mobile sensing time series under w-event local differential privacy. It includes prepared traces, NRMSE benchmarks, scripts to regenerate figures and tables, and a structured codebase for release, reconstruction, and validation.</p>
+    
+    
+    <div style="font-size:14px;font-style:italic;color:#4b5563;margin-top:4px;">
+      Why it matters for Well7: Provides reproducible private time-series reconstruction code and benchmarks for mobile sensing under local differential privacy.
+    </div>
+    
+  </td></tr>
+  
+  <tr><td style="padding:0 0 20px;">
+    <div style="font-weight:600;font-size:17px;color:#111827;">
+      2. <a href="https://arxiv.org/abs/2611.22882" style="color:#1a56db;text-decoration:none;">Copula-Based Synthetic Data Generation: A Use-Inspired Perspective on Trade-offs</a>
+    </div>
+    <div style="font-size:13px;color:#6b7280;padding:2px 0 6px;">
+      arXiv &middot; 17 Nov 2026
+    </div>
+    
+    <p style="margin:0 0 6px;color:#374151;">The work investigates Gaussian Mixture Copula Models for tabular synthetic data generation, examining fidelity, utility, and privacy trade-offs. Copula-based methods achieve a sound balance across these dimensions while remaining interpretable and providing an explicit probabilistic model, demonstrated on a cardiovascular risk calculator test case with systematic missing values.</p>
+    
+    
+    <div style="font-size:14px;font-style:italic;color:#4b5563;margin-top:4px;">
+      Why it matters for Well7: Demonstrates interpretable copula models balancing fidelity, utility, privacy on moderate-dimensional tabular data.
+    </div>
+    
+  </td></tr>
+  
+  <tr><td style="padding:0 0 20px;">
+    <div style="font-weight:600;font-size:17px;color:#111827;">
+      3. <a href="https://github.com/paulojauregui/synthai-studio" style="color:#1a56db;text-decoration:none;">paulojauregui/synthai-studio</a>
+    </div>
+    <div style="font-size:13px;color:#6b7280;padding:2px 0 6px;">
+      GitHub &middot; 14 Nov 2026
+    </div>
+    
+    <p style="margin:0 0 6px;color:#374151;">SynthAI Studio is an enterprise-grade synthetic data platform for high-security environments requiring HIPAA, GDPR, and PCI-DSS compliance, featuring autonomous profiling, PII/PHI redaction, multi-engine generative modeling, differential privacy accounting, and statistical fidelity certification.</p>
+    
+    
+    <div style="font-size:14px;font-style:italic;color:#4b5563;margin-top:4px;">
+      Why it matters for Well7: Provides on-premise synthetic data generation with formal differential privacy guarantees and automated quality certification for regulated environments.
+    </div>
+    
+  </td></tr>
+  
+  <tr><td style="padding:0 0 20px;">
+    <div style="font-weight:600;font-size:17px;color:#111827;">
+      4. <a href="https://arxiv.org/abs/2611.19538" style="color:#1a56db;text-decoration:none;">Tight Bounds for Differentially Private Cut Release</a>
+    </div>
+    <div style="font-size:13px;color:#6b7280;padding:2px 0 6px;">
+      arXiv &middot; 14 Nov 2026
+    </div>
+    
+    <p style="margin:0 0 6px;color:#374151;">A polynomial-time algorithm releases a nonnegative weighted synthetic graph under (ε,δ)-edge differential privacy. For any cut, the additive error is O((n log n)/(ε γ)) with high probability, improving prior O(n log^7 n) to O(n log n) for constant parameters, and a matching Ω(n log n) lower bound is proved.</p>
+    
+    
+    <div style="font-size:14px;font-style:italic;color:#4b5563;margin-top:4px;">
+      Why it matters for Well7: Improves cut error bound to O(n log n) with matching lower bound for private synthetic graphs.
+    </div>
+    
+  </td></tr>
+  
+
+  <tr><td style="padding:4px 0 0;">
+    <h2 style="margin:0 0 10px;font-size:17px;color:#111827;">New tools and datasets</h2>
+    
+    <ul style="margin:0 0 8px;padding-left:20px;color:#374151;">
+      
+      <li style="margin-bottom:8px;">
+        <a href="https://github.com/ettousyjamal/esaid-fl-ids" style="color:#1a56db;text-decoration:none;font-weight:600;">ettousyjamal/esaid-fl-ids</a>
+        — Code and results for a paper measuring privacy-utility-communication trade-offs in differentially private federated intrusion detection.
+        
+        <div style="font-size:13px;font-style:italic;color:#4b5563;margin-top:2px;">Why it matters for Well7: Provides reproducible code and results for privacy-utility-communication trade-offs in differentially private federated intrusion detection.</div>
+        
+      </li>
+      
+    </ul>
+    
+  </td></tr>
+
+  <tr><td style="padding:20px 0 0;">
+    <h2 style="margin:0 0 10px;font-size:17px;color:#111827;">Worth a look <span style="font-weight:400;color:#6b7280;">(lower priority)</span></h2>
+    
+    <ul style="margin:0;padding-left:20px;color:#374151;">
+      
+      <li style="margin-bottom:8px;">
+        <a href="https://bioengineer.org/cibmtr-kaggle-competition-validates-synthetic-data-for-equity-aware-post-transplant-survival-modeling" style="color:#1a56db;text-decoration:none;">CIBMTR Kaggle Competition Validates Synthetic Data for Equity-Aware Post-Transplant Survival Modeling - Bioengineer.org</a>
+        — CIBMTR Kaggle competition shows synthetic data models drop from 0.709 to 0.617 concordance under domain shift, with equity gains fading.
+        
+        <div style="font-size:13px;font-style:italic;color:#4b5563;margin-top:2px;">Why it matters for Well7: Shows synthetic data equity benefits may not transfer to real clinical data, highlighting domain shift challenges.</div>
+        
+      </li>
+      
+    </ul>
+    
+  </td></tr>
+
+  <tr><td style="padding:24px 0 0;">
+    <hr style="border:0;border-top:1px solid #e5e7eb;margin:0 0 12px;">
+    
+    <p style="margin:0 0 6px;font-size:12px;color:#6b7280;">
+      Sources this week: arxiv 26 · news 20 · blog 59 · reddit 0 · hn 15 · github 35.
+    </p>
+    
+    <p style="margin:0;font-size:13px;color:#6b7280;">
+      Auto-generated by the Synthetic Data Research Agent. Reply with feedback.
+    </p>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>

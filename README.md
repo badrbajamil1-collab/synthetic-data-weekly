@@ -3,26 +3,32 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-234%20checks%20passing-brightgreen)
-[![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](https://synthetic-data-web.coolbadrtv1.workers.dev)
+![selftest](https://img.shields.io/badge/selftest-445%20checks%20passing-brightgreen)
+[![web version](https://img.shields.io/badge/web%20version-live%20archive-informational)](https://synthetic-data-web.coolbadrtv1.workers.dev)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
-arXiv, Google News, research blogs, Reddit, Hacker News and GitHub (27 HTTP requests
-per run) — then renders a weekly report for the Well7 team.
+arXiv, Google News, research blogs, Reddit, Hacker News and GitHub (3 arXiv queries,
+2 Google News queries, 13 blog feeds, 1 combined Reddit feed, 4 Hacker News tags and
+6 GitHub queries, plus bounded release lookups) — then renders a weekly report for
+the Well7 team.
 
 **Two versions live in this repo:**
 
 - **`main`** — the Python agent: collectors → LangGraph pipeline →
-  Markdown/HTML/PDF report → email. The source of truth.
-- **`web`** — a modern Cloudflare Workers + D1 + R2 + React live web archive and
-  feed ([synthetic-data-web.coolbadrtv1.workers.dev](https://synthetic-data-web.coolbadrtv1.workers.dev)),
-  with its own edge pipeline and Clerk authentication.
+  Markdown/HTML/PDF report → email + Cloudflare archive publish (`publish_to_cloudflare.py`). The single weekly producer.
+- **`web`** — a Cloudflare Workers + D1 + R2 + React live web archive and
+  Research Studio ([synthetic-data-web.coolbadrtv1.workers.dev](https://synthetic-data-web.coolbadrtv1.workers.dev)),
+  synced directly from `main`'s verified weekly output via `POST /api/reports/publish` (with on-demand LangGraph.js `/studio` runs and Clerk auth).
 
-**Status:** the pipeline is automated end to end — one command collects, cleans,
-ranks, fetches, writes, renders and (once credentials exist) sends. What is *not*
-proven is delivery: no real email has been sent yet, so Phases 0–4 are done,
-Phase 5 is code-complete but untested against SMTP, and the two-week Phase 6
-pilot has not started. [Build plan and status](#build-plan-and-status) is the
+**Status:** Phases 0–5 are done: SMTP is configured, a real `send_report.py --test`
+send landed in Primary Inbox (matching `From == SMTP_USER`, no PDF attachment, direct
+publisher links), and GitHub Actions (`.github/workflows/weekly-report.yml`) is set up
+as the sole live Saturday scheduler (`05:00 UTC` / `08:00 UTC+3` / `13:00 UTC+8`, with
+`LLM_API_KEY`, `SMTP_*`, and `CF_PUBLISH_TOKEN` secrets configured; the local Windows
+task `SyntheticDataWeekly` and duplicate Cloudflare Worker cron were both disabled so
+only one scheduler produces and sends). What remains is running the two-week Phase 6
+pilot and moving long-term production sending to an authenticated company-domain email
+service. [Build plan and status](#build-plan-and-status) is the
 honest scoreboard. Running `main.py` with no flags still performs the Phase 1
 "print every raw item" deliverable; `--pipeline` is the one command for the whole
 agent.
@@ -41,46 +47,46 @@ The web version is deployed live at **[`https://synthetic-data-web.coolbadrtv1.w
 - **Frontend SPA**: Vite 8 + React 19 + TypeScript.
 - **Styling & Design System**: Tailwind CSS v4 with an editorial light theme (`#f3f6fa` canvas, `#102a43` deep slate ink, `#d6e0ea` hairline borders, and `#0b6f6b` mint accents).
 - **Typography**: IBM Plex Serif (headlines & statistics), IBM Plex Sans (interface body), IBM Plex Mono (technical labels, scores & metadata).
-- **UI & Motion**: shadcn/ui accessible primitives, Magic UI (`NumberTicker`, `BlurFade`), and static editorial pipeline schematics following strict information-density standards (`diagram-design`).
+- **UI & Motion**: shadcn/ui accessible primitives, Magic UI (`NumberTicker`, `BlurFade`), collapsible editorial takeaways, and Live Research Studio (`/studio`).
 - **Edge Runtime**: Cloudflare Workers + Static Assets (single-page application with edge API routes under `/api/*`).
-- **Database (Metadata & Library)**: Cloudflare D1 SQL database (`synthetic-data-db`) storing weekly reports, scored findings, user collections, notes, and topic follows.
+- **Database (Metadata & Library)**: Cloudflare D1 SQL database (`synthetic-data-db`) storing weekly reports, scored findings, user collections, notes, topic follows, and research sessions.
 - **Object Storage (PDF Archive)**: Cloudflare R2 bucket (`synthetic-data-reports`) storing and serving publication-ready PDF downloads.
 - **Authentication & User State**: Clerk (`@clerk/react` 6 in the browser + `@clerk/backend` 3 token verification in the Worker) powering personal feeds, custom topic follows, and admin controls.
-- **Edge Intelligence Pipeline**: LangChain.js inside the Worker with OpenRouter models, scoring items on both synthetic data relevance (`score` 1–10) and Well7 domain fit (`well7_fit` 1–10), guarded by extractive citation checks.
+- **Unified Sync + On-Demand Edge Pipeline**: Weekly briefs are produced once by GitHub Actions (Python) and synced into D1/R2 via `POST /api/reports/publish` (`publish_to_cloudflare.py`). The Worker's duplicate cron is disabled (`"crons": []`), while LangGraph.js (`@langchain/langgraph`) powers on-demand topic queries in `/studio`.
 
 ---
 
 ## Build plan and status
 
 The brief builds the agent in seven phases (0–6) and calls week 4 "the pilot".
-This is where each phase stood on 2026-11-07.
+This is where each phase stood on 2026-11-18.
 
 | Phase | Brief deliverable | Status | Evidence |
 |---|---|---|---|
-| **0 — Understand the topic** | Manual report, 15–20 sources, 10–15 keywords | ✅ Done, two recorded blemishes | `progress/phase-0-manual/`, `docs/sources.md` (18 sources), `config.yaml` → `keywords` (12 terms) |
-| **1 — Collectors** | A script that prints every raw item this week | ✅ Done | `python main.py`; 6 collectors over 18 sources, 7-day window; `progress/week-2026-11-01/run_log.json` (223 found, 222 kept, 0 source errors) |
-| **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned twice | `rank_items.py` → `ranked.json`; before/after comparison in `docs/one-page-note.md`; URL normalisation and `history.db` |
-| **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (22 structural checks) |
+| **0 — Understand the topic** | Manual report, 15–20 sources, 10–15 keywords | ✅ Done, two recorded blemishes | `progress/phase-0-manual/`, `docs/sources.md` (18 sources), `config.yaml` → `keywords` (22 terms) |
+| **1 — Collectors** | A script that prints every raw item this week | ✅ Done | `python main.py`; 6 collectors over 18 sources, one fixed Saturday-Friday week (`src/synthetic_data/week.py`); `progress/week-2026-11-01/run_log.json` (223 found, 222 kept, 0 source errors) |
+| **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned three times | `rank_items.py` → `ranked.json`; keyword prefilter, one comparative editor pass, structured JSON output; URL normalisation, primary-source dedupe and `history.db` |
+| **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (structural checks plus the 2026-11-11 schema gates) |
 | **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
-| **5 — Email and schedule** | You receive a correct test email | ⚠️ Code complete, **not proven** | send path and a dry-run `email.eml` exist; `SyntheticDataWeekly` is registered in dry-run mode; the `.env` SMTP block is empty |
-| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⛔ Not started | blocked on Phase 5; then `schedule_task.py --register --send` and two watched weeks |
+| **5 — Email and schedule** | You receive a correct test email | ✅ Email verified; scheduler active | `send_report.py --test` delivered to Primary Inbox (`From == SMTP_USER`, no PDF attachment); GitHub Actions scheduled live for Saturday `05:00 UTC` with `SMTP_*` secrets configured (local Windows task deleted to prevent duplicates) |
+| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ In progress | GitHub Actions scheduled for Saturday `05:00 UTC` (first live run 2026-11-21). Watch two Saturdays, gather feedback, then tune; move to a company-domain sending service if spam filtering appears |
 
-**Where that leaves the project:** end of week 3 of the brief's timetable. The
-remaining work is not code — it is credentials and two observed Saturdays.
+**Where that leaves the project:** ready for the two-week Phase 6 pilot.
 
 **The brief's "done" test** is that the agent runs unattended for two Saturdays and
-the team finds the reports useful. Neither has happened yet: the scheduled task
-deliberately runs `--dry-run` until SMTP is configured, and the Windows task is
-interactive-only (it will not fire while the machine is signed out).
+the team finds the reports useful. **GitHub Actions** (`.github/workflows/weekly-report.yml`)
+is active with `LLM_API_KEY` and `SMTP_*` secrets for Saturday `05:00 UTC` (`08:00 UTC+3` /
+`13:00 UTC+8`, next live run 2026-11-21), and the local Windows task (`SyntheticDataWeekly`)
+was removed so delivery does not duplicate or depend on the laptop staying awake. Neither
+live Saturday run has happened yet.
 
-What is still missing, in order:
+What is still next, in order:
 
-1. `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` and
-   `DRY_RUN_RECIPIENT` in `.env`; without them `send_report.py` fails loudly.
-2. A test email that proves the HTML body and PDF attachment render in a real
-   mail client (`send_report.py --test`).
-3. Two unattended Saturdays with recipient feedback, then a tuning pass on
-   keywords, sources and prompts.
+1. Let two Saturday runs complete and check `logs/weekly.log` (`mode: send`) plus the
+   recipients' feedback. Do not tune from a single week.
+2. Then tune keywords, sources and prompts (Phase 6).
+3. If consumer SMTP starts hitting spam on multi-recipient sends, move delivery
+   to a dedicated sending service on the company domain (SPF/DKIM/DMARC).
 
 The two Phase 0 blemishes are recorded in `docs/one-page-note.md`: six top picks
 instead of the brief's example seven, and no record of which 3–5 introductions were
@@ -129,7 +135,7 @@ stops the report.
 flowchart LR
     A["Collect - 18 sources, 6 collectors"] --> B["Clean - normalise, dedupe, history filter"]
     B --> C["Rank - LLM score 1-10 + well7 fit"]
-    C --> D["Fetch - full text of the top 10"]
+    C --> D["Fetch - full text of the top 7"]
     D --> E["Report - summaries + sections"]
     E --> F["Render - verify links, MD + HTML + PDF"]
     F --> G["Email - 5 recipients from config.yaml"]
@@ -207,7 +213,7 @@ The individual steps are still runnable by hand:
 ```powershell
 uv run python main.py
 uv run python rank_items.py              # LLM scores 1-10 → ranked.json
-uv run python fetch_candidates.py        # top 10 from ranked.json → candidates.json
+uv run python fetch_candidates.py        # top 7 from ranked.json → candidates.json
 uv run python write_report.py            # summaries + sections → source.yaml
 uv run python report_build.py progress/week-2026-11-05/source.yaml
 uv run python send_report.py progress/week-2026-11-05/source.yaml --dry-run
@@ -218,10 +224,10 @@ uv run python verify_report.py
 |---|---|---|
 | `main.py` | Collects, normalises, dedupes, drops already-published URLs; `--pipeline` runs the whole graph | `raw_items.json`, `raw_run_log.json`, report + email |
 | `rank_items.py` | Scores each item 1–10 for relevance and 1–10 for Well7 fit, with a reason; collapses same-story coverage | `ranked.json`, `score_cache.json`, merges into `raw_run_log.json` |
-| `fetch_candidates.py` | Takes the top 10 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
+| `fetch_candidates.py` | Takes the top 7 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
 | `write_report.py` | Writes summaries from the fetched text and splits the three sections | `source.yaml` |
 | `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs when run standalone | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
-| `send_report.py` | Emails the rendered report as the body plus a PDF attachment; `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
+| `send_report.py` | Emails the rendered report as the HTML/plain-text body (PDF omitted by default for deliverability; `--attach-pdf` opts in); `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
 | `schedule_task.py` | Registers/query/deletes the Saturday Windows task from `config.yaml`; dry-run by default, `--send` for real email | Windows Task Scheduler |
 | `verify_report.py` | Checks the rendered report against the brief | exit code only |
 | `selftest.py` | Offline unit tests for parsing, dates, dedupe, history, ranking, email, scheduling | exit code only |
@@ -232,41 +238,26 @@ uv run python verify_report.py
 are cached by URL + model + rubric version in `score_cache.json`, and a cached rerun
 produces a byte-identical `ranked.json`.
 
-## Scheduling & GitHub Actions (Cron)
+## Scheduling & CI
 
-Automated scheduling is configured across three environments:
+GitHub Actions is the single weekly producer so recipients never receive duplicate
+emails and the OpenRouter free-tier quota is never split across schedulers:
 
-### 1. GitHub Actions Workflow (`.github/workflows/weekly-report.yml`)
-- **Schedule**: Triggers weekly on Saturday at 05:00 UTC (`0 5 * * 6`), matching Saturday 08:00 UTC+3 (Saudi time).
-- **Safety**: Scheduled runs always execute in safe dry-run mode (`python main.py --pipeline --dry-run`), generating the weekly brief, PDF, and `email.eml`.
-- **Cache Persistence**: Uses `actions/cache@v4` on `history.db`, `score_cache.json`, and `summary_cache.json`. This ensures deduplication across weeks and zero repeated LLM scoring costs.
-- **Artifact Upload**: Retains rendered output (`email.eml`, `progress/week-*/**`, PDFs) in GitHub Actions artifacts with a 30-day retention window.
-- **Manual Trigger**: Supports `workflow_dispatch` with a `send_email` boolean flag to trigger live sends when configured.
-
-### 2. Web CI Workflow (`.github/workflows/web-ci.yml`)
-- Automatically validates the frontend codebase on pushes or pull requests touching `web/**`.
-- Runs `npm ci`, TypeScript type checking (`tsc -b`), production build (`vite build`), and `oxlint`.
-
-### 3. Cloudflare Worker Cron Trigger (`wrangler.jsonc`)
-- **Schedule**: `0 5 * * 6` (Saturday 05:00 UTC).
-- Automatically runs `runWeeklyPipeline()` inside Cloudflare Workers, pulling fresh items, ranking them with OpenRouter, generating guarded summaries, and writing directly to Cloudflare D1.
-
-### 4. Windows Task Scheduler (`schedule_task.py`)
-- Registered via `uv run python schedule_task.py --register` for local scheduled execution.
-
----
-
-## Future Plans & Roadmap
-
-### 1. Cloudflare Email (Free Service) Integration
-- **Zero Third-Party SMTP Dependency**: Rather than relying on external SMTP providers with separate credentials and fees, future releases will integrate with **Cloudflare Workers Email Routing / Email Sending (`send_email` binding)** on Cloudflare's free tier.
-- **Direct Dispatch from Worker**: After the Cloudflare Worker cron completes the weekly research brief, the Worker will generate the responsive HTML email body, attach the newly minted PDF from Cloudflare R2, and dispatch it directly to Well7 subscribers.
-- **Subscriber State in D1**: Team recipient lists and personal notification preferences will be managed directly in the existing `users` and `user_topics` D1 tables.
-
-### 2. Bi-directional Pipeline Sync
-- Add `publish_to_cloudflare.py` to push curated weeks from the Python research pipeline into Cloudflare D1 and R2 via an authorized Worker endpoint (`/api/pipeline/publish`).
-
----
+- **GitHub Actions (active live scheduler)** — `.github/workflows/weekly-report.yml`,
+  Saturday `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`), also runnable by hand with
+  `workflow_dispatch`. `LLM_API_KEY`, `SMTP_*`, and `CF_PUBLISH_TOKEN` secrets are
+  configured on the repo so scheduled runs send the real email and sync the verified
+  report + PDF into Cloudflare D1 + R2 via `publish_to_cloudflare.py`; manual runs
+  with `send_email` / `publish_web` unchecked stay in safe `--dry-run` mode.
+  `history.db`, `score_cache.json`, and `summary_cache.json` persist via `actions/cache`.
+- **Web CI (`.github/workflows/web-ci.yml`)** — runs `npm test`, `npm run build`
+  (`tsc -b && vite build`), and `npm run lint` (`oxlint`) on pushes/PRs touching `web/**`.
+- **Cloudflare Worker Cron (disabled)** — `"crons": []` in `web/wrangler.jsonc`. Weekly
+  briefs arrive from GitHub Actions via `POST /api/reports/publish`, while Live Research
+  Studio (`/studio`) and admin manual runs remain available on demand.
+- **Windows Task Scheduler (inactive / removed locally)** — `schedule_task.py` can
+  register a local `SyntheticDataWeekly` task, removed via `schedule_task.py --delete`
+  in favor of GitHub Actions.
 
 ## Configuration
 
@@ -275,17 +266,20 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 | Key | Meaning |
 |---|---|
 | `schedule` | Weekly cadence read by `schedule_task.py` (`Saturday 08:00`). |
-| `lookback_days` | How far back an item may be published. Default 7. Read by every collector. |
+| `lookback_days` | Fallback span (default 7) when no fixed week is supplied. The pipeline passes the Saturday-Friday week instead. |
 | `max_top_picks` | Shortlist size. Read by `fetch_candidates.py` and `rank_items.py`. |
-| `ranking.*` | Model, batch size, concurrency, thresholds and cache toggle for Phase 2. |
-| `summarising.*` | Model, picks, tool/worth caps, text window and token budget for Phase 3. |
+| `ranking.*` | Model, batch size, concurrency, thresholds, cache toggle, `prefilter`, `editor_pass_size` and `min_scored_to_proceed` for Phase 2. |
+| `summarising.*` | Model, picks, tool/worth caps, text window, token budget and `min_score_top` / `min_score_tools` / `min_score_worth` score floors for Phase 3. |
 | `recipients` | Who the report goes to. Read by `emailer.deliver`. |
-| `keywords` | The Phase 0 vocabulary, for reference. Collectors search each source's own `queries` / `tags` / `subreddits`. |
-| `sources.*` | Per-source queries, subreddits, feeds and result caps. |
+| `keywords` | **Read** by the cheap ranking prefilter (`rank.prefilter_indices`), not just documentation. Collectors still use each source's own `queries` / `tags` / `subreddits`. |
+| `sources.*` | Per-source queries, subreddits, feeds, result caps, `retry_attempts` and `github.include_releases`. |
 
 Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in.
-`.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the SMTP credential set.
-The SMTP keys are still empty placeholders, which is why no real email has been sent.
+`.env` is git-ignored and holds `OPENROUTER_API_KEY` (or `LLM_API_KEY`, the name the
+GitHub Actions workflow exports) plus the SMTP credential set and the optional
+`GITHUB_TOKEN` (raises GitHub's 60 req/h unauthenticated limit). On Gmail/Outlook
+logins, `emailer.py` keeps the `From` address aligned with `SMTP_USER` so
+mismatched `MAIL_FROM` values are not flagged as spoofing.
 
 ## Outputs
 
@@ -301,7 +295,7 @@ progress/week-<week_end>/
   source.yaml                      report content (trend, picks, tools, worth a look)
   report.md                        plain-text email body / Markdown deliverable
   report.html                      HTML email body, spec format
-  Synthetic_Data_Weekly_<date>.pdf glossary first, then the report (email attachment)
+  Synthetic_Data_Weekly_<date>.pdf glossary first, then the report (disk archive; attach with --attach-pdf)
   email.eml                        dry-run email; never sent, for inspection
   run_log.json                     counts for the render, plus the `email` block
 ```
@@ -315,17 +309,16 @@ from scratch.
 
 ## What it does not do yet
 
-- **No real email has been sent.** The send path is implemented and dry-run tested,
-  but `.env` still has empty SMTP placeholders. `send_report.py` fails loudly without
-  them, and `main.py --pipeline` records `send: EmailError: SMTP_HOST is not set ...`.
-- **The scheduled task runs dry.** The registered `SyntheticDataWeekly` task calls
-  `scripts/run_weekly.ps1`, which adds `--dry-run` unless it is invoked with `-Send`.
-  Each Saturday therefore writes a report and `email.eml` and never contacts SMTP.
-  Re-register with `uv run python schedule_task.py --register --send` once a test
-  email has arrived.
-- **The scheduled task is interactive-only.** It runs as the current user when
-  signed in, with no stored password, so it will not fire while the machine is
-  signed out. `logs/weekly.log` is the evidence trail.
+- **Company-domain sending service not yet wired.** Test emails via Gmail SMTP
+  land in Inbox (with `From == SMTP_USER`, no PDF attachment, and reduced direct
+  article links), but long-term production delivery should move to a dedicated
+  sending service authenticated on the company domain (SPF/DKIM/DMARC), such as
+  Cloudflare Email Sending or Resend.
+- **Two live Saturday runs have not been observed yet.** GitHub Actions
+  (`.github/workflows/weekly-report.yml`) is configured to send live and sync to
+  Cloudflare on Saturday `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`), and the local
+  Windows task `SyntheticDataWeekly` was removed so only one scheduler sends. First
+  real Saturday run is `2026-11-21`.
 - **Ranker substance judgement is improved, not proven.** Since 2026-11-06 each
   repo's stars and creation date reach the prompt, the rubric discounts old
   low-star repos, and the shortlist caps GitHub's share at 3; since 2026-11-07
@@ -345,24 +338,31 @@ from scratch.
   not a hang.
 - **arXiv announces nothing Friday or Saturday.** Most weeks end with a date gap.
 - **`report_build.py` exits 1 when it dropped dead links.** That is a successful
-  render of a filtered report, not a crash.
+  render of a filtered report, not a crash, provided at least one top pick survives.
 
 ## Tests
 
 CI consists of two workflows:
-- `.github/workflows/weekly-report.yml`: Runs the pipeline in dry-run mode on Saturday 05:00 UTC (or manual dispatch) and preserves report, PDF, and `email.eml` as build artifacts.
-- `.github/workflows/web-ci.yml`: Validates the web application on push/PR, checking TypeScript types, build bundles, and linter rules.
+- `.github/workflows/weekly-report.yml` (Saturday `05:00 UTC` / `13:00 UTC+8`, or manual
+  `workflow_dispatch`): runs `selftest.py` before the pipeline, `verify_report.py` after,
+  sends the weekly report and publishes to Cloudflare (`publish_to_cloudflare.py`) on
+  scheduled runs (or when requested manually), and uploads `progress/week-*/**` as
+  build artefacts. A flagged run (an omitted trend, a thin ranking, a failed source)
+  still exits 0 — only an unpublishable report or missing email fails the run.
+- `.github/workflows/web-ci.yml`: validates the web application on push/PR touching
+  `web/**` (`npm test`, `npm run build`, `npm run lint`).
 
 Locally, the Python suite is two scripts that exit non-zero on failure:
 
 ```powershell
-uv run python selftest.py       # offline: parsing, dates, URL normalisation, dedupe, history, email, schedule
-uv run python verify_report.py  # structural: subject, section order, counts, dates, PDF
+uv run python selftest.py       # offline (445 checks): parsing, dates, URL normalisation, dedupe, history, email, schedule, cloudflare publish
+uv run python verify_report.py  # structural (30 checks): subject, section order, counts, dates, PDF
 ```
 
 For the web application:
 ```powershell
 cd web
+npm test                        # node:test unit suite
 npm run build                   # tsc -b && vite build
 npm run lint                    # oxlint
 ```

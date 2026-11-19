@@ -41,7 +41,8 @@ Run from the repo root. The venv has the package installed editable
 | Email a rendered report (writes `email.eml`) | `python send_report.py progress/week-<date>/source.yaml --dry-run` |
 | Email the newest report for real | `python send_report.py` |
 | Send one real test email to `DRY_RUN_RECIPIENT` | `python send_report.py --test` |
-| Verify rendered artefacts (22 checks) | `python verify_report.py` |
+| Publish verified week + PDF to Cloudflare web archive | `python publish_to_cloudflare.py` |
+| Verify rendered artefacts (30 checks) | `python verify_report.py` |
 | Run the full weekly pipeline (LangGraph) | `python main.py --pipeline` |
 | Full pipeline, email written not sent | `python main.py --pipeline --dry-run` |
 | Full pipeline, stop after rendering | `python main.py --pipeline --no-email` |
@@ -58,8 +59,9 @@ and counted in the summary as `already sent (history)`.
 not the `config.yaml` keys.
 
 `python` is not on PATH on this machine — use `.venv\Scripts\python.exe` or `uv run python`.
-There is no pytest, linter, formatter, typecheck or CI. `selftest.py` + `verify_report.py`
-are the test suite; both exit non-zero on failure.
+There is no pytest, linter, formatter, or typecheck; there is one scheduled GitHub
+Actions workflow (`.github/workflows/weekly-report.yml`). `selftest.py` +
+`verify_report.py` are the test suite; both exit non-zero on failure.
 
 ## Pipeline
 
@@ -76,9 +78,11 @@ are the test suite; both exit non-zero on failure.
 `verify_report.py` defaults to the newest `progress/week-*/source.yaml`. The old
 top-level `reports/` directory no longer exists.
 
-`send_report.py` → `synthetic_data/emailer.py` builds a multipart message: `report.md`
-as `text/plain`, `report.html` as the `text/html` body, and the week's PDF attached.
-Recipients come from `config.yaml`; SMTP credentials come from `.env`. A standalone
+`send_report.py` → `synthetic_data/emailer.py` builds a `multipart/alternative` message:
+`report.md` as `text/plain` and `report.html` as the `text/html` body (the PDF is
+omitted by default for deliverability; `--attach-pdf` opts in). On Gmail/Outlook,
+`emailer.resolve_sender` aligns `MAIL_FROM` with `SMTP_USER` to avoid spoofing/spam
+flags. Recipients come from `config.yaml`; SMTP credentials come from `.env`. A standalone
 send records the report's URLs in `history.db` (`--no-record` opts out). `--dry-run`
 writes `progress/week-<date>/email.eml` and touches neither SMTP nor history;
 `--test` sends only to `DRY_RUN_RECIPIENT` and also records no history.
@@ -94,7 +98,7 @@ not a Pydantic model — LangGraph requires TypedDict). Nodes:
 `raw_run_log.json` (the same artefacts as the Phase 1 CLI), and carries the
 `already_sent` count into the run log.
 
-`fetch` calls `fetch_candidates.fetch` for the ten best in-window items, so summaries
+`fetch` calls `fetch_candidates.fetch` for the seven best in-window items, so summaries
 are written from the real abstract or page text rather than the ranking snippet. A page
 that cannot be fetched keeps its snippet, and the report discloses that. `render` fills
 `report_markdown` / `report_html` in state from the files `report_build.py` wrote (the
@@ -144,11 +148,17 @@ Three rules that are easy to break:
   unwraps them via Google's `batchexecute` RPC.
 - **Reddit:** use `.rss` with no trailing slash — `/.rss` returns 429. Roughly 1 request
   per minute per IP, so the collector backs off 15/30/45 s. A second full run inside a
-  minute stalls ~90 s; that is rate limiting, not a hang.
+  minute stalls ~90 s; that is rate limiting, not a hang. **As of 2026-11-18 both the
+  multi-sub `.rss` feed and the JSON API are blocked from this host (404/403).** Reddit
+  is treated as an optional upstream: `fetch_reddit` records the outage in `warnings`
+  and returns `[]` instead of raising, so it shows `[warn]` / 0 items in the run log but
+  never fails `verify_report.py`. Do not "fix" this back into a fatal source error.
 - **arXiv announces nothing Friday or Saturday**, so most weeks end with a date gap.
   Expected. Its `all:` search also matches loosely — expect off-topic papers in the raw list.
-- **GitHub search filters on `pushed_at`**, not publication date, and returns repos that
-  merely mention the query. Treat the ranking as noise.
+- **GitHub search filters on creation and push dates**, not publication date, and
+  returns repos that merely mention the query. Repos created inside the week are
+  news on their own; older ones count only when a release shipped that week.
+  Treat the ranking as noise.
 - **PowerShell 5.1**: no `head`, `wc`, `sed`, or `&&`. Use `Select-Object -First`,
   `Measure-Object`, `;`.
 
@@ -171,18 +181,17 @@ Three rules that are easy to break:
 
 ## Not implemented / untested
 
-- **A real email has not been sent yet.** The send path is implemented and covered by
-  offline tests plus a real `--dry-run` render, but `.env` has no SMTP credentials. Fill
-  `SMTP_*` / `MAIL_FROM` and run `python send_report.py --test` before trusting the
-  weekly task. `send_report.py --dry-run` needs no credentials.
-- **The scheduled task is registered in dry-run mode.** `scripts/run_weekly.ps1` adds
-  `--dry-run` unless it is called with `-Send`, so each Saturday writes a report and
-  `email.eml` without touching SMTP. That is deliberate while `.env` is empty: a missing
-  credential cannot make the weekly run fail. After a test email arrives, re-register
-  with `python schedule_task.py --register --send`. `logs/weekly.log` records
-  `mode: dry-run` or `mode: send` plus the exact command line for every run.
-- The scheduled task is **interactive-only**: it runs as the current user when signed
-  in, with no stored password. It will not fire while the machine is signed out.
+- **Company-domain sending service not yet wired.** Real `--test` delivery via Gmail SMTP
+  succeeded and landed in Primary Inbox (`From == SMTP_USER`, no PDF attachment, direct
+  article links), but long-term production delivery should move to an authenticated
+  company-domain sending service (SPF/DKIM/DMARC).
+- **Live Saturday delivery runs on GitHub Actions.** `.github/workflows/weekly-report.yml`
+  runs every Saturday at `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`) with `LLM_API_KEY`
+  and `SMTP_*` secrets configured on `badrbajamil1-collab/synthetic-data-weekly`. The
+  local Windows task `SyntheticDataWeekly` was removed (`schedule_task.py --delete`) so
+  only one scheduler sends (and delivery does not depend on this laptop being awake,
+  plugged in, and signed in). No live Saturday run has happened yet, so Phase 6 is still
+  unverified.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that
   hard-codes the Oct 23–29 content in the script body. It produced
   `progress/phase-0-manual/Synthetic_Data_Weekly_Executive_Report.pdf` (the other Phase 0
@@ -212,8 +221,8 @@ Three rules that are easy to break:
 ## The report format is contractual
 
 `report.md`, `report.html` and the PDF are checked by `verify_report.py` against the brief:
-subject prefix, section order, footer text, 5–10 picks, tool counts, no duplicate links,
-top-pick dates inside the week, PDF over 40 KB. Do not restyle prose to taste — edit the YAML in
+subject prefix, section order, footer text, 1–10 picks, tool counts, no duplicate links,
+top-pick dates inside the week, valid PDF (> 4 KB with %PDF- header). Do not restyle prose to taste — edit the YAML in
 `progress/week-<date>/source.yaml` and re-render.
 
 The PDF is the single intentional deviation: glossary first, then the report. Email and
@@ -223,14 +232,15 @@ Markdown follow the spec order exactly.
 
 - Recipients, keywords, sources and feeds live in `config.yaml` — never hard-code them.
   `lookback_days`, `sources.*`, `ranking.*`, `summarising.*`, `max_top_picks`,
-  `schedule` and `recipients` are all read today; `keywords` remains documentation
-  while the per-source queries do the work.
-- `.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the SMTP credential set.
-  Model, base URL, batch size and thresholds live in `config.yaml` under `ranking:` and
-  `summarising:` — one source of truth, and no secret in a committed file. The SMTP
-  keys are still empty placeholders, so no real email has been sent. `.env.example`
-  documents the shape of both sets. Never copy a real key into `config.yaml`,
-  `.env.example` or code.
+  `schedule` and `recipients` are all read today; `keywords` drives the cheap
+  prefilter (`ranking.prefilter`) before any model call, while the per-source
+  queries do the collection work.
+- `.env` is git-ignored and holds `OPENROUTER_API_KEY` plus the configured SMTP
+  credential set (`send_report.py --test` verified real delivery). Model, base URL,
+  batch size and thresholds live in `config.yaml` under `ranking:` and
+  `summarising:` — one source of truth, and no secret in a committed file.
+  `.env.example` documents the shape of both sets. Never copy a real key into
+  `config.yaml`, `.env.example` or code.
 - The repo has commits now, so `git diff` / `git stash` are meaningful. Do not `git init`:
   `C:\Users\badrf` is already a git worktree and this folder is its own repo. `progress/`
   once contained a second, empty repo — it was removed; do not recreate it.

@@ -12,6 +12,7 @@ class Item(BaseModel):
     score: int = 0
     reason: str = ""
     summary: str = ""
+    target_url: str = ""
 
 class AgentState(TypedDict, total=False):
     """The one shared state every Phase 4 node reads and writes.
@@ -31,3 +32,4 @@ class AgentState(TypedDict, total=False):
     report_markdown: str
     email: dict
     errors: List[str]
+    run_date: str  # ISO date; the one window every stage shares (replay hook)

@@ -5,7 +5,7 @@ Status as of 2026-11-04. Evidence lives in `progress/`.
 ## What works
 
 **Phase 0 — understand the topic and know signal from noise.** The manual report
-exists in two versions (`progress/phase-0-manual/`), the keyword list is 12 terms
+exists in two versions (`progress/phase-0-manual/`), the keyword list is 22 terms
 tuned to tabular, time-series and privacy work rather than generic AI news, and the
 18-source list with a reason per source is in `docs/sources.md`.
 
@@ -44,7 +44,8 @@ because leaving them broken would have silently corrupted the output:
   recorded 0 new URLs.
 
 **The report itself** renders to Markdown, HTML and a three-page PDF with the
-glossary first, and passes all 21 structural checks. For week 2026-11-01: 8 picks,
+glossary first, and passes every structural check in `verify_report.py`. For
+week 2026-11-01: 8 picks,
 4 tools, 5 worth-a-look, 17 links verified, 0 dead.
 
 ## Phase 2 vs the manual report — the comparison the brief asks for
@@ -88,32 +89,36 @@ output reads better is the next real week's test.
 
 ## What does not work yet
 
-- **No real email has been sent.** The send path exists and `--dry-run` writes the exact
-  message (HTML body, plain-text alternative, PDF attachment), but `.env` still has no
-  SMTP credentials, so a real send is untested.
-- **The scheduled task runs in dry-run mode.** It produces the weekly report and
-  `email.eml` every Saturday without contacting SMTP, by design, until credentials are
-  configured. It is also interactive-only: it runs as the current user when signed in,
+- **No Saturday run has happened yet.** SMTP credentials are configured, a real
+  `--test` send on 2026-11-18 reached the Primary Inbox (no PDF attached, direct
+  publisher links; note that `progress/week-2026-11-20/run_log.json` currently lacks
+  the `email` block because a subsequent `report_build.py` re-render overwrote it
+  before `report_build.py` was fixed to preserve `email`), and `SyntheticDataWeekly`
+  is now registered for Saturday 08:00 in real-send mode. Watch two Saturdays before
+  tuning. The task is interactive-only: it runs as the current user when signed in,
   with no stored password, so it will not fire while the machine is signed out.
+- **Reddit is currently blocked from this host.** Both the multi-subreddit RSS feed and
+  the JSON API now return 404/403. The collector records the outage as a `[warn]` in
+  `raw_run_log.json` and contributes 0 items; it no longer raises a fatal source error
+  that failed `verify_report.py`. The other five sources are unaffected.
 - **The ranker cannot judge substance**, per the comparison above. *(Updated
   2026-11-06: substance evidence — stars and project age — is now in the prompt, and
   the shortlist caps GitHub's share. Whether that fixes the judgement is the next
   real week's test.)*
 
-## Three next steps
+## Next steps (Phase 6 pilot)
 
-1. **Fill the SMTP set and prove receipt (finishes Phase 5).** Add `SMTP_HOST`,
-   `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and `MAIL_FROM` to `.env`, then run
-   `python send_report.py --test`. The test send goes only to `DRY_RUN_RECIPIENT` and
-   records no history. Check the HTML body renders in the mail client and the PDF
-   attachment opens. Until then the Saturday task stays dry.
-2. **Flip the task to real sending, then watch two Saturdays (Phase 6).** After the test
-   email arrives, run `python schedule_task.py --register --send`. Watch
-   `logs/weekly.log` (it records `mode: send`), `run_log.json` and the recipients'
-   replies; do not tune anything from a single week.
+1. **Phase 5 is complete.** SMTP credentials are configured in `.env`, a real
+   `send_report.py --test` email arrived in Primary Inbox, and
+   `schedule_task.py --register --send` registered `SyntheticDataWeekly` for
+   Saturday 08:00 in real-send mode (keep GitHub Actions `SMTP_*` secrets unset
+   while the local task is live so only one scheduler sends).
+2. **Watch two Saturdays (Phase 6).** Check `logs/weekly.log` (`mode: send`),
+   `run_log.json` (`email` block) and the recipients' replies; do not tune anything
+   from a single week.
 3. **Tune the ranking on that feedback (Phase 6).** Decide whether GitHub repos should
-   be discounted by stars, whether the top 10 must contain at least one paper, and
-   whether the 1–2 band is too wide.
+   be discounted by stars, whether the top 7 shortlist must contain at least one paper,
+   and whether the 1–2 band is too wide.
 
 Phase 4 is no longer deferred: the pipeline is a LangGraph state machine
 (`collect → clean → rank → fetch → report → render → send`) over one shared
@@ -126,9 +131,9 @@ Both are recorded rather than quietly fixed, because the Phase 0 report is meant
 be a historical artefact and editing it after the fact would fake the process.
 
 - **Six top picks, not seven.** The brief says "pick the top 7 items"; the manual
-  report carries 6 picks, 2 tools and 2 worth-a-look. That is inside the report
-  format's own 5–10 bound, so it does not fail the format check, but it is one short
-  of the brief's example.
+  report carries 6 picks, 2 tools and 2 worth-a-look. That is inside the brief's
+  5–10 range (the current `2026-11-11` report format bound is 1–10 picks), so it
+  does not fail the format check, but it is one short of the brief's example.
 - **No record of the 3–5 introductory readings.** The brief starts Phase 0 with
   "read 3 to 5 introductions to synthetic data". Nothing in the repo records which
   five, or what each one contributed. Unlike the source list, this cannot be
@@ -154,3 +159,56 @@ be a historical artefact and editing it after the fact would fake the process.
 - **Repo split for GitHub:** `main` is the Python agent; the `web` branch carries
   the Cloudflare Workers/D1/React view. The Worker's silent score-1 fallback is
   documented at `web/worker/pipeline/rank.ts:58` (guarded by `guard.ts` now).
+
+## Update — 2026-11-12 (reviewer feedback applied to the Python pipeline)
+
+All six groups of reviewer feedback landed, with tests first (~290 new lines in
+`selftest.py`) and a whole-branch review. Nothing in `web/` changed.
+
+- **One fixed week.** `src/synthetic_data/week.py` derives Saturday-Friday from
+  the run date; collect, fetch, compose and verify all import it, so windows no
+  longer overlap or drift. `write_report.py --week-end` still replays a past week.
+- **Collect.** GitHub searches `created:` (plus releases for older repos) instead
+  of `pushed:`; arXiv uses the API abstract rather than scraping `/abs`; every
+  source retries 429/5xx with backoff; per-source counts appear in the footer.
+- **Clean.** Dedupe and duplicate grouping both prefer the primary source, and
+  `links.story_key` collapses an HN/Reddit post onto the paper or repo it links to.
+- **Rank.** A cheap `config.keywords` gate skips obvious noise before any model
+  call; one comparative editor pass re-scores the top 20 together; the rubric and
+  a deterministic ceiling keep `well7_fit` distinct from `score`; the LLM is asked
+  for JSON via `response_format` (with a 400 fallback).
+- **Summarise.** Top picks ~50 words, tools/worth one line; `why_it_matters` is
+  its own guarded line; a failed trend is omitted and the run flagged instead of
+  pasting together first sentences.
+- **Build.** Per-section score floors (top 7 / tools 6 / worth 5): sections are
+  never padded, and `verify_report.py` checks the floor, the why-line in the
+  rendered Markdown/HTML and the Saturday-Friday shape. Old weeks still verify.
+- **Deliver.** `llm.require_api_key` accepts `OPENROUTER_API_KEY` **or**
+  `LLM_API_KEY` (the 7 Nov failure); `history.db` is written atomically with a
+  backup merged on read; the workflow saves its cache with `if: always()`.
+
+Spec: `docs/superpowers/specs/2026-11-11-pipeline-improvements-design.md`.
+Plan: `docs/superpowers/plans/2026-11-11-pipeline-improvements.md`.
+Reader-feedback links remain the deferred Phase 6 idea.
+
+## Update — 2026-11-18 (phase audit)
+
+Verified against artefacts, not the older prose above:
+
+- **Phases 0–5 are complete.** `selftest.py` passes 414 checks (375 baseline, 19
+  Batch 1, and 20 Batch 2 audit-fix regressions); `verify_report.py` passes 30/30 against
+  `progress/week-2026-11-20/source.yaml` (exit 0). SMTP is configured and a real
+  `--test` send landed in the Primary Inbox with no PDF attachment and direct
+  publisher links (note: `progress/week-2026-11-20/run_log.json` does not retain
+  that `email` block because a pre-fix `report_build.py` re-render overwrote it
+  prior to commit `dd6eadd`; `report_build.py` now preserves `email` across future
+  re-renders).
+- **Phase 6 is the only open phase.** `SyntheticDataWeekly` was registered with
+  `python schedule_task.py --register --send`; `--query` confirms Saturday 08:00,
+  `Status: Ready`, next run 2026-11-21. Watch two Saturdays before tuning.
+- **Deliverability changes from this pass:** `From == SMTP_USER`, PDF attachment off by
+  default (`--attach-pdf` opts in), headline caps tightened, Google News redirects
+  unwrapped to original publishers (or dropped).
+- **Reddit outage is now non-fatal:** the feed is blocked from this host, so
+  `fetch_reddit` records a warning instead of raising. The report discloses 0 Reddit
+  items and still verifies cleanly.

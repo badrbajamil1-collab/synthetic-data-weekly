@@ -93,6 +93,14 @@ def normalize_url(url: str) -> str:
     return _ARXIV_VERSION.sub(r"\1", normalized)
 
 
+def is_google_news_redirect(url: str) -> bool:
+    """True when `url` is an opaque Google News redirect rather than the article."""
+    if not url:
+        return False
+    host = (urllib.parse.urlsplit(url.strip()).hostname or "").lower()
+    return host == "news.google.com" or host.endswith(".news.google.com")
+
+
 def resolve_google_news(url: str, timeout: float = 30.0) -> str:
     """Turn a ``news.google.com/rss/articles/...`` redirect into the real URL.
 
@@ -168,6 +176,71 @@ def check_link(url: str, timeout: float = 30.0) -> Dict[str, object]:
 
 def dedupe_key(item_url: str) -> str:
     return normalize_url(item_url)
+
+
+def canonical_target(url: str) -> str:
+    """Return a cross-source canonical identifier for arXiv, GitHub, or DOI links."""
+    if not url or not isinstance(url, str):
+        return ""
+
+    parts = urllib.parse.urlsplit(url.strip())
+    host = (parts.hostname or "").lower()
+    if host.startswith("www."):
+        host = host[4:]
+
+    path = (parts.path or "").strip("/")
+    if not path:
+        return ""
+
+    if host == "arxiv.org" or host.endswith(".arxiv.org"):
+        match = re.match(r"^(?:abs|pdf)/(.+)$", path, flags=re.IGNORECASE)
+        if not match:
+            return ""
+        paper_id = match.group(1).strip("/")
+        if paper_id.lower().endswith(".pdf"):
+            paper_id = paper_id[:-4]
+        paper_id = re.sub(r"v\d+$", "", paper_id, flags=re.IGNORECASE).lower()
+        return f"arxiv:{paper_id}" if paper_id else ""
+
+    if host == "github.com":
+        segments = [seg for seg in path.split("/") if seg]
+        if len(segments) < 2:
+            return ""
+        owner = segments[0].lower()
+        repo = segments[1].lower()
+        if repo.endswith(".git"):
+            repo = repo[:-4]
+        if not owner or not repo:
+            return ""
+        return f"github:{owner}/{repo}"
+
+    if host in ("doi.org", "dx.doi.org"):
+        doi = path.lower()
+        return f"doi:{doi}" if doi else ""
+
+    return ""
+
+
+def story_key(item: dict) -> str:
+    """Story identity key across sources, preferring target_url over item url.
+
+    ``canonical_target`` only understands arXiv/GitHub/DOI, so a plain blog
+    article linked from an HN or Reddit post has to fall back to normalisation
+    of the target itself. Without that, the discussion kept its own URL as the
+    key and never merged with the article it links to.
+    """
+    if not isinstance(item, dict):
+        return ""
+    target = item.get("target_url") or ""
+    url = item.get("url") or ""
+    return (
+        canonical_target(target)
+        or canonical_target(url)
+        or normalize_url(target)
+        or normalize_url(url)
+        or url
+    )
+
 
 
 if __name__ == "__main__":

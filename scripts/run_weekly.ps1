@@ -9,10 +9,9 @@
 # `synthetic_data` without PYTHONPATH. The full path is used because Task
 # Scheduler does not inherit the user's PATH.
 #
-# DRY BY DEFAULT. Without -Send the run composes the email and writes
-# email.eml, but never contacts SMTP. That keeps the Saturday task green while
-# .env has no credentials, and it is the mode the task is registered in today.
-# Once a real test email has arrived, re-register with:
+# DRY BY DEFAULT when called manually. Without -Send the run composes the
+# email and writes email.eml, but never contacts SMTP. On this machine the
+# Saturday Task Scheduler job (SyntheticDataWeekly) is registered with -Send:
 #
 #     uv run python schedule_task.py --register --send
 #
@@ -49,7 +48,16 @@ $mode = if ($Send) { "send" } else { "dry-run" }
 
 "=== $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') weekly run (mode: $mode) ===" | Out-File -Append $log
 ">>> $python $($arguments -join ' ')" | Out-File -Append $log
-& $python @arguments *>> $log
-$code = $LASTEXITCODE
+# PowerShell 5.1 turns native stderr lines into terminating NativeCommandError
+# records when $ErrorActionPreference is "Stop". Temporarily switch to
+# "Continue" so stderr is logged without aborting before $LASTEXITCODE.
+$prevErrorAction = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    & $python @arguments 2>&1 | ForEach-Object { $_.ToString() } | Out-File -Append $log
+    $code = $LASTEXITCODE
+} finally {
+    $ErrorActionPreference = $prevErrorAction
+}
 "=== exit $code ===" | Out-File -Append $log
 exit $code
