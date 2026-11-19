@@ -4,11 +4,10 @@
 # missing secret can never fail the weekly run. A manual "Run workflow" with
 # send_email unchecked always forces a dry run.
 #
-# Only one scheduler may have live SMTP enabled at a time: on this UTC+8 host,
-# Windows Task Scheduler (`SyntheticDataWeekly`) runs live with `-Send` at
-# Saturday 08:00 UTC+8 (00:00 UTC), so keep `SMTP_*` secrets unset here while
-# the local task is live (or delete/disable the local task before enabling
-# Actions `SMTP_*` secrets) so recipients do not receive duplicate emails.
+# GitHub Actions is the sole live Saturday scheduler (`SMTP_*` and `LLM_API_KEY`
+# secrets are configured on this repo). The local Windows Task Scheduler job
+# (`SyntheticDataWeekly`) is removed so recipients never receive duplicate emails
+# (do not re-register it with `--send` while Actions `SMTP_*` secrets exist).
 #
 # history.db / score_cache.json / summary_cache.json are NOT committable
 # (git-ignored); they persist between runs through the cache step instead,

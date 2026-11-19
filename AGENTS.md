@@ -184,15 +184,13 @@ Three rules that are easy to break:
   succeeded and landed in Primary Inbox (`From == SMTP_USER`, no PDF attachment, direct
   article links), but long-term production delivery should move to an authenticated
   company-domain sending service (SPF/DKIM/DMARC).
-- **The scheduled task is registered in real-send mode.** `schedule_task.py --register
-  --send` created `SyntheticDataWeekly` for Saturday 08:00, running
-  `scripts/run_weekly.ps1 -Send`. `schedule_task.py --query` confirms
-  `Next Run Time: 11/21/2026 8:00:00 AM`, `Status: Ready`, `Scheduled Task State: Enabled`.
-  Use `python schedule_task.py --query` to check it and `--delete` to remove it.
-  `logs/weekly.log` records `mode: send` plus the exact command line for every run.
-  No Saturday run has happened yet, so Phase 6 is still unverified.
-- The scheduled task is **interactive-only**: it runs as the current user when signed
-  in, with no stored password. It will not fire while the machine is signed out.
+- **Live Saturday delivery runs on GitHub Actions.** `.github/workflows/weekly-report.yml`
+  runs every Saturday at `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`) with `LLM_API_KEY`
+  and `SMTP_*` secrets configured on `badrbajamil1-collab/synthetic-data-weekly`. The
+  local Windows task `SyntheticDataWeekly` was removed (`schedule_task.py --delete`) so
+  only one scheduler sends (and delivery does not depend on this laptop being awake,
+  plugged in, and signed in). No live Saturday run has happened yet, so Phase 6 is still
+  unverified.
 - `progress/phase-0-manual/generators/generate_executive_pdf.py` is a week-one one-off that
   hard-codes the Oct 23–29 content in the script body. It produced
   `progress/phase-0-manual/Synthetic_Data_Weekly_Executive_Report.pdf` (the other Phase 0
@@ -223,7 +221,7 @@ Three rules that are easy to break:
 
 `report.md`, `report.html` and the PDF are checked by `verify_report.py` against the brief:
 subject prefix, section order, footer text, 1–10 picks, tool counts, no duplicate links,
-top-pick dates inside the week, PDF over 40 KB. Do not restyle prose to taste — edit the YAML in
+top-pick dates inside the week, valid PDF (> 4 KB with %PDF- header). Do not restyle prose to taste — edit the YAML in
 `progress/week-<date>/source.yaml` and re-render.
 
 The PDF is the single intentional deviation: glossary first, then the report. Email and

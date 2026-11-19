@@ -241,7 +241,16 @@ print("PDF")
 pdf_label = data.get("week_end") or log.get("week_end") or "unknown"
 pdf = BASE / f"Synthetic_Data_Weekly_{pdf_label}.pdf"
 check("pdf exists", pdf.exists(), str(pdf))
-check("pdf non-trivial size", pdf.exists() and pdf.stat().st_size > 40_000, f"{pdf.stat().st_size if pdf.exists() else 0} bytes")
+pdf_size = pdf.stat().st_size if pdf.exists() else 0
+pdf_header_ok = pdf.exists() and pdf.read_bytes()[:5] == b"%PDF-"
+# Windows embeds ~60 KB of SegoeUI TTF fonts; Linux CI falls back to built-in
+# Helvetica where a full report is ~5-14 KB. Require both a real %PDF- header
+# and > 4 KB so empty/corrupt PDFs fail without breaking Linux runners.
+check(
+    "pdf non-trivial size",
+    pdf_header_ok and pdf_size > 4_000,
+    f"{pdf_size} bytes (header_ok={pdf_header_ok})",
+)
 
 print()
 if failures:

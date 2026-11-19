@@ -1715,6 +1715,40 @@ check("a missing week_end fails cleanly instead of tracing back",
       _missing_date.returncode == 1 and "Traceback" not in _missing_date.stderr,
       (_missing_date.stdout + _missing_date.stderr)[-500:])
 
+_linux_pdf_path = _write_verify_fixture(_fixture_report, _fixture_log)
+(_linux_pdf_path.parent / f"Synthetic_Data_Weekly_{_fixture_report['week_end']}.pdf").write_bytes(
+    b"%PDF-1.4\n" + b"0" * 5_000
+)
+_linux_pdf_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_linux_pdf_path)],
+    capture_output=True,
+    text=True,
+)
+check("verify_report accepts a Linux/Helvetica-sized PDF (> 4 KB with %PDF- header)",
+      _linux_pdf_run.returncode == 0, (_linux_pdf_run.stdout + _linux_pdf_run.stderr)[-500:])
+
+_tiny_pdf_path = _write_verify_fixture(_fixture_report, _fixture_log)
+(_tiny_pdf_path.parent / f"Synthetic_Data_Weekly_{_fixture_report['week_end']}.pdf").write_bytes(
+    b"%PDF-1.4\n" + b"0" * 100
+)
+_tiny_pdf_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_tiny_pdf_path)],
+    capture_output=True,
+    text=True,
+)
+_bad_hdr_path = _write_verify_fixture(_fixture_report, _fixture_log)
+(_bad_hdr_path.parent / f"Synthetic_Data_Weekly_{_fixture_report['week_end']}.pdf").write_bytes(
+    b"NOTPDF" + b"0" * 50_000
+)
+_bad_hdr_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_bad_hdr_path)],
+    capture_output=True,
+    text=True,
+)
+check("verify_report rejects a tiny PDF or a non-PDF file",
+      _tiny_pdf_run.returncode != 0 and _bad_hdr_run.returncode != 0,
+      f"tiny={_tiny_pdf_run.returncode} bad_hdr={_bad_hdr_run.returncode}")
+
 print("report_build writes run_log counts")
 import contextlib as _contextlib
 import io as _io
