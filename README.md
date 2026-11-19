@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-435%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-445%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
@@ -15,9 +15,10 @@ the Well7 team.
 **Two versions live in this repo:**
 
 - **`main`** — the Python agent: collectors → LangGraph pipeline →
-  Markdown/HTML/PDF report → email. The source of truth.
-- **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + React archive/view
-  of the same weekly report, with its own JS pipeline inside the Worker.
+  Markdown/HTML/PDF report → email + Cloudflare archive publish (`publish_to_cloudflare.py`). The single weekly producer.
+- **[`web` branch](../../tree/web)** — a Cloudflare Workers + D1 + R2 + React live archive and
+  Research Studio ([synthetic-data-web.coolbadrtv1.workers.dev](https://synthetic-data-web.coolbadrtv1.workers.dev)),
+  synced directly from `main`'s verified weekly output via `POST /api/reports/publish`.
 
 **Status:** Phases 0–5 are done: SMTP is configured, a real `send_report.py --test`
 send landed in Primary Inbox (matching `From == SMTP_USER`, no PDF attachment, direct

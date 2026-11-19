@@ -41,6 +41,7 @@ Run from the repo root. The venv has the package installed editable
 | Email a rendered report (writes `email.eml`) | `python send_report.py progress/week-<date>/source.yaml --dry-run` |
 | Email the newest report for real | `python send_report.py` |
 | Send one real test email to `DRY_RUN_RECIPIENT` | `python send_report.py --test` |
+| Publish verified week + PDF to Cloudflare web archive | `python publish_to_cloudflare.py` |
 | Verify rendered artefacts (30 checks) | `python verify_report.py` |
 | Run the full weekly pipeline (LangGraph) | `python main.py --pipeline` |
 | Full pipeline, email written not sent | `python main.py --pipeline --dry-run` |

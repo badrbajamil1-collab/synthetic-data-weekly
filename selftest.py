@@ -2778,6 +2778,124 @@ _cfg_s1 = _yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
 check("config.yaml keeps shortlist headroom (max_top_picks >= 10)",
       int(_cfg_s1.get("max_top_picks") or 0) >= 10, str(_cfg_s1.get("max_top_picks")))
 
+# ---------------------------------------------------------------------------
+# Cloudflare web archive publisher (publish_to_cloudflare.py)
+# ---------------------------------------------------------------------------
+print("\n[publish_to_cloudflare]")
+import base64 as _b64
+import json as _pub_json
+import publish_to_cloudflare as _pub
+
+_pub_dir = Path(tempfile.mkdtemp()) / "week-2026-11-20"
+_pub_dir.mkdir(parents=True, exist_ok=True)
+_pub_yaml = _pub_dir / "source.yaml"
+_pub_yaml.write_text(_yaml.safe_dump({
+    "week_start": "2026-11-14",
+    "week_end": "2026-11-20",
+    "trend": "Copula and DP advances.",
+    "top_picks": [
+        {
+            "title": "Copula Synthesis",
+            "url": "https://arxiv.org/abs/2611.22882v1",
+            "source": "arXiv",
+            "published": "2026-11-17",
+            "summary": "Copula models for tabular synthesis.",
+            "score": 9,
+            "well7_fit": 9,
+            "why_it_matters": "Directly relevant to Well7 tabular engine.",
+        },
+        {
+            "title": "Duplicate URL Pick",
+            "url": "https://arxiv.org/abs/2611.22882?utm_source=x",
+            "source": "arXiv",
+            "published": "2026-11-17",
+            "summary": "Should be deduplicated.",
+        },
+    ],
+    "tools": [
+        {
+            "name": "org/dp-tool",
+            "url": "https://github.com/org/dp-tool",
+            "source": "GitHub",
+            "published": "2026-11-15",
+            "note": "DP toolkit.",
+        }
+    ],
+    "worth_a_look": [],
+}), encoding="utf-8")
+(_pub_dir / "run_log.json").write_text(_pub_json.dumps({"run_at": "2026-11-20T05:00:00Z"}), encoding="utf-8")
+(_pub_dir / "Synthetic_Data_Weekly_2026-11-20.pdf").write_bytes(b"%PDF-1.4\nfake-bytes")
+_pub_ranked = _pub_dir.parent / "ranked.json"
+_pub_ranked.write_text(_pub_json.dumps([
+    {"url": "https://github.com/org/dp-tool", "score": 8, "well7_fit": 7, "reason": "Useful DP repo."}
+]), encoding="utf-8")
+
+_payload = _pub.build_payload(_pub_yaml, ranked_path=_pub_ranked, include_pdf=True)
+check("publish build_payload sets id, subject, created_at from run_log",
+      _payload["id"] == "week-2026-11-20"
+      and "14 – 20 Nov 2026" in _payload["subject"]
+      and _payload["created_at"] == "2026-11-20T05:00:00Z",
+      str({k: _payload[k] for k in ("id", "subject", "created_at")}))
+check("publish build_payload deduplicates normalized URLs across items",
+      len(_payload["items"]) == 2, str([i["title"] for i in _payload["items"]]))
+check("publish build_payload enriches missing score/well7_fit/reason from ranked.json",
+      _payload["items"][1]["score"] == 8
+      and _payload["items"][1]["well7_fit"] == 7
+      and _payload["items"][1]["reason"] == "Useful DP repo.",
+      str(_payload["items"][1]))
+check("publish build_payload encodes valid PDF bytes as base64",
+      "pdf_base64" in _payload and _b64.b64decode(_payload["pdf_base64"]).startswith(b"%PDF-"),
+      str("pdf_base64" in _payload))
+
+(_pub_dir / "Synthetic_Data_Weekly_2026-11-20.pdf").write_bytes(b"NOT_A_PDF")
+_payload_bad_pdf = _pub.build_payload(_pub_yaml, ranked_path=_pub_ranked, include_pdf=True)
+check("publish build_payload skips non-PDF file without %PDF- magic header",
+      "pdf_base64" not in _payload_bad_pdf, str(_payload_bad_pdf.keys()))
+
+class _FakeResp:
+    def __init__(self, status_code, body):
+        self.status_code = status_code
+        self._body = body
+        self.text = _pub_json.dumps(body) if isinstance(body, dict) else str(body)
+    def json(self):
+        return self._body
+
+_seen_req = {}
+def _fake_post_ok(endpoint, headers=None, json=None, timeout=None):
+    _seen_req.update({"endpoint": endpoint, "headers": headers, "json": json})
+    return _FakeResp(200, {"ok": True, "reportId": json["id"], "itemsCount": len(json["items"])})
+
+_pub_res = _pub.publish(_payload, base_url="https://example.workers.dev/", token="tok123", post_fn=_fake_post_ok)
+check("publish sends Bearer token to /api/reports/publish and returns JSON",
+      _pub_res.get("ok") is True
+      and _seen_req["endpoint"] == "https://example.workers.dev/api/reports/publish"
+      and _seen_req["headers"]["Authorization"] == "Bearer tok123",
+      str(_seen_req))
+
+_pub_err = None
+try:
+    _pub.publish(_payload, base_url="https://example.workers.dev", token="bad",
+                 post_fn=lambda *a, **kw: _FakeResp(403, {"error": "forbidden"}))
+except RuntimeError as _exc:
+    _pub_err = str(_exc)
+check("publish raises RuntimeError on non-200 response",
+      _pub_err is not None and "HTTP 403" in _pub_err, str(_pub_err))
+
+import contextlib as _ctxlib
+import io as _io
+_orig_load_env = _pub.llm.load_env
+try:
+    _pub.llm.load_env = lambda: {}
+    with _ctxlib.redirect_stdout(_io.StringIO()), _ctxlib.redirect_stderr(_io.StringIO()):
+        _rc_dry = _pub.main([str(_pub_yaml), "--dry-run"])
+        _rc_opt = _pub.main([str(_pub_yaml), "--optional"])
+        _rc_strict = _pub.main([str(_pub_yaml)])
+    check("publish main --dry-run exits 0 without token", _rc_dry == 0, str(_rc_dry))
+    check("publish main --optional exits 0 when token is unset", _rc_opt == 0, str(_rc_opt))
+    check("publish main without --optional exits 1 when token is unset", _rc_strict == 1, str(_rc_strict))
+finally:
+    _pub.llm.load_env = _orig_load_env
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

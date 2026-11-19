@@ -26,6 +26,10 @@ on:
         description: "Send the email. Scheduled runs send once the SMTP_* secrets exist; leave unchecked to force a dry run."
         type: boolean
         default: false
+      publish_web:
+        description: "Publish the verified report + PDF to the Cloudflare web archive (always enabled on schedule or when send_email is checked)."
+        type: boolean
+        default: false
 
 concurrency:
   group: weekly-report
@@ -103,6 +107,13 @@ jobs:
 
       - name: Verify the rendered report
         run: python verify_report.py
+
+      - name: Publish verified report to Cloudflare web archive
+        if: github.event_name == 'schedule' || inputs.publish_web == true || inputs.send_email == true
+        env:
+          CF_PUBLISH_TOKEN: ${{ secrets.CF_PUBLISH_TOKEN }}
+          CF_WORKER_URL: ${{ vars.CF_WORKER_URL }}
+        run: python publish_to_cloudflare.py --optional
 
       - name: Save history and score caches
         if: always()
