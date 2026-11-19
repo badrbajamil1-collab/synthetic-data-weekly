@@ -29,25 +29,45 @@ from xml.sax.saxutils import escape
 
 from synthetic_data.render import format_day, format_source_counts, format_week, subject_line
 
-FONT_DIR = "C:/Windows/Fonts"
-try:
-    pdfmetrics.registerFont(TTFont("SegoeUI", f"{FONT_DIR}/segoeui.ttf"))
-    pdfmetrics.registerFont(TTFont("SegoeUI-Bold", f"{FONT_DIR}/segoeuib.ttf"))
-    pdfmetrics.registerFont(TTFont("SegoeUI-Italic", f"{FONT_DIR}/segoeuii.ttf"))
-    pdfmetrics.registerFont(TTFont("SegoeUI-SemiBold", f"{FONT_DIR}/segoeuisl.ttf"))
-    FONT_REG, FONT_BOLD, FONT_ITALIC, FONT_SEMI = (
-        "SegoeUI",
-        "SegoeUI-Bold",
-        "SegoeUI-Italic",
-        "SegoeUI-SemiBold",
-    )
-except Exception:  # noqa: BLE001 - fall back to built-ins on non-Windows
-    FONT_REG, FONT_BOLD, FONT_ITALIC, FONT_SEMI = (
-        "Helvetica",
-        "Helvetica-Bold",
-        "Helvetica-Oblique",
-        "Helvetica-Bold",
-    )
+_FONT_CANDIDATES = (
+    (
+        ("SegoeUI", "C:/Windows/Fonts/segoeui.ttf"),
+        ("SegoeUI-Bold", "C:/Windows/Fonts/segoeuib.ttf"),
+        ("SegoeUI-Italic", "C:/Windows/Fonts/segoeuii.ttf"),
+        ("SegoeUI-SemiBold", "C:/Windows/Fonts/segoeuisl.ttf"),
+    ),
+    (
+        ("DejaVuSans", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        ("DejaVuSans-Bold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("DejaVuSans-Italic", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf"),
+        ("DejaVuSans-Bold", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ),
+    (
+        ("LiberationSans", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+        ("LiberationSans-Bold", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+        ("LiberationSans-Italic", "/usr/share/fonts/truetype/liberation/LiberationSans-Italic.ttf"),
+        ("LiberationSans-Bold", "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"),
+    ),
+)
+
+
+def _register_fonts() -> tuple[str, str, str, str]:
+    """Load Unicode TTF fonts (Windows SegoeUI, Linux DejaVu/Liberation) or Helvetica."""
+    for family in _FONT_CANDIDATES:
+        try:
+            seen = set()
+            for font_name, font_path in family:
+                if font_name in seen:
+                    continue
+                pdfmetrics.registerFont(TTFont(font_name, font_path))
+                seen.add(font_name)
+            return family[0][0], family[1][0], family[2][0], family[3][0]
+        except Exception:  # noqa: BLE001 - try next platform font set
+            continue
+    return "Helvetica", "Helvetica-Bold", "Helvetica-Oblique", "Helvetica-Bold"
+
+
+FONT_REG, FONT_BOLD, FONT_ITALIC, FONT_SEMI = _register_fonts()
 
 NAVY = colors.HexColor("#0A2540")
 COBALT = colors.HexColor("#1D4ED8")
@@ -114,40 +134,40 @@ STYLE = {
 
 GLOSSARY = [
     (
-        "Drift metric",
-        "A measured distance between synthetic and real data. Higher drift predicts a worse "
-        "drop in accuracy when a model trained on synthetic data meets real records.",
-    ),
-    (
-        "Jensen–Shannon divergence",
-        "A symmetric measure of how different two probability distributions are. Zero means "
-        "identical; the study this week found it the best single predictor of transfer loss.",
-    ),
-    (
-        "Verified self-training",
-        "Generate synthetic data, filter it with a verifier score, retrain on what survives. "
-        "Repeating this on a model's own output is what causes model collapse.",
-    ),
-    (
-        "Visit sequence",
-        "In sequential synthesis, the order in which variables are generated. Each variable is "
-        "conditioned on the ones before it, so the order changes the quality of the result.",
-    ),
-    (
-        "Fully conditional specification",
-        "The alternative to sequential synthesis: generate each variable from all the others "
-        "rather than from a fixed order. More flexible, more hyperparameters, more compute.",
-    ),
-    (
-        "Differentially private synthetic data",
+        "Differentially private synthetic data (ε-DP)",
         "Synthetic records produced with a mathematical guarantee that no individual in the "
-        "source data can be identified from the output. The privacy budget ε sets the "
-        "trade-off: a lower ε means stronger privacy but usually lower analytical utility.",
+        "source dataset can be identified from the output. The privacy budget ε sets the "
+        "trade-off: a lower ε gives stronger privacy at the cost of analytical utility.",
+    ),
+    (
+        "DP-SGD",
+        "Differentially private stochastic gradient descent: clips per-example gradients and "
+        "adds calibrated noise during neural-network training to bound individual data leakage.",
+    ),
+    (
+        "Tabular synthesis (CTGAN / TVAE / Copula)",
+        "Generative models built for mixed continuous and categorical tables, capturing "
+        "marginal distributions and inter-column correlations without exposing source rows.",
+    ),
+    (
+        "Membership inference attack (MIA)",
+        "A privacy audit that tests whether an attacker can determine if a specific real "
+        "record was present in a generator's training set.",
+    ),
+    (
+        "Distribution drift",
+        "Measured divergence (such as Jensen–Shannon or Wasserstein distance) between "
+        "synthetic and real data distributions; higher drift predicts weaker downstream transfer.",
+    ),
+    (
+        "Federated synthesis",
+        "Training synthetic-data generators across multiple decentralized organizations "
+        "without pooling raw sensitive tables into one location.",
     ),
     (
         "Synthetic control arm",
-        "A simulated control group for a clinical trial, generated from prior trials and "
-        "real-world data instead of recruiting and randomising real patients.",
+        "A simulated comparator group for clinical or policy evaluations, generated from "
+        "historical trials and real-world records instead of recruiting additional subjects.",
     ),
 ]
 
@@ -208,7 +228,7 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
     story.append(HRFlowable(width="100%", thickness=1.6, color=NAVY, spaceBefore=2, spaceAfter=2))
 
     # --- glossary first (reader onboarding) ---
-    story += _section("Glossary of terms used this week")
+    story += _section("Glossary of key terms")
     rows = []
     for term, definition in GLOSSARY:
         rows.append(

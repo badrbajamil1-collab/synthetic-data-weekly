@@ -2605,6 +2605,179 @@ finally:
     _col.time.sleep = _orig_ra_sleep
     _col.httpx.get = _orig_ra_get
 
+print("Stage 1 polish regressions")
+# 1. graph.rank_node score_cache.json integration
+_sc_dir = Path(tempfile.mkdtemp())
+_sc_file = _sc_dir / "score_cache.json"
+_orig_sc_path = _graph._SCORE_CACHE_PATH
+_sc_calls = []
+
+
+def _sc_fake_chat(messages):
+    prompt = messages[0]["content"]
+    _sc_calls.append(prompt)
+    editor = "final editor calibrating" in prompt
+    body = prompt.split("BEGIN ITEMS\n", 1)[-1].split("\nEND ITEMS", 1)[0]
+    lines = [line for line in body.splitlines() if line.strip()]
+    rows = []
+    for i, line in enumerate(lines):
+        if "fail-item" in line:
+            continue
+        rows.append({
+            "id": i,
+            "score": 8,
+            "well7_fit": 9 if editor else 8,
+            "reason": "relevant synthetic tabular method",
+        })
+    return _json.dumps({"scores": rows})
+
+
+try:
+    _graph.configure(
+        settings={
+            "ranking": {
+                "model": "test/cache-model",
+                "cache": True,
+                "prefilter": True,
+                "editor_pass_size": 20,
+                "batch_size": 15,
+                "concurrency": 1,
+                "min_scored_to_proceed": 1,
+                "duplicate_similarity": 0.80,
+            },
+            "keywords": ["synthetic data", "tabular"],
+        },
+        chat_fn=_sc_fake_chat,
+        score_cache_path=str(_sc_file),
+    )
+    _sc_items = [
+        _item("Tabular Synthetic Data With Differential Privacy", "https://arxiv.org/abs/2611.77001",
+              published="2026-11-16T00:00:00Z", source="arxiv"),
+        _item("Tabular Synthetic Data With Differential Privacy - News Copy", "https://news.example/dup-copy",
+              published="2026-11-16T01:00:00Z", source="news"),
+        _item("Unrelated 3D rendering news", "https://blog.example/noise",
+              published="2026-11-16T02:00:00Z", source="blog"),
+    ]
+    _sc_run1 = _graph.rank_node({"errors": [], "deduped_items": _sc_items, "run_date": "2026-11-19"}, None)
+    _sc_calls_run1 = len(_sc_calls)
+    check("rank_node populates score_cache.json on first run",
+          _sc_calls_run1 >= 2 and _sc_file.exists(), f"calls={_sc_calls_run1}")
+
+    _sc_calls.clear()
+    _sc_run2 = _graph.rank_node({"errors": [], "deduped_items": _sc_items, "run_date": "2026-11-19"}, None)
+    check("rank_node makes 0 model calls on fully cached rerun and matches output",
+          len(_sc_calls) == 0 and _sc_run2["ranked_items"] == _sc_run1["ranked_items"],
+          f"calls={len(_sc_calls)}")
+
+    _sc_saved = _json.loads(_sc_file.read_text(encoding="utf-8"))
+    import rank_items as _ri
+    _dup_key = _ri.cache_key(_sc_items[1], "test/cache-model")
+    _noise_key = _ri.cache_key(_sc_items[2], "test/cache-model")
+    _dup_row_run2 = next(r for r in _sc_run2["ranked_items"] if r["url"] == "https://news.example/dup-copy")
+    check("rank_node caches pre-demotion duplicate score and never caches prefiltered rows",
+          _sc_saved["scores"].get(_dup_key, {}).get("score") == 8
+          and _dup_row_run2["score"] == 5
+          and _noise_key not in _sc_saved["scores"],
+          f"saved={_sc_saved['scores'].get(_dup_key)} run2_dup={_dup_row_run2.get('score')}")
+
+    # Unscored failure is never cached
+    _sc_fail_file = _sc_dir / "score_cache_fail.json"
+    _graph.configure(
+        settings={
+            "ranking": {
+                "model": "test/cache-model",
+                "cache": True,
+                "prefilter": False,
+                "editor_pass_size": 0,
+                "batch_size": 15,
+                "concurrency": 1,
+                "min_scored_to_proceed": 1,
+            },
+        },
+        chat_fn=_sc_fake_chat,
+        score_cache_path=str(_sc_fail_file),
+    )
+    _sc_mixed = [
+        _item("Tabular Synthetic Data paper", "https://arxiv.org/abs/2611.77002", published="2026-11-16T00:00:00Z"),
+        _item("fail-item synthetic paper", "https://arxiv.org/abs/2611.77003", published="2026-11-16T00:00:00Z"),
+    ]
+    _graph.rank_node({"errors": [], "deduped_items": _sc_mixed, "run_date": "2026-11-19"}, None)
+    _sc_fail_saved = _json.loads(_sc_fail_file.read_text(encoding="utf-8"))
+    check("rank_node never caches unscored items",
+          _ri.cache_key(_sc_mixed[0], "test/cache-model") in _sc_fail_saved["scores"]
+          and _ri.cache_key(_sc_mixed[1], "test/cache-model") not in _sc_fail_saved["scores"],
+          str(_sc_fail_saved["scores"].keys()))
+
+    # Omitting `cache` defaults to disabled (no disk I/O)
+    _sc_off_file = _sc_dir / "score_cache_off.json"
+    _graph.configure(
+        settings={"ranking": {"model": "test/cache-model", "prefilter": False, "editor_pass_size": 0}},
+        chat_fn=_sc_fake_chat,
+        score_cache_path=str(_sc_off_file),
+    )
+    _graph.rank_node({"errors": [], "deduped_items": [_sc_mixed[0]], "run_date": "2026-11-19"}, None)
+    check("rank_node skips score_cache.json when ranking.cache is omitted",
+          not _sc_off_file.exists(), str(_sc_off_file.exists()))
+finally:
+    _graph.configure(score_cache_path=_orig_sc_path)
+
+# 2. render_pdf timeless glossary + Linux Unicode TTF candidates
+from synthetic_data import render_pdf as _rpdf
+_gloss_text = " ".join(f"{t} {d}" for t, d in _rpdf.GLOSSARY)
+check("PDF glossary has no stale week-1 wording and covers Well7 terms",
+      "the study this week" not in _gloss_text.lower()
+      and "DP-SGD" in _gloss_text
+      and "Federated synthesis" in _gloss_text,
+      _gloss_text[:120])
+_cand_paths = [p for fam in _rpdf._FONT_CANDIDATES for _, p in fam]
+check("render_pdf includes Linux Unicode TTF font candidates before Helvetica",
+      any("DejaVuSans.ttf" in p for p in _cand_paths)
+      and any("LiberationSans-Regular.ttf" in p for p in _cand_paths),
+      str(_cand_paths))
+_rpdf_out = _sc_dir / "stage1-glossary.pdf"
+_rpdf.render_pdf(_mail_report, str(_rpdf_out))
+check("render_pdf builds a valid PDF with the updated glossary",
+      _rpdf_out.exists() and _rpdf_out.stat().st_size > 4_000 and _rpdf_out.read_bytes()[:5] == b"%PDF-",
+      f"{_rpdf_out.stat().st_size if _rpdf_out.exists() else 0} bytes")
+
+# 3. emailer optional Reply-To header
+_rt_dir = Path(tempfile.mkdtemp())
+(_rt_dir / "report.md").write_text(_render.render_markdown(_mail_report), encoding="utf-8")
+(_rt_dir / "report.html").write_text(_render.render_html(_mail_report), encoding="utf-8")
+(_rt_dir / "source.yaml").write_text(_yaml.safe_dump(_mail_report), encoding="utf-8")
+(_rt_dir / "config.yaml").write_text("recipients:\n  - a@example.com\n", encoding="utf-8")
+_rt_msg_with = _mail.compose(
+    _mail_report, _rt_dir, recipients=["a@example.com"], sender="s@example.com", reply_to="feedback@well7.ai"
+)
+_rt_msg_without = _mail.compose(
+    _mail_report, _rt_dir, recipients=["a@example.com"], sender="s@example.com"
+)
+check("emailer.compose sets Reply-To when provided",
+      _rt_msg_with["Reply-To"] == "feedback@well7.ai", str(_rt_msg_with["Reply-To"]))
+check("emailer.compose omits Reply-To when unset",
+      _rt_msg_without["Reply-To"] is None, str(_rt_msg_without["Reply-To"]))
+_rt_sum = _mail.deliver(
+    str(_rt_dir / "source.yaml"),
+    str(_rt_dir / "config.yaml"),
+    dry_run=True,
+    env={"MAIL_FROM": "Weekly <w@example.com>", "REPLY_TO": "owner@well7.ai"},
+)
+check("emailer.deliver propagates REPLY_TO from env into email.eml",
+      "Reply-To: owner@well7.ai" in Path(_rt_sum["path"]).read_text(encoding="utf-8"),
+      str(_rt_sum))
+
+# 4. summarise anti-parroting prompt + config shortlist headroom
+_anti_parrot_prompt = _sum.build_prompt(
+    {"title": "T", "source": "github", "published": "2026-11-16", "text": "A DP tabular tool."},
+    one_line=True,
+)
+check("summarise prompt tells model not to repeat or paraphrase summary in why_it_matters",
+      "do not repeat or paraphrase" in _anti_parrot_prompt.lower(),
+      _anti_parrot_prompt[:200])
+_cfg_s1 = _yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
+check("config.yaml keeps shortlist headroom (max_top_picks >= 10)",
+      int(_cfg_s1.get("max_top_picks") or 0) >= 10, str(_cfg_s1.get("max_top_picks")))
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

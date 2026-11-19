@@ -29,7 +29,7 @@ from urllib.parse import urlparse
 from synthetic_data.rank import _first_json_value, _strip_fences, sort_ranked
 from synthetic_data.week import in_week, week_bounds
 
-SUMMARY_VERSION = "2026-11-13.1"
+SUMMARY_VERSION = "2026-11-19.1"
 
 MIN_PICKS = 1
 MAX_PICKS = 10
@@ -221,7 +221,7 @@ Rules:
   from the title.
 - Start with the substance, not "This article" or "This paper".
 - "summary" states what the item is and what it does or finds.
-- "why_it_matters" is one short line (at most 18 words) on why it matters to someone working on synthetic data, using only facts in the TEXT.
+- "why_it_matters" is one short line (at most 18 words) stating the distinct practical implication for Well7 (a privacy-first tabular and time-series synthetic data team) using only facts in the TEXT. Do NOT repeat or paraphrase the "summary".
 - Plain prose. No bullets, no marketing adjectives, no hype words. Never use
   "breakthrough", "dramatically", "revolutionary", "game-changing", "unprecedented"
   or "groundbreaking".

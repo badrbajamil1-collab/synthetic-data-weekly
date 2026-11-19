@@ -1,6 +1,6 @@
 schedule: "Saturday 08:00"  # read by schedule_task.py (Windows Task Scheduler)
 lookback_days: 7
-max_top_picks: 7
+max_top_picks: 10  # fetch headroom for 5 picks + 1 tool + 1 worth-a-look after link/floor drops
 
 # Phase 2 — ranking. The model is scored 1-10 for relevance and 1-10 for Well7
 # fit; `max_top_picks` above is the shortlist size, so there is only one owner

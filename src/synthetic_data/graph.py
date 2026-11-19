@@ -27,6 +27,7 @@ from typing import Any, Callable, Dict, List, Optional
 from langgraph.graph import END, START, StateGraph
 
 import fetch_candidates
+import rank_items
 from synthetic_data import emailer, llm, rank, runner, summarise
 from synthetic_data.models import AgentState, Item
 from synthetic_data.rank import sort_ranked
@@ -51,6 +52,7 @@ _SETTINGS: Dict[str, Any] = {}
 _CHAT_FN: Optional[Callable[[List[dict]], str]] = None
 _CONFIG_PATH = "config.yaml"
 _CACHE_PATH = "summary_cache.json"
+_SCORE_CACHE_PATH = "score_cache.json"
 _DELIVERY: Dict[str, bool] = {"enabled": True, "dry_run": False}
 
 
@@ -69,14 +71,16 @@ def configure(
     chat_fn: Optional[Callable[[List[dict]], str]] = None,
     config_path: Optional[str] = None,
     delivery: Optional[Dict[str, bool]] = None,
+    score_cache_path: Optional[str] = None,
 ) -> None:
     """Set the config + chat function a weekly run should use.
 
     ``chat_fn`` exists so offline tests can inject a fake model and the real
     run can bind the configured OpenRouter client. ``delivery`` controls the
     send node: disabled for ``--no-email``, dry-run for ``--dry-run``.
+    ``score_cache_path`` overrides the ranking score cache file for test isolation.
     """
-    global _SETTINGS, _CHAT_FN, _CONFIG_PATH, _DELIVERY
+    global _SETTINGS, _CHAT_FN, _CONFIG_PATH, _DELIVERY, _SCORE_CACHE_PATH
     if settings is not None:
         _SETTINGS = settings
     if chat_fn is not None:
@@ -85,6 +89,8 @@ def configure(
         _CONFIG_PATH = config_path
     if delivery is not None:
         _DELIVERY = {**_DELIVERY, **delivery}
+    if score_cache_path is not None:
+        _SCORE_CACHE_PATH = str(score_cache_path)
 
 
 def _chat_for(section: str) -> Callable[[List[dict]], str]:
@@ -233,51 +239,140 @@ def rank_node(state: AgentState, config) -> AgentState:
         return {**state, "ranked_items": [], "errors": [*errors, "rank: no items to score"]}
     try:
         ranking = _SETTINGS.get("ranking") or {}
-        chat_fn = _chat_for("ranking")
+        model_name = str(ranking.get("model") or MODEL)
+        # Default False when omitted so minimal unit-test configs never read or
+        # write the repo's score_cache.json; config.yaml sets `cache: true`.
+        use_cache = bool(ranking.get("cache", False))
+        editor_size = _as_int(ranking.get("editor_pass_size"), 20)
 
-        prefiltered: Dict[int, dict] = {}
-        to_score: List[tuple] = []
+        skip = set()
         if ranking.get("prefilter", False):
             skip = rank.prefilter_indices(items, _SETTINGS.get("keywords") or [])
-            for index, item in enumerate(items):
-                if index in skip:
-                    row = dict(item)
-                    row.update({
-                        "score": 1,
-                        "well7_fit": 1,
-                        "reason": "prefiltered: no keyword match",
-                        "score_status": "prefiltered",
-                        "duplicate_of": None,
-                        "scored_by": "weekly-graph",
-                    })
-                    prefiltered[index] = row
-                else:
-                    to_score.append((index, item))
+
+        if use_cache:
+            scores_cache, editor_applied, cached_editor_size = rank_items.load_cache(
+                _SCORE_CACHE_PATH, model_name
+            )
         else:
-            to_score = list(enumerate(items))
+            scores_cache, editor_applied, cached_editor_size = {}, False, 0
 
-        scored = rank.score_items(
-            [item for _index, item in to_score],
-            chat_fn=chat_fn,
-            batch_size=_as_int(ranking.get("batch_size"), 15),
-            concurrency=_as_int(ranking.get("concurrency"), 3),
-            scored_by="weekly-graph",
-            fallback=True,
-        )
-        by_index = {index: row for (index, _item), row in zip(to_score, scored)}
-        rows = [prefiltered.get(i) or by_index[i] for i in range(len(items))]
+        keys = [rank_items.cache_key(item, model_name) for item in items]
+        key_counts: Dict[str, int] = {}
+        for key in keys:
+            key_counts[key] = key_counts.get(key, 0) + 1
+        shared = {key for key, count in key_counts.items() if count > 1}
 
-        rows = rank.rerank_top(
-            rows, chat_fn, top_n=_as_int(ranking.get("editor_pass_size"), 20)
+        cached: Dict[int, dict] = {}
+        for index, key in enumerate(keys):
+            if index in skip or key in shared:
+                continue
+            if key in scores_cache:
+                cached[index] = scores_cache[key]
+        pending = [i for i in range(len(items)) if i not in cached and i not in skip]
+
+        run_editor = (
+            (not use_cache)
+            or bool(pending)
+            or (not editor_applied)
+            or (cached_editor_size != editor_size)
         )
-        rows = rank.diversify_well7_fit(rows)
+        chat_fn = None
+        if pending or (editor_size > 0 and run_editor and len(skip) < len(items)):
+            chat_fn = _chat_for("ranking")
+
+        fresh_rows: List[dict] = []
+        if pending:
+            fresh_rows = rank.score_items(
+                [items[i] for i in pending],
+                chat_fn=chat_fn,
+                batch_size=_as_int(ranking.get("batch_size"), 15),
+                concurrency=_as_int(ranking.get("concurrency"), 3),
+                scored_by="weekly-graph",
+                fallback=True,
+            )
+        fresh_by_index = {pending[i]: fresh_rows[i] for i in range(len(pending))}
+
+        raw_rows: List[dict] = []
+        for index, item in enumerate(items):
+            if index in skip:
+                row = dict(item)
+                row.update({
+                    "score": 1,
+                    "well7_fit": 1,
+                    "reason": "prefiltered: no keyword match",
+                    "score_status": "prefiltered",
+                    "duplicate_of": None,
+                    "scored_by": "weekly-graph",
+                })
+                raw_rows.append(row)
+            elif index in cached:
+                entry = cached[index]
+                row = dict(item)
+                row.update({
+                    "score": int(entry.get("score") or 0),
+                    "well7_fit": entry.get("well7_fit"),
+                    "reason": entry.get("reason") or "",
+                    "score_status": entry.get("score_status") or "scored",
+                    "duplicate_of": None,
+                    "scored_by": "weekly-graph",
+                })
+                if entry.get("editor_pass"):
+                    row["editor_pass"] = True
+                raw_rows.append(row)
+            else:
+                raw_rows.append(fresh_by_index[index])
+
+        editable = [row for index, row in enumerate(raw_rows) if index not in skip]
+        if editor_size <= 0:
+            editor_done = True
+        elif run_editor and editable:
+            targets = rank.editor_target_indices(editable, editor_size)
+            if targets:
+                edited = rank.rerank_top(editable, chat_fn, top_n=editor_size)
+                editor_done = all(
+                    edited[index].get("editor_pass") for index in targets
+                )
+                editable = edited
+            else:
+                editor_done = False
+        else:
+            editor_done = editor_applied and cached_editor_size == editor_size
+
+        editable = rank.diversify_well7_fit(editable)
+
+        final_rows: List[dict] = []
+        editable_iter = iter(editable)
+        for index, row in enumerate(raw_rows):
+            final_rows.append(row if index in skip else next(editable_iter))
+
+        # Cache AFTER editor pass and BEFORE duplicate grouping so a demoted
+        # duplicate score, an unscored failure, or a prefiltered item is never
+        # frozen into score_cache.json.
+        if use_cache:
+            new_cache = dict(scores_cache)
+            for index, key in enumerate(keys):
+                if index in skip or key in shared:
+                    continue
+                row = final_rows[index]
+                if (row.get("score_status") or "unscored") != "scored":
+                    continue
+                new_cache[key] = {
+                    "score": row.get("score", 0),
+                    "well7_fit": row.get("well7_fit"),
+                    "reason": row.get("reason", ""),
+                    "score_status": row.get("score_status", "unscored"),
+                    "editor_pass": bool(row.get("editor_pass")),
+                }
+            rank_items.save_cache(
+                _SCORE_CACHE_PATH, model_name, new_cache, editor_done, editor_size
+            )
 
         # Same story, different titles: collapse HN/Reddit posts onto the
         # paper/repo they link to, then impose the one total order the CLI
         # path also uses. Without this, `fetch_node`'s `not duplicate_of`
         # filter is a no-op and duplicates reach the report.
         rows = rank.group_duplicates(
-            rows, threshold=float(ranking.get("duplicate_similarity", 0.80))
+            final_rows, threshold=float(ranking.get("duplicate_similarity", 0.80))
         )
         rows = rank.sort_ranked(rows)
 

@@ -161,6 +161,7 @@ def compose(
     *,
     recipients: Sequence[str],
     sender: str,
+    reply_to: str = "",
     attach_pdf: bool = False,
 ) -> EmailMessage:
     """Build the multipart message from the rendered files in ``out_dir``."""
@@ -178,6 +179,9 @@ def compose(
     message["Subject"] = render.subject_line(report)
     message["From"] = sender or DEFAULT_SENDER
     message["To"] = ", ".join(recipients)
+    clean_reply_to = (reply_to or "").strip()
+    if clean_reply_to:
+        message["Reply-To"] = clean_reply_to
     message["Date"] = formatdate(localtime=True)
     message["Message-ID"] = make_msgid()
     message["Auto-Submitted"] = "auto-generated"
@@ -295,12 +299,14 @@ def deliver(
         env.get("SMTP_USER") or "",
         env.get("SMTP_HOST") or "",
     )
+    reply_to = (env.get("REPLY_TO") or "").strip()
 
     message = compose(
         report,
         out_dir,
         recipients=recipients,
         sender=sender,
+        reply_to=reply_to,
         attach_pdf=attach_pdf,
     )
     summary = {
