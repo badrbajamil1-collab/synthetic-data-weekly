@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { sanitizeCollectOptions, ALL_SOURCE_FAMILIES } from '../worker/pipeline/sources.ts'
+import { sanitizeCollectOptions, ALL_SOURCE_FAMILIES, buildArxivQuery } from '../worker/pipeline/sources.ts'
 import { selectShortlist } from '../worker/pipeline/summarise.ts'
 import type { Scored } from '../worker/pipeline/rank.ts'
 
@@ -44,4 +44,11 @@ test('selectShortlist: caps query mode at 8 (4 top, 2 tool, 2 worth) and weekly 
   const weeklyPlan = selectShortlist(items, 'weekly')
   assert.equal(weeklyPlan.filter((p) => p.section === 'top').length, 6)
   assert.equal(weeklyPlan.length <= 16, true)
+})
+
+test('buildArxivQuery: quotes multi-word custom queries so all: applies to the full phrase', () => {
+  assert.equal(buildArxivQuery(''), 'all:"synthetic data"')
+  assert.equal(buildArxivQuery('copula'), 'all:"synthetic data" AND all:copula')
+  assert.equal(buildArxivQuery('differential privacy'), 'all:"synthetic data" AND all:"differential privacy"')
+  assert.equal(buildArxivQuery('  "tabular diffusion"  '), 'all:"synthetic data" AND all:"tabular diffusion"')
 })

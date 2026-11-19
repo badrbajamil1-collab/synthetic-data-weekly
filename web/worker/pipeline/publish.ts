@@ -59,7 +59,7 @@ export async function publishItemId(url: string): Promise<string> {
 }
 
 export function parsePublishPayload(body: unknown): { ok: true; data: PublishPayload } | { ok: false; error: string } {
-  if (!body || typeof body !== 'object') {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return { ok: false, error: 'expected a JSON object' }
   }
   const obj = body as Record<string, unknown>
@@ -83,6 +83,7 @@ export function parsePublishPayload(body: unknown): { ok: true; data: PublishPay
   }
 
   const positions: Record<PublishSection, number> = { top: 0, tool: 0, worth: 0 }
+  const seenUrls = new Set<string>()
   const items: PublishItemInput[] = []
   for (const rawItem of obj.items) {
     if (!rawItem || typeof rawItem !== 'object') {
@@ -98,6 +99,9 @@ export function parsePublishPayload(body: unknown): { ok: true; data: PublishPay
     if (!VALID_SECTIONS.has(section)) {
       return { ok: false, error: `invalid section: ${section || '(empty)'}` }
     }
+    const normalizedUrl = normalizeUrl(url)
+    if (seenUrls.has(normalizedUrl)) continue
+    seenUrls.add(normalizedUrl)
     const typedSection = section as PublishSection
     positions[typedSection] += 1
     const rawPos = typeof row.position === 'number' && Number.isInteger(row.position) && row.position > 0
@@ -111,7 +115,7 @@ export function parsePublishPayload(body: unknown): { ok: true; data: PublishPay
 
     items.push({
       title,
-      url: normalizeUrl(url),
+      url: normalizedUrl,
       source: asTrimmedString(row.source, 120) || 'web',
       published: published.includes('T') ? published : `${published}T00:00:00Z`,
       score,
@@ -225,6 +229,19 @@ export async function publishReportToStorage(
     )
   }
   await db.batch(statements)
+
+  try {
+    const now = new Date().toISOString()
+    await db
+      .prepare(
+        `INSERT INTO pipeline_runs (id, trigger, scheduled_for, started_at, finished_at, status, error)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(crypto.randomUUID(), 'python-sync', payload.week_end, now, now, 'succeeded', null)
+      .run()
+  } catch {
+    // Audit row is best-effort; never fail a completed publish.
+  }
 
   return {
     reportId: payload.id,

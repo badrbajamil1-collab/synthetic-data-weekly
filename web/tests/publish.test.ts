@@ -54,6 +54,24 @@ test('parsePublishPayload: rejects bad week_end, empty items, bad section, and n
     pdf_base64: encodePdf('NOT_A_PDF_FILE'),
   })
   assert.equal(badPdf.ok, false)
+
+  const arrayBody = parsePublishPayload([])
+  assert.equal(arrayBody.ok, false)
+})
+
+test('parsePublishPayload: deduplicates items sharing a normalized URL', () => {
+  const res = parsePublishPayload({
+    week_end: '2026-11-20',
+    subject: 'Synthetic Data Weekly — Week of 14 – 20 Nov 2026',
+    items: [
+      { title: 'First', url: 'https://arxiv.org/abs/2611.22882v1', section: 'top' },
+      { title: 'Duplicate', url: 'https://arxiv.org/abs/2611.22882v2?utm_source=x', section: 'worth' },
+    ],
+  })
+  assert.equal(res.ok, true)
+  if (!res.ok) return
+  assert.equal(res.data.items.length, 1)
+  assert.equal(res.data.items[0].title, 'First')
 })
 
 test('publishReportToStorage: writes PDF to R2 and upserts report + items + deletes stale items in D1', async () => {

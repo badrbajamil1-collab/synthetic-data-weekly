@@ -67,7 +67,7 @@ export interface GraphDeps {
     options?: CollectOptions,
   ) => Promise<{ items: RawItem[]; sources: SourceResult[]; stats: SourceStat[] }>
   rankItems: (items: RawItem[], env: LlmEnv, query?: string) => Promise<RankStats>
-  fetchShortlistTexts: (items: RawItem[]) => Promise<Record<string, FetchedText>>
+  fetchShortlistTexts: (items: RawItem[], githubToken?: string) => Promise<Record<string, FetchedText>>
   buildSections: (
     ranked: Scored[],
     env: LlmEnv,
@@ -128,6 +128,10 @@ export const ResearchAnnotation = Annotation.Root({
   scoredItems: Annotation<Scored[]>({
     reducer: (_prev, next) => next,
     default: () => [],
+  }),
+  rankBatches: Annotation<{ failedBatches: number; totalBatches: number }>({
+    reducer: (_prev, next) => next,
+    default: () => ({ failedBatches: 0, totalBatches: 0 }),
   }),
   fetchedTexts: Annotation<Record<string, FetchedText>>({
     reducer: (_prev, next) => next,
@@ -324,12 +328,19 @@ export function buildResearchGraph(
       )
       return {
         scoredItems: sorted,
+        rankBatches: {
+          failedBatches: ranked.failedBatches,
+          totalBatches: ranked.totalBatches,
+        },
         warnings,
       }
     })
     .addNode('fetch', async (state: ResearchGraphState) => {
       const plan = selectShortlist(state.scoredItems, state.mode)
-      const fetchedTexts = await deps.fetchShortlistTexts(plan.map((p) => p.item))
+      const fetchedTexts = await deps.fetchShortlistTexts(
+        plan.map((p) => p.item),
+        env.GITHUB_TOKEN,
+      )
       return { fetchedTexts }
     })
     .addNode('summarise', async (state: ResearchGraphState) => {
@@ -363,8 +374,8 @@ export function buildResearchGraph(
       }
       const health = rankingHealth({
         scored: state.scoredItems,
-        failedBatches: 0,
-        totalBatches: Math.max(1, Math.ceil(state.scoredItems.length / 15)),
+        failedBatches: state.rankBatches.failedBatches,
+        totalBatches: state.rankBatches.totalBatches || Math.max(1, Math.ceil(state.scoredItems.length / 15)),
       })
       if (!health.publishable) {
         throw new Error(`ranking degraded: ${health.reason}; refusing to publish (previous week left intact)`)
@@ -506,6 +517,7 @@ export async function executeResearchGraph(
     cleanItems: [],
     cleanStats: { raw: 0, fresh: 0, duplicatesRemoved: 0, alreadyPublished: 0 },
     scoredItems: [],
+    rankBatches: { failedBatches: 0, totalBatches: 0 },
     fetchedTexts: {},
     sections: [],
     trend: '',

@@ -175,11 +175,15 @@ async function feed(
   }
 }
 
+export function buildArxivQuery(customQuery = ''): string {
+  const cleaned = customQuery.replace(/"/g, '').trim()
+  if (!cleaned) return 'all:"synthetic data"'
+  const term = /\s/.test(cleaned) ? `all:"${cleaned}"` : `all:${cleaned}`
+  return `all:"synthetic data" AND ${term}`
+}
+
 async function arxiv(since: Date, customQuery = ''): Promise<SourceResult> {
-  const terms = customQuery
-    ? `all:"synthetic data" AND all:${customQuery}`
-    : 'all:"synthetic data"'
-  const query = encodeURIComponent(terms)
+  const query = encodeURIComponent(buildArxivQuery(customQuery))
   const url = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&max_results=25`
   // arXiv routinely takes 15-25s; a 10s timeout aborts healthy queries.
   return feed('arXiv', 'arxiv', url, false, since, customQuery, 30000)

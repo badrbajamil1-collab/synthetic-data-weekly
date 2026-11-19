@@ -33,49 +33,59 @@ export function extractive(text: string): string {
 
 const GITHUB_REPO_RE = /^https?:\/\/github\.com\/([^/\s]+)\/([^/?#\s]+)\/?$/i
 
-export async function fetchArticleText(url: string): Promise<string> {
+export async function fetchArticleText(url: string, githubToken?: string): Promise<string> {
   const ghMatch = GITHUB_REPO_RE.exec(url)
   if (ghMatch) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
     try {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 8000)
+      const headers: Record<string, string> = {
+        'User-Agent': 'synthetic-data-weekly/1.0',
+        Accept: 'application/vnd.github.raw',
+      }
+      if (githubToken) headers.Authorization = `Bearer ${githubToken}`
       const response = await fetch(`https://api.github.com/repos/${ghMatch[1]}/${ghMatch[2]}/readme`, {
         signal: controller.signal,
-        headers: { 'User-Agent': 'synthetic-data-weekly/1.0', Accept: 'application/vnd.github.raw' },
+        headers,
         redirect: 'follow',
       })
-      clearTimeout(timer)
       if (response.ok) {
         const readme = (await response.text()).trim()
         if (readme.length > 0) return readme.slice(0, 6000)
       }
     } catch {
       // Fall through to HTML fetch below.
+    } finally {
+      clearTimeout(timer)
     }
   }
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
   try {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 8000)
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': 'synthetic-data-weekly/1.0', Accept: 'text/html,text/plain' },
       redirect: 'follow',
     })
-    clearTimeout(timer)
     if (!response.ok) return ''
     const type = response.headers.get('content-type') ?? ''
     if (!type.includes('text')) return ''
     return stripHtml(await response.text()).slice(0, 6000)
   } catch {
     return ''
+  } finally {
+    clearTimeout(timer)
   }
 }
 
-export async function fetchShortlistTexts(items: RawItem[]): Promise<Record<string, FetchedText>> {
+export async function fetchShortlistTexts(
+  items: RawItem[],
+  githubToken?: string,
+): Promise<Record<string, FetchedText>> {
   const entries = await Promise.all(
     items.map(async (item) => {
       const key = normalizeUrl(item.url)
-      const fullText = await fetchArticleText(item.url)
+      const fullText = await fetchArticleText(item.url, githubToken)
       const origin: FetchedText['origin'] = fullText.length > 200 ? 'full text' : 'snippet only'
       const text = fullText.length > 200 ? fullText : item.snippet
       return [key, { text, origin }] as const
