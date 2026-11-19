@@ -85,15 +85,10 @@ The edge intelligence pipeline lives in `web/worker/pipeline/` and runs as a `@l
 - `summarise.ts` — full-text fetch per pick + guarded summaries: numbers in the output must exist in the source text, else one repair attempt, then extractive fallback. Fallbacks are counted, never silent.
 - `index.ts` — weekly wrapper around `executeResearchGraph` recording `pipeline_runs` rows.
 
-### Cron & Automation
-- **Cloudflare Worker Cron**: `0 5 * * 6` (Saturday 05:00 UTC = 08:00 Saudi time).
-- **GitHub Actions Workflow (`.github/workflows/weekly-report.yml`)**:
-  - Triggers weekly at `0 5 * * 6` (Saturday 05:00 UTC).
-  - Runs safe dry-run pipeline (`python main.py --pipeline --dry-run`).
-  - Persists LLM score and dedupe caches via `actions/cache@v4`.
-  - Saves report artifacts and PDF downloads.
-- **Web CI (`.github/workflows/web-ci.yml`)**:
-  - Automatically tests frontend builds, TypeScript compliance (`tsc -b`), and `oxlint` on push/PR touching `web/**`.
+### Cron & Automation (Unified Single-Producer Architecture)
+- **GitHub Actions Workflow (`.github/workflows/weekly-report.yml`)** — the **single** weekly producer (Saturday `05:00 UTC` = `08:00` Saudi / `13:00 UTC+8`). It collects, ranks, verifies links, renders HTML/Markdown/PDF, emails the Well7 recipients, and publishes the exact same verified report + PDF straight into Cloudflare D1 + R2 via `POST /api/reports/publish` (`publish_to_cloudflare.py`).
+- **Cloudflare Worker Cron** — disabled (`"crons": []` in `wrangler.jsonc`) so the Worker never burns duplicate OpenRouter free-tier quota or creates a mismatched report alongside the emailed brief. Live Research Studio (`/studio`) and admin manual runs (`POST /api/pipeline/run`) remain available on demand.
+- **Web CI (`.github/workflows/web-ci.yml`)** — automatically runs `npm test`, `npm run build` (`tsc -b && vite build`), and `npm run lint` (`oxlint`) on push/PR touching `web/**`.
 
 Run it manually as an admin: **Run the pipeline now** on the site (admins only,
 requires a Clerk sign-in whose email is in `ADMIN_EMAILS`), which POSTs
@@ -132,7 +127,4 @@ fallbacks, disclosed in `pipeline_runs.error`). Adding credits raises the cap
 to 1000/day.
 
 ## Publishing from the Python pipeline
-A `publish_to_cloudflare.py` script (to be added at the repo root) will read
-`progress/week-*/source.yaml`, `report.md`, `report.html`, the PDF, `run_log.json`
-and `ranked.json`, then push them into D1/R2 via the Worker API with a secret
-token. For now, week data can be inserted directly with `npx wrangler d1 execute`.
+`publish_to_cloudflare.py` (on `main`) reads `progress/week-*/source.yaml`, `run_log.json`, and the rendered PDF, then POSTs the verified report + PDF to `POST /api/reports/publish` (authenticated via `Authorization: Bearer <CRON_RUN_TOKEN>`). The Worker uploads the PDF to R2 (`reports/week-<date>.pdf`) and upserts the report and items into D1 so the web archive and email brief match 1:1.

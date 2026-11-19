@@ -26,7 +26,9 @@ export async function rankItems(items: RawItem[], env: LlmEnv, query = ''): Prom
   if (items.length === 0) {
     return { scored: [], failedBatches: 0, totalBatches: 0 }
   }
-  const model = makeModel(env, 2000)
+  // Match Python's verified 8000-token budget: hidden reasoning on Nemotron
+  // exhausts 2000 tokens on 15-item batches and truncates JSON output.
+  const model = makeModel(env, 8000)
   const batches: RawItem[][] = []
   for (let i = 0; i < items.length; i += BATCH) batches.push(items.slice(i, i + BATCH))
 

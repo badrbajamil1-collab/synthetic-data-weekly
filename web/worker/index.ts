@@ -1,5 +1,6 @@
 import { authFailureReason, currentViewer, type AuthEnv, type Viewer } from './auth.ts'
 import { executeResearchGraph, runWeeklyPipeline, type PipelineEnv } from './pipeline/index.ts'
+import { parsePublishPayload, publishReportToStorage } from './pipeline/publish.ts'
 import { sanitizeCollectOptions } from './pipeline/sources.ts'
 import { bearerToken, tokenMatches } from './pipeline/token.ts'
 import { sourceCounts, topicCounts } from '../src/lib/topics.ts'
@@ -535,6 +536,16 @@ export default {
         return json({ error: 'method not allowed' }, 405)
       }
       return json({ error: 'not found' }, 404)
+    }
+
+    if (path === '/api/reports/publish' && method === 'POST') {
+      const via = await pipelineAuth(request, env)
+      if (!via) return json({ error: 'admin sign-in or bearer token required' }, 403)
+      const body = await request.json().catch(() => null)
+      const parsed = parsePublishPayload(body)
+      if (!parsed.ok) return json({ error: parsed.error }, 400)
+      const result = await publishReportToStorage(env.DB, env.BUCKET, parsed.data)
+      return json({ ok: true, ...result })
     }
 
     if (path === '/api/pipeline/run' && method === 'POST') {

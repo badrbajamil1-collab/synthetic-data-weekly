@@ -143,10 +143,11 @@ async function feed(
   keywordFilter: boolean,
   since: Date,
   customQuery = '',
+  timeoutMs = 10000,
 ): Promise<SourceResult> {
   const start = Date.now()
   try {
-    const response = await fetchWithTimeout(url)
+    const response = await fetchWithTimeout(url, {}, timeoutMs)
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const entries = entriesOf(await response.text())
     const items: RawItem[] = []
@@ -180,7 +181,8 @@ async function arxiv(since: Date, customQuery = ''): Promise<SourceResult> {
     : 'all:"synthetic data"'
   const query = encodeURIComponent(terms)
   const url = `https://export.arxiv.org/api/query?search_query=${query}&sortBy=submittedDate&sortOrder=descending&max_results=25`
-  return feed('arXiv', 'arxiv', url, false, since, customQuery)
+  // arXiv routinely takes 15-25s; a 10s timeout aborts healthy queries.
+  return feed('arXiv', 'arxiv', url, false, since, customQuery, 30000)
 }
 
 async function hackerNews(since: Date, customQuery = ''): Promise<SourceResult> {
@@ -217,18 +219,18 @@ async function github(since: Date, token: string | undefined, customQuery = ''):
   const start = Date.now()
   const day = since.toISOString().slice(0, 10)
   const extra = customQuery ? ` ${customQuery}` : ''
-  const q = encodeURIComponent(`synthetic-data${extra} in:name,description,topics pushed:>${day}`)
+  const q = encodeURIComponent(`synthetic-data${extra} in:name,description,topics created:>=${day}`)
   const headers: Record<string, string> = { Accept: 'application/vnd.github+json' }
   if (token) headers.Authorization = `Bearer ${token}`
   try {
-    const response = await fetchWithTimeout(`https://api.github.com/search/repositories?q=${q}&sort=updated&per_page=15`, { headers })
+    const response = await fetchWithTimeout(`https://api.github.com/search/repositories?q=${q}&sort=stars&per_page=15`, { headers })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     const body = (await response.json()) as { items: Array<Record<string, any>> }
     const items = body.items.map((repo) => ({
       title: String(repo.full_name),
       url: String(repo.html_url),
       source: 'GitHub',
-      published: new Date(String(repo.pushed_at)).toISOString(),
+      published: new Date(String(repo.created_at ?? repo.pushed_at)).toISOString(),
       snippet: `${repo.stargazers_count} stars. ${repo.description ?? ''}`.trim(),
     }))
     return { name: 'GitHub', family: 'github', items, durationMs: Date.now() - start, error: null }
@@ -276,9 +278,16 @@ export async function collectAll(
     )
   }
   if (activeFamilies.has('reddit')) {
+    // Combined multi-sub feed without trailing slash (`/.rss` returns 429).
     tasks.push(
-      feed('Reddit r/MachineLearning', 'reddit', 'https://www.reddit.com/r/MachineLearning/.rss', true, since, customQuery),
-      feed('Reddit r/LocalLLaMA', 'reddit', 'https://www.reddit.com/r/LocalLLaMA/.rss', true, since, customQuery),
+      feed(
+        'Reddit',
+        'reddit',
+        'https://www.reddit.com/r/MachineLearning+LocalLLaMA+datascience.rss',
+        true,
+        since,
+        customQuery,
+      ),
     )
   }
   if (activeFamilies.has('blogs')) {

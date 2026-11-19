@@ -31,7 +31,28 @@ export function extractive(text: string): string {
   return sentences.slice(0, 3).join(' ').slice(0, 420)
 }
 
+const GITHUB_REPO_RE = /^https?:\/\/github\.com\/([^/\s]+)\/([^/?#\s]+)\/?$/i
+
 export async function fetchArticleText(url: string): Promise<string> {
+  const ghMatch = GITHUB_REPO_RE.exec(url)
+  if (ghMatch) {
+    try {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 8000)
+      const response = await fetch(`https://api.github.com/repos/${ghMatch[1]}/${ghMatch[2]}/readme`, {
+        signal: controller.signal,
+        headers: { 'User-Agent': 'synthetic-data-weekly/1.0', Accept: 'application/vnd.github.raw' },
+        redirect: 'follow',
+      })
+      clearTimeout(timer)
+      if (response.ok) {
+        const readme = (await response.text()).trim()
+        if (readme.length > 0) return readme.slice(0, 6000)
+      }
+    } catch {
+      // Fall through to HTML fetch below.
+    }
+  }
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
