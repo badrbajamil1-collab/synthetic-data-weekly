@@ -25,15 +25,18 @@ def format_day(value) -> str:
 
 
 def format_week(week_start, week_end) -> str:
-    """'26 Oct – 1 Nov 2026' with the month repeated only when it changes."""
+    """'26 Oct – 1 Nov 2026' or '14 – 20 Nov 2026' when both fall in one month."""
     if isinstance(week_start, str):
         week_start = date.fromisoformat(week_start)
     if isinstance(week_end, str):
         week_end = date.fromisoformat(week_end)
-    left = f"{week_start.day} {MONTHS[week_start.month - 1]}"
     right = f"{week_end.day} {MONTHS[week_end.month - 1]}"
-    if week_start.month == week_end.month:
-        right = str(week_end.day)
+    if week_start.year != week_end.year:
+        left = f"{week_start.day} {MONTHS[week_start.month - 1]} {week_start.year}"
+    elif week_start.month == week_end.month:
+        left = str(week_start.day)
+    else:
+        left = f"{week_start.day} {MONTHS[week_start.month - 1]}"
     return f"{left} – {right} {week_end.year}"
 
 

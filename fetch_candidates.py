@@ -19,6 +19,7 @@ import trafilatura
 import yaml
 
 from synthetic_data import rank
+from synthetic_data.collectors import _github_token
 from synthetic_data.links import UA, normalize_url, resolve_google_news
 from synthetic_data.week import in_week, week_bounds
 
@@ -106,6 +107,9 @@ def fetch_github_readme(url):
     owner, repo = match.groups()
     headers = dict(UA)
     headers["Accept"] = "application/vnd.github.raw"
+    token = _github_token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     try:
         response = httpx.get(
             f"https://api.github.com/repos/{owner}/{repo}/readme",

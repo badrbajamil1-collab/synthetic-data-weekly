@@ -131,6 +131,19 @@ def entry_datetime(entry) -> Optional[datetime]:
     return None
 
 
+def _retry_delay(response: httpx.Response, fallback: float, cap: float = 60.0) -> float:
+    """Honour a numeric Retry-After header when present, capped at `cap` seconds."""
+    raw = (response.headers.get("Retry-After") or "").strip()
+    if raw:
+        try:
+            seconds = float(raw)
+            if seconds > 0:
+                return min(seconds, cap)
+        except ValueError:
+            pass
+    return fallback
+
+
 def get_with_retry(
     url: str,
     headers: dict,
@@ -159,7 +172,7 @@ def get_with_retry(
             return response
         last_status = response.status_code
         if response.status_code in retry_statuses and attempt < attempts - 1:
-            time.sleep(base_delay * (attempt + 1))
+            time.sleep(_retry_delay(response, base_delay * (attempt + 1)))
             continue
         response.raise_for_status()
     raise RuntimeError(f"HTTP {last_status} after {attempts} attempts: {url}")
@@ -254,19 +267,25 @@ def fetch_arxiv(
     retry_attempts: int = 3,
     week: Optional[WeekBounds] = None,
     warnings: Optional[List[str]] = None,
+    query_delay: float = 4.0,
 ) -> List[Item]:
     """Recent preprints from the arXiv Atom API, newest first.
 
     The snippet is the paper's own abstract, kept whole (up to 2000 chars):
     it is the text the report is written from, and truncating it here loses
     the contribution sentence.
+
+    arXiv's API guidelines ask for at least 3 seconds between requests;
+    ``query_delay`` paces consecutive queries so shared CI IPs avoid 429s.
     """
     ns = {"atom": "http://www.w3.org/2005/Atom"}
     cutoff = cutoff_for(lookback_days)
     items: List[Item] = []
     failures = []
 
-    for query in queries:
+    for index, query in enumerate(queries):
+        if index > 0 and query_delay > 0:
+            time.sleep(query_delay)
         encoded = urllib.parse.quote(f"all:{query}")
         url = (
             "https://export.arxiv.org/api/query"
@@ -274,7 +293,13 @@ def fetch_arxiv(
             "&sortBy=submittedDate&sortOrder=descending"
         )
         try:
-            response = get_with_retry(url, HEADERS, attempts=retry_attempts)
+            response = get_with_retry(
+                url,
+                HEADERS,
+                attempts=retry_attempts,
+                base_delay=8.0,
+                timeout=45.0,
+            )
             root = ET.fromstring(response.text)
         except Exception as exc:  # noqa: BLE001 - reported by the runner
             failures.append(f"arxiv query {query!r}: {exc}")

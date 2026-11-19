@@ -2531,6 +2531,80 @@ finally:
     _report_build.check_link = _orig_check8
     _report_build.render_pdf = _orig_pdf8
 
+print("launch polish regressions")
+check("format_week puts month after same-month range",
+      _render.format_week("2026-11-14", "2026-11-20") == "14 – 20 Nov 2026",
+      _render.format_week("2026-11-14", "2026-11-20"))
+check("format_week keeps both months across month boundary",
+      _render.format_week("2026-10-26", "2026-11-01") == "26 Oct – 1 Nov 2026",
+      _render.format_week("2026-10-26", "2026-11-01"))
+check("format_week keeps both years across year boundary",
+      _render.format_week("2026-12-26", "2027-01-01") == "26 Dec 2026 – 1 Jan 2027",
+      _render.format_week("2026-12-26", "2027-01-01"))
+
+import fetch_candidates as _fc
+from synthetic_data import collectors as _col
+import httpx as _httpx_lp
+import time as _time_lp
+
+_seen_readme_headers = {}
+_orig_fc_get = _fc.httpx.get
+_old_lp_tok = os.environ.get("GITHUB_TOKEN")
+try:
+    os.environ["GITHUB_TOKEN"] = "readme-test-token"
+    def _fake_readme_get(url, headers=None, **kw):
+        _seen_readme_headers.update(headers or {})
+        return _httpx_lp.Response(200, text="# Repo README", request=_httpx_lp.Request("GET", url))
+    _fc.httpx.get = _fake_readme_get
+    _readme_txt = _fc.fetch_github_readme("https://github.com/org/repo")
+    check("fetch_github_readme sends GITHUB_TOKEN Authorization header",
+          _readme_txt == "# Repo README" and _seen_readme_headers.get("Authorization") == "Bearer readme-test-token",
+          str(_seen_readme_headers))
+finally:
+    _fc.httpx.get = _orig_fc_get
+    if _old_lp_tok is None:
+        os.environ.pop("GITHUB_TOKEN", None)
+    else:
+        os.environ["GITHUB_TOKEN"] = _old_lp_tok
+
+_arxiv_sleeps = []
+_orig_col_sleep = _col.time.sleep
+_orig_col_retry = _col.get_with_retry
+try:
+    _col.time.sleep = lambda sec: _arxiv_sleeps.append(sec)
+    _empty_feed = '<feed xmlns="http://www.w3.org/2005/Atom"></feed>'
+    _col.get_with_retry = lambda url, headers, **kw: _httpx_lp.Response(
+        200, text=_empty_feed, request=_httpx_lp.Request("GET", url)
+    )
+    _col.fetch_arxiv(queries=['"q1"', '"q2"', '"q3"'], query_delay=4.0)
+    check("fetch_arxiv paces consecutive queries with query_delay",
+          _arxiv_sleeps == [4.0, 4.0], str(_arxiv_sleeps))
+finally:
+    _col.time.sleep = _orig_col_sleep
+    _col.get_with_retry = _orig_col_retry
+
+_ra_sleeps = []
+_ra_calls = {"n": 0}
+_orig_ra_sleep = _col.time.sleep
+_orig_ra_get = _col.httpx.get
+try:
+    _col.time.sleep = lambda sec: _ra_sleeps.append(sec)
+    def _fake_ra_get(url, **kw):
+        _ra_calls["n"] += 1
+        if _ra_calls["n"] == 1:
+            return _httpx_lp.Response(
+                429, headers={"Retry-After": "12"}, text="slow down",
+                request=_httpx_lp.Request("GET", url),
+            )
+        return _httpx_lp.Response(200, text="ok", request=_httpx_lp.Request("GET", url))
+    _col.httpx.get = _fake_ra_get
+    _ra_resp = _col.get_with_retry("https://example.com/api", {}, attempts=2, base_delay=3.0)
+    check("get_with_retry honours numeric Retry-After header",
+          _ra_resp.status_code == 200 and _ra_sleeps == [12.0], str(_ra_sleeps))
+finally:
+    _col.time.sleep = _orig_ra_sleep
+    _col.httpx.get = _orig_ra_get
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)
