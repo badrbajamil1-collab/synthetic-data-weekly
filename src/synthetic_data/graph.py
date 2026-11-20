@@ -53,6 +53,8 @@ _CHAT_FN: Optional[Callable[[List[dict]], str]] = None
 _CONFIG_PATH = "config.yaml"
 _CACHE_PATH = "summary_cache.json"
 _SCORE_CACHE_PATH = "score_cache.json"
+_UNSET = object()
+_RANKED_PATH: Optional[str] = None
 _DELIVERY: Dict[str, bool] = {"enabled": True, "dry_run": False}
 
 
@@ -72,6 +74,7 @@ def configure(
     config_path: Optional[str] = None,
     delivery: Optional[Dict[str, bool]] = None,
     score_cache_path: Optional[str] = None,
+    ranked_path: Any = _UNSET,
 ) -> None:
     """Set the config + chat function a weekly run should use.
 
@@ -79,8 +82,9 @@ def configure(
     run can bind the configured OpenRouter client. ``delivery`` controls the
     send node: disabled for ``--no-email``, dry-run for ``--dry-run``.
     ``score_cache_path`` overrides the ranking score cache file for test isolation.
+    ``ranked_path`` optionally writes the sorted ranked list (e.g. ``ranked.json``).
     """
-    global _SETTINGS, _CHAT_FN, _CONFIG_PATH, _DELIVERY, _SCORE_CACHE_PATH
+    global _SETTINGS, _CHAT_FN, _CONFIG_PATH, _DELIVERY, _SCORE_CACHE_PATH, _RANKED_PATH
     if settings is not None:
         _SETTINGS = settings
     if chat_fn is not None:
@@ -91,6 +95,8 @@ def configure(
         _DELIVERY = {**_DELIVERY, **delivery}
     if score_cache_path is not None:
         _SCORE_CACHE_PATH = str(score_cache_path)
+    if ranked_path is not _UNSET:
+        _RANKED_PATH = None if ranked_path is None else str(ranked_path)
 
 
 def _chat_for(section: str) -> Callable[[List[dict]], str]:
@@ -106,6 +112,10 @@ def _chat_for(section: str) -> Callable[[List[dict]], str]:
     model = block.get("model") or (
         (_SETTINGS.get("ranking") or {}).get("model") or DEFAULT_SUMMARISE_MODEL
     )
+    raw_fallbacks = block.get("fallback_models")
+    if raw_fallbacks is None and section != "ranking":
+        raw_fallbacks = (_SETTINGS.get("ranking") or {}).get("fallback_models")
+    fallback_models = tuple(raw_fallbacks or ())
 
     def chat_fn(messages: List[dict]) -> str:
         content, _retries = llm.chat(
@@ -113,6 +123,7 @@ def _chat_for(section: str) -> Callable[[List[dict]], str]:
             api_key=api_key,
             base_url=base_url,
             model=model,
+            fallback_models=fallback_models,
             temperature=float(block.get("temperature") or 0.0),
             max_tokens=int(block.get("max_tokens") or 2000),
             reasoning_effort=block.get("reasoning_effort") or "low",
@@ -401,6 +412,12 @@ def rank_node(state: AgentState, config) -> AgentState:
                 f"rank: only {scored_count} scored items (need {min_scored})"
             )
             return {**state, "ranked_items": [], "errors": errors}
+        if _RANKED_PATH and rows:
+            ranked_file = Path(_RANKED_PATH)
+            ranked_file.parent.mkdir(parents=True, exist_ok=True)
+            ranked_file.write_text(
+                json.dumps(rows, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
         return {**state, "ranked_items": rows, "errors": errors}
     except Exception as exc:  # noqa: BLE001
         return {**state, "ranked_items": [], "errors": [*errors, f"rank: {type(exc).__name__}: {exc}"]}
@@ -790,6 +807,7 @@ def weekly_run(
         settings=_SETTINGS,
         config_path=config_path,
         delivery={"enabled": bool(send), "dry_run": bool(dry_run)},
+        ranked_path="ranked.json",
     )
     graph = build_weekly_graph()
     return graph.invoke(

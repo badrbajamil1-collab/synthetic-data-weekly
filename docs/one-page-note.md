@@ -212,3 +212,21 @@ Verified against artefacts, not the older prose above:
 - **Reddit outage is now non-fatal:** the feed is blocked from this host, so
   `fetch_reddit` records a warning instead of raising. The report discloses 0 Reddit
   items and still verifies cleanly.
+
+## Update — 2026-11-20
+
+- **GitHub Actions is now the sole live Saturday scheduler.** `.github/workflows/weekly-report.yml`
+  runs every Saturday at `05:00 UTC` (`13:00 UTC+8` / `08:00 UTC+3`) with `LLM_API_KEY` and
+  `SMTP_*` secrets configured; the local Windows `SyntheticDataWeekly` task was deleted via
+  `schedule_task.py --delete` so only one scheduler ever sends.
+- **Resilience hardening added before the first live Saturday run (`2026-11-21`):**
+  - `llm.chat` now walks a configured `fallback_models` chain (`config.yaml` →
+    `ranking.fallback_models` / `summarising.fallback_models`) on 429/5xx/404 or empty
+    reasoning-capped responses, honours numeric `Retry-After` headers, fails fast on 401/403,
+    and skips remaining `:free` models on `free-models-per-day` (while still trying any paid
+    fallback).
+  - `graph.weekly_run` writes `ranked.json` alongside `candidates.json` so
+    `publish_to_cloudflare.py` enriches item scores, `well7_fit`, and reasons during CI runs.
+  - `emailer.send_message` retries pre-DATA connection/TLS/login errors and explicit temporary
+    4xx rejections (421/450/451) while never retrying mid-DATA drops or 5xx/auth rejections;
+    `publish_to_cloudflare.publish` retries transient HTTP 429/5xx and transport errors.

@@ -2896,6 +2896,347 @@ try:
 finally:
     _pub.llm.load_env = _orig_load_env
 
+# ---------------------------------------------------------------------------
+# Launch resilience & fallback regressions
+# ---------------------------------------------------------------------------
+print("\n[launch resilience & fallback regressions]")
+import smtplib as _smtplib
+from email.message import EmailMessage as _EmailMessage
+
+
+class _ResilientResponse:
+    def __init__(self, code, text="", content=None, headers=None, finish_reason="stop"):
+        self.status_code = code
+        self.text = text
+        self._content = content
+        if headers is not None:
+            self.headers = headers
+        self._finish_reason = finish_reason
+
+    def json(self):
+        return {
+            "choices": [
+                {
+                    "message": {"content": self._content if self._content is not None else self.text},
+                    "finish_reason": self._finish_reason,
+                }
+            ]
+        }
+
+
+class _ResilientClient:
+    def __init__(self, handler):
+        self.handler = handler
+        self.calls = []
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        snap = dict(json or {})
+        self.calls.append((snap.get("model"), snap))
+        return self.handler(len(self.calls) - 1, snap)
+
+
+# 1. llm.chat falls back on primary 429, 503, 404, and empty content
+for _fb_label, _fb_step in (
+    ("429", lambda _i, s: _ResilientResponse(429, "rate limit") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+    ("503", lambda _i, s: _ResilientResponse(503, "unavailable") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+    ("404", lambda _i, s: _ResilientResponse(404, "not found") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+    ("empty-content", lambda _i, s: _ResilientResponse(200, "", content="", finish_reason="length") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+):
+    _fb_c = _ResilientClient(_fb_step)
+    _fb_out, _ = _llm.chat(
+        [{"role": "user", "content": "hi"}],
+        api_key="k",
+        model="m/primary:free",
+        fallback_models=("m/secondary:free",),
+        attempts=1,
+        client=_fb_c,
+        sleep=lambda _s: None,
+    )
+    check(
+        f"llm.chat falls back to second model on primary {_fb_label}",
+        _fb_out == '{"ok": true}' and [m for m, _ in _fb_c.calls] == ["m/primary:free", "m/secondary:free"],
+        str(_fb_c.calls),
+    )
+
+# 2. llm.chat gives each fallback model a fresh payload after 400 strips on primary
+def _fresh_payload_handler(_i, snap):
+    if snap["model"] == "m/p:free":
+        if "response_format" in snap or "reasoning" in snap:
+            return _ResilientResponse(400, "unsupported field")
+        return _ResilientResponse(503, "down")
+    return _ResilientResponse(200, '{"fresh": true}')
+
+_fresh_c = _ResilientClient(_fresh_payload_handler)
+_fresh_out, _ = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m/p:free",
+    fallback_models=("m/fb:free",),
+    json_mode=True,
+    reasoning_effort="low",
+    attempts=1,
+    client=_fresh_c,
+    sleep=lambda _s: None,
+)
+_fb_payload = _fresh_c.calls[-1][1]
+check(
+    "llm.chat builds a fresh payload for fallback models after 400 field strips",
+    _fresh_out == '{"fresh": true}'
+    and _fb_payload.get("model") == "m/fb:free"
+    and "response_format" in _fb_payload
+    and "reasoning" in _fb_payload,
+    str(_fresh_c.calls),
+)
+
+# 3. llm.chat fails fast on HTTP 401/403 without trying fallbacks
+for _auth_code in (401, 403):
+    _auth_c = _ResilientClient(lambda _i, _s, c=_auth_code: _ResilientResponse(c, "unauthorized"))
+    _auth_err = None
+    try:
+        _llm.chat(
+            [{"role": "user", "content": "hi"}],
+            api_key="bad",
+            model="m/p:free",
+            fallback_models=("m/fb1:free", "m/fb2:free"),
+            attempts=2,
+            client=_auth_c,
+            sleep=lambda _s: None,
+        )
+    except _llm.LLMError as _exc:
+        _auth_err = str(_exc)
+    check(
+        f"llm.chat fails fast on HTTP {_auth_code} without invoking fallbacks",
+        _auth_err is not None and f"HTTP {_auth_code}" in _auth_err and len(_auth_c.calls) == 1,
+        f"calls={len(_auth_c.calls)} err={_auth_err}",
+    )
+
+# 4. llm.chat skips remaining :free models after free-models-per-day, but tries paid fallback
+_quota_c = _ResilientClient(
+    lambda _i, snap: (
+        _ResilientResponse(429, "free-models-per-day limit exceeded")
+        if snap["model"].endswith(":free")
+        else _ResilientResponse(200, '{"paid": true}')
+    )
+)
+_quota_out, _ = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m/primary:free",
+    fallback_models=("m/other-free:free", "m/paid-fallback"),
+    attempts=1,
+    client=_quota_c,
+    sleep=lambda _s: None,
+)
+check(
+    "llm.chat skips remaining :free fallbacks on free-models-per-day but calls paid fallback",
+    _quota_out == '{"paid": true}' and [m for m, _ in _quota_c.calls] == ["m/primary:free", "m/paid-fallback"],
+    str([m for m, _ in _quota_c.calls]),
+)
+
+# 5. llm.chat honours numeric Retry-After header (capped at 30s)
+_ra_sleeps = []
+_ra_c = _ResilientClient(
+    lambda i, _s: (
+        _ResilientResponse(429, "slow down", headers={"Retry-After": "12"})
+        if i == 0
+        else _ResilientResponse(429, "slow down", headers={"Retry-After": "120"})
+        if i == 1
+        else _ResilientResponse(200, '{"ok": true}')
+    )
+)
+_ra_out, _ra_retries = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m/p:free",
+    attempts=3,
+    client=_ra_c,
+    sleep=_ra_sleeps.append,
+)
+check(
+    "llm.chat honours numeric Retry-After header and caps delay at 30s",
+    _ra_out == '{"ok": true}' and _ra_retries == 2 and _ra_sleeps == [12.0, 30.0],
+    f"sleeps={_ra_sleeps} retries={_ra_retries}",
+)
+
+# 6. config.yaml defines non-empty fallback_models under ranking and summarising
+_cfg_fb = _yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
+check(
+    "config.yaml defines non-empty fallback_models for ranking and summarising",
+    bool((_cfg_fb.get("ranking") or {}).get("fallback_models"))
+    and bool((_cfg_fb.get("summarising") or {}).get("fallback_models")),
+    str({k: (_cfg_fb.get(k) or {}).get("fallback_models") for k in ("ranking", "summarising")}),
+)
+
+# 7. graph.rank_node writes ranked.json only when ranked_path is configured, and publish enriches from it
+_gr_dir = Path(tempfile.mkdtemp())
+_gr_ranked = _gr_dir / "ranked.json"
+_orig_ranked_path = _graph._RANKED_PATH
+try:
+    _gr_items = [
+        _item("Tabular Synthetic Data With DP", "https://arxiv.org/abs/2611.88001", published="2026-11-16T00:00:00Z", source="arxiv"),
+    ]
+    _graph.configure(
+        settings={"ranking": {"model": "test/rank-path", "cache": False, "prefilter": False, "editor_pass_size": 0, "batch_size": 15, "concurrency": 1, "min_scored_to_proceed": 1}},
+        chat_fn=lambda _m: _json.dumps({"scores": [{"id": 0, "score": 8, "well7_fit": 9, "reason": "Strong tabular DP fit."}]}),
+        ranked_path=None,
+    )
+    _graph.rank_node({"errors": [], "deduped_items": _gr_items, "run_date": "2026-11-19"}, None)
+    check("graph.rank_node leaves disk untouched when ranked_path is None", not _gr_ranked.exists())
+
+    _graph.configure(ranked_path=str(_gr_ranked))
+    _gr_res = _graph.rank_node({"errors": [], "deduped_items": _gr_items, "run_date": "2026-11-19"}, None)
+    check(
+        "graph.rank_node writes ranked.json when ranked_path is configured",
+        _gr_ranked.exists() and len(_json.loads(_gr_ranked.read_text(encoding="utf-8"))) == 1 and len(_gr_res["ranked_items"]) == 1,
+        str(_gr_ranked.exists()),
+    )
+
+    _gr_yaml = _gr_dir / "source.yaml"
+    _gr_yaml.write_text(_yaml.safe_dump({
+        "week_start": "2026-11-14",
+        "week_end": "2026-11-20",
+        "trend": "Tabular privacy.",
+        "top_picks": [
+            {
+                "title": "Tabular Synthetic Data With DP",
+                "url": "https://arxiv.org/abs/2611.88001",
+                "source": "arXiv",
+                "published": "2026-11-16",
+                "summary": "Privacy preserving tabular data.",
+            }
+        ],
+    }), encoding="utf-8")
+    _gr_payload = _pub.build_payload(_gr_yaml, ranked_path=_gr_ranked, include_pdf=False)
+    check(
+        "publish_to_cloudflare enriches missing fields from graph-written ranked.json",
+        _gr_payload["items"][0]["score"] == 8
+        and _gr_payload["items"][0]["well7_fit"] == 9
+        and _gr_payload["items"][0]["reason"] == "Strong tabular DP fit.",
+        str(_gr_payload["items"][0]),
+    )
+finally:
+    _graph.configure(ranked_path=_orig_ranked_path)
+
+# 8. emailer.send_message retries safe pre-send/4xx failures and refuses unsafe/permanent retries
+_smtp_msg = _EmailMessage()
+_smtp_msg["Subject"] = "Test"
+_smtp_msg["From"] = "s@example.com"
+_smtp_msg["To"] = "r@example.com"
+_smtp_msg.set_content("Body")
+_smtp_cfg_min = {"host": "smtp.example.com", "port": 587, "user": "u", "password": "p", "timeout": 10.0}
+
+class _RetryableFakeSMTP:
+    def __init__(self, action):
+        self.action = action
+        self.sent = None
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc_info):
+        return False
+    def ehlo(self):
+        pass
+    def starttls(self, context=None):
+        pass
+    def login(self, user, password):
+        if self.action == "auth_err":
+            raise _smtplib.SMTPAuthenticationError(535, b"bad auth")
+        if self.action == "connect_oserror":
+            raise OSError("temporary socket drop")
+    def send_message(self, message):
+        if self.action == "421":
+            raise _smtplib.SMTPResponseException(421, b"try later")
+        if self.action == "550":
+            raise _smtplib.SMTPResponseException(550, b"rejected")
+        if self.action == "mid_data_drop":
+            raise OSError("reset after DATA started")
+        self.sent = message
+
+_pre_attempts = []
+_pre_sleeps = []
+def _pre_factory(host, port, timeout, ssl=False):
+    _pre_attempts.append(len(_pre_attempts))
+    if len(_pre_attempts) == 1:
+        raise OSError("transient connect error")
+    if len(_pre_attempts) == 2:
+        return _RetryableFakeSMTP("421")
+    return _RetryableFakeSMTP("ok")
+
+_mail.send_message(_smtp_msg, _smtp_cfg_min, smtp_factory=_pre_factory, attempts=3, base_delay=2.0, sleep=_pre_sleeps.append)
+check(
+    "emailer.send_message retries pre-send OSError and 421 temporary rejection",
+    len(_pre_attempts) == 3 and _pre_sleeps == [2.0, 4.0],
+    f"attempts={len(_pre_attempts)} sleeps={_pre_sleeps}",
+)
+
+for _no_retry_label, _no_retry_action in (
+    ("SMTPAuthenticationError 535", "auth_err"),
+    ("permanent SMTPResponseException 550", "550"),
+    ("mid-DATA OSError after send_message starts", "mid_data_drop"),
+):
+    _nr_calls = []
+    _nr_err = None
+    def _nr_factory(host, port, timeout, ssl=False, act=_no_retry_action, calls=_nr_calls):
+        calls.append(1)
+        return _RetryableFakeSMTP(act)
+    try:
+        _mail.send_message(_smtp_msg, _smtp_cfg_min, smtp_factory=_nr_factory, attempts=3, sleep=lambda _s: None)
+    except _mail.EmailError as _exc:
+        _nr_err = str(_exc)
+    check(
+        f"emailer.send_message does not retry {_no_retry_label}",
+        _nr_err is not None and len(_nr_calls) == 1,
+        f"calls={len(_nr_calls)} err={_nr_err}",
+    )
+
+# 9. publish_to_cloudflare.publish retries transient 503 and ConnectTimeout, fails fast on 403
+_pub_retry_calls = []
+_pub_retry_sleeps = []
+def _flaky_publish(endpoint, headers=None, json=None, timeout=None):
+    _pub_retry_calls.append(1)
+    if len(_pub_retry_calls) == 1:
+        raise _httpx.ConnectTimeout("timed out")
+    if len(_pub_retry_calls) == 2:
+        return _FakeResp(503, {"error": "unavailable"})
+    return _FakeResp(200, {"ok": True, "reportId": json["id"]})
+
+_pub_retry_res = _pub.publish(
+    _payload,
+    base_url="https://example.workers.dev",
+    token="tok123",
+    attempts=3,
+    base_delay=1.5,
+    post_fn=_flaky_publish,
+    sleep=_pub_retry_sleeps.append,
+)
+check(
+    "publish_to_cloudflare.publish retries ConnectTimeout and HTTP 503",
+    _pub_retry_res.get("ok") is True and len(_pub_retry_calls) == 3 and _pub_retry_sleeps == [1.5, 3.0],
+    f"calls={len(_pub_retry_calls)} sleeps={_pub_retry_sleeps}",
+)
+
+_pub_403_calls = []
+_pub_403_err = None
+def _forbid_publish(endpoint, headers=None, json=None, timeout=None):
+    _pub_403_calls.append(1)
+    return _FakeResp(403, {"error": "forbidden"})
+
+try:
+    _pub.publish(
+        _payload,
+        base_url="https://example.workers.dev",
+        token="bad",
+        attempts=3,
+        post_fn=_forbid_publish,
+        sleep=lambda _s: None,
+    )
+except RuntimeError as _exc:
+    _pub_403_err = str(_exc)
+check(
+    "publish_to_cloudflare.publish fails immediately on HTTP 403 in 1 attempt",
+    _pub_403_err is not None and "HTTP 403" in _pub_403_err and len(_pub_403_calls) == 1,
+    f"calls={len(_pub_403_calls)} err={_pub_403_err}",
+)
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)

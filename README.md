@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-445%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-464%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
@@ -195,7 +195,7 @@ uv run python verify_report.py
 
 | Script | What it does | Writes |
 |---|---|---|
-| `main.py` | Collects, normalises, dedupes, drops already-published URLs; `--pipeline` runs the whole graph | `raw_items.json`, `raw_run_log.json`, report + email |
+| `main.py` | Collects, normalises, dedupes, drops already-published URLs; `--pipeline` runs the whole graph | `raw_items.json`, `raw_run_log.json`, `ranked.json`, report + email |
 | `rank_items.py` | Scores each item 1–10 for relevance and 1–10 for Well7 fit, with a reason; collapses same-story coverage | `ranked.json`, `score_cache.json`, merges into `raw_run_log.json` |
 | `fetch_candidates.py` | Takes the top 7 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
 | `write_report.py` | Writes summaries from the fetched text and splits the three sections | `source.yaml` |
@@ -238,8 +238,8 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 | `schedule` | Weekly cadence read by `schedule_task.py` (`Saturday 08:00`). |
 | `lookback_days` | Fallback span (default 7) when no fixed week is supplied. The pipeline passes the Saturday-Friday week instead. |
 | `max_top_picks` | Shortlist size. Read by `fetch_candidates.py` and `rank_items.py`. |
-| `ranking.*` | Model, batch size, concurrency, thresholds, cache toggle, `prefilter`, `editor_pass_size` and `min_scored_to_proceed` for Phase 2. |
-| `summarising.*` | Model, picks, tool/worth caps, text window, token budget and `min_score_top` / `min_score_tools` / `min_score_worth` score floors for Phase 3. |
+| `ranking.*` | Model, `fallback_models` chain, batch size, concurrency, thresholds, cache toggle, `prefilter`, `editor_pass_size` and `min_scored_to_proceed` for Phase 2. |
+| `summarising.*` | Model, `fallback_models` chain, picks, tool/worth caps, text window, token budget and `min_score_top` / `min_score_tools` / `min_score_worth` score floors for Phase 3. |
 | `recipients` | Who the report goes to. Read by `emailer.deliver`. |
 | `keywords` | **Read** by the cheap ranking prefilter (`rank.prefilter_indices`), not just documentation. Collectors still use each source's own `queries` / `tags` / `subreddits`. |
 | `sources.*` | Per-source queries, subreddits, feeds, result caps, `retry_attempts` and `github.include_releases`. |
@@ -323,6 +323,6 @@ surviving top picks) or missing email fails the run.
 Locally, the suite is two scripts that exit non-zero on failure:
 
 ```powershell
-uv run python selftest.py       # offline (435 checks): parsing, dates, URL normalisation, dedupe, history, email, schedule
+uv run python selftest.py       # offline (464 checks): parsing, dates, URL normalisation, dedupe, history, LLM fallback, email, schedule
 uv run python verify_report.py  # structural (30 checks): subject, section order, counts, dates, PDF
 ```

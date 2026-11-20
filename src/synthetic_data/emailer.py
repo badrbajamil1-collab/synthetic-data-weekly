@@ -20,6 +20,7 @@ fails, the report is not marked as sent and next week can retry it.
 import json
 import smtplib
 import ssl
+import time
 from datetime import datetime, timezone
 from email import policy
 from email.message import EmailMessage
@@ -215,27 +216,58 @@ def _default_smtp_factory(host, port, timeout, ssl=False):
     return smtplib.SMTP(host, port, timeout=timeout)
 
 
-def send_message(message: EmailMessage, settings: dict, *, smtp_factory=None) -> None:
-    """Send one message: STARTTLS on 587 (and most ports), implicit TLS on 465."""
+def send_message(
+    message: EmailMessage,
+    settings: dict,
+    *,
+    smtp_factory=None,
+    attempts: int = 3,
+    base_delay: float = 5.0,
+    sleep=time.sleep,
+) -> None:
+    """Send one message: STARTTLS on 587 (and most ports), implicit TLS on 465.
+
+    Retries only when it is provably safe against sending duplicates:
+    pre-DATA connection/TLS/login failures and explicit temporary 4xx SMTP
+    rejections (e.g., 421/450/451). Auth failures (535), permanent 5xx
+    rejections, and mid-DATA network drops fail immediately without retrying.
+    """
     factory = smtp_factory or _default_smtp_factory
     use_ssl = int(settings["port"]) == 465
-    try:
-        with factory(
-            settings["host"],
-            int(settings["port"]),
-            float(settings.get("timeout") or DEFAULT_TIMEOUT),
-            ssl=use_ssl,
-        ) as smtp:
-            if not use_ssl:
-                smtp.ehlo()
-                smtp.starttls(context=ssl.create_default_context())
-                smtp.ehlo()
-            smtp.login(settings["user"], settings["password"])
-            smtp.send_message(message)
-    except EmailError:
-        raise
-    except (smtplib.SMTPException, OSError) as exc:
-        raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
+    total_attempts = max(1, int(attempts))
+
+    for attempt in range(total_attempts):
+        sending_started = False
+        try:
+            with factory(
+                settings["host"],
+                int(settings["port"]),
+                float(settings.get("timeout") or DEFAULT_TIMEOUT),
+                ssl=use_ssl,
+            ) as smtp:
+                if not use_ssl:
+                    smtp.ehlo()
+                    smtp.starttls(context=ssl.create_default_context())
+                    smtp.ehlo()
+                smtp.login(settings["user"], settings["password"])
+                sending_started = True
+                smtp.send_message(message)
+                return
+        except EmailError:
+            raise
+        except smtplib.SMTPAuthenticationError as exc:
+            raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
+        except smtplib.SMTPResponseException as exc:
+            code = int(getattr(exc, "smtp_code", 0) or 0)
+            if 400 <= code < 500 and attempt < total_attempts - 1:
+                sleep(base_delay * (attempt + 1))
+                continue
+            raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
+        except (smtplib.SMTPException, OSError) as exc:
+            if not sending_started and attempt < total_attempts - 1:
+                sleep(base_delay * (attempt + 1))
+                continue
+            raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
 
 
 def _update_run_log(out_dir: Path, summary: dict) -> None:

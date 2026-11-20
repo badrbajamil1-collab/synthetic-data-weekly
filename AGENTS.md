@@ -96,7 +96,8 @@ not a Pydantic model — LangGraph requires TypedDict). Nodes:
 
 `collect` applies `history.db` before ranking, writes `raw_items.json` and
 `raw_run_log.json` (the same artefacts as the Phase 1 CLI), and carries the
-`already_sent` count into the run log.
+`already_sent` count into the run log. `weekly_run` configures `ranked_path="ranked.json"`
+so `rank_node` also writes `ranked.json` for `publish_to_cloudflare.py` to enrich items.
 
 `fetch` calls `fetch_candidates.fetch` for the seven best in-window items, so summaries
 are written from the real abstract or page text rather than the ranking snippet. A page
@@ -125,7 +126,9 @@ The collect-only behaviour of `python main.py` is untouched and stays reproducib
 ### Phase 2 — ranking
 
 `rank_items.py` → `synthetic_data/rank.py` for logic, `synthetic_data/llm.py` for
-the only HTTP call to a model. Output is `ranked.json`; `score_cache.json` makes a
+the only HTTP call to a model (walking `ranking.fallback_models` / `summarising.fallback_models`
+when a candidate fails, returns empty reasoning-capped content, or hits rate limits, and
+skipping remaining `:free` models on `free-models-per-day`). Output is `ranked.json`; `score_cache.json` makes a
 rerun free and byte-identical.
 
 Three rules that are easy to break:

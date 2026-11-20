@@ -12,7 +12,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Sequence
 
 import httpx
 
@@ -23,6 +23,45 @@ APP_TITLE = "synthetic-data-weekly"
 
 class LLMError(Exception):
     """The model could not be reached, or returned no usable content."""
+
+
+class _ModelAttemptError(LLMError):
+    """Failure from a single candidate model with retry and quota metadata."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        retries: int = 0,
+        status_code: Optional[int] = None,
+        free_quota_exhausted: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.retries = retries
+        self.status_code = status_code
+        self.free_quota_exhausted = free_quota_exhausted
+
+
+def _retry_delay(response, fallback: float, cap: float = 30.0) -> float:
+    """Honour a numeric Retry-After header when present, capped at `cap` seconds."""
+    headers = getattr(response, "headers", None)
+    if headers is not None and hasattr(headers, "get"):
+        raw = headers.get("Retry-After")
+        if raw is None:
+            raw = headers.get("retry-after")
+        if raw is not None:
+            try:
+                seconds = float(str(raw).strip())
+                if seconds > 0:
+                    return min(seconds, cap)
+            except (ValueError, TypeError):
+                pass
+    return fallback
+
+
+def _is_free_daily_quota_error(text: str) -> bool:
+    """True when OpenRouter reports the account-wide daily free-tier cap."""
+    return "free-models-per-day" in (text or "").lower()
 
 
 def _read_dotenv(path: str) -> Dict[str, str]:
@@ -85,40 +124,28 @@ def require_api_key(
     )
 
 
-def chat(
+def _chat_single(
     messages: List[dict],
     *,
     api_key: str,
-    base_url: str = DEFAULT_BASE_URL,
+    base_url: str,
     model: str,
-    temperature: float = 0.0,
-    max_tokens: int = 2000,
-    reasoning_effort: str = "low",
-    json_mode: bool = False,
-    timeout: float = 180.0,
-    attempts: int = 4,
-    client: Optional[httpx.Client] = None,
-    sleep: Callable[[float], None] = time.sleep,
+    temperature: float,
+    max_tokens: int,
+    reasoning_effort: str,
+    json_mode: bool,
+    timeout: float,
+    attempts: int,
+    client: Optional[httpx.Client],
+    sleep: Callable[[float], None],
 ) -> tuple[str, int]:
-    """POST to {base_url}/chat/completions.
-
-    Returns (content, retries_used). Retries 429/5xx and network errors with
-    exponential backoff. Raises LLMError on a non-retryable status, on retry
-    exhaustion, or when `content` is empty.
-
-    Empty content is NOT retried here: the probe showed it means the model spent
-    its whole budget on hidden reasoning, so another identical call just repeats
-    the loss.
-
-    If the provider rejects `response_format` or `reasoning` with a 400, the call
-    is retried without the offending field, so switching to a provider that lacks
-    the parameter needs no code change.
-    """
+    """Execute one model call (with fresh payload, 400 field strips, and 429/5xx retries)."""
+    attempts = max(1, int(attempts))
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://github.com/badrfaez1/Testing",
+        "HTTP-Referer": "https://github.com/badrbajamil1-collab/synthetic-data-weekly",
         "X-Title": APP_TITLE,
     }
     payload: Dict[str, object] = {
@@ -158,19 +185,26 @@ def chat(
                 data = response.json()
                 content = (data["choices"][0]["message"].get("content") or "").strip()
             except (KeyError, IndexError, ValueError, TypeError) as exc:
-                raise LLMError(f"unexpected response shape: {type(exc).__name__}") from exc
+                raise _ModelAttemptError(
+                    f"unexpected response shape: {type(exc).__name__}",
+                    retries=retries,
+                    status_code=200,
+                ) from exc
             if not content:
                 finish = (data.get("choices") or [{}])[0].get("finish_reason")
-                raise LLMError(
+                raise _ModelAttemptError(
                     f"{model} returned empty content (finish_reason={finish!r}). "
-                    "Reasoning likely consumed the token budget."
+                    "Reasoning likely consumed the token budget.",
+                    retries=retries,
+                    status_code=200,
                 )
             return content, retries
 
+        body = getattr(response, "text", "") or ""
         # A provider that does not accept `response_format` or `reasoning` answers 400.
         # Drop `response_format` first, then `reasoning`, and try once more.
         if response.status_code == 400:
-            last_error = f"HTTP 400: {response.text[:160]}"
+            last_error = f"HTTP 400: {body[:160]}"
             if "response_format" in payload:
                 payload.pop("response_format", None)
                 retries += 1
@@ -181,15 +215,95 @@ def chat(
                 continue
 
         if response.status_code in RETRY_STATUSES and transport_attempt < attempts - 1:
-            last_error = f"HTTP {response.status_code}: {response.text[:160]}"
+            last_error = f"HTTP {response.status_code}: {body[:160]}"
             retries += 1
-            sleep(5.0 * (2 ** transport_attempt))
+            sleep(_retry_delay(response, 5.0 * (2 ** transport_attempt)))
             transport_attempt += 1
             continue
 
-        raise LLMError(f"HTTP {response.status_code} from {model}: {response.text[:240]}")
+        raise _ModelAttemptError(
+            f"HTTP {response.status_code} from {model}: {body[:240]}",
+            retries=retries,
+            status_code=response.status_code,
+            free_quota_exhausted=_is_free_daily_quota_error(body),
+        )
 
-    raise LLMError(f"{model} failed after {attempts} attempts: {last_error or 'unknown error'}")
+    raise _ModelAttemptError(
+        f"{model} failed after {attempts} attempts: {last_error or 'unknown error'}",
+        retries=retries,
+    )
+
+
+def chat(
+    messages: List[dict],
+    *,
+    api_key: str,
+    base_url: str = DEFAULT_BASE_URL,
+    model: str,
+    fallback_models: Sequence[str] = (),
+    temperature: float = 0.0,
+    max_tokens: int = 2000,
+    reasoning_effort: str = "low",
+    json_mode: bool = False,
+    timeout: float = 180.0,
+    attempts: int = 4,
+    client: Optional[httpx.Client] = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> tuple[str, int]:
+    """POST to {base_url}/chat/completions with optional fallback models.
+
+    Returns (content, retries_used). Retries 429/5xx and network errors with
+    exponential backoff. Falls back across `fallback_models` when a model
+    exhausts retries, returns 404/429/5xx, or produces empty reasoning-capped
+    content. Auth failures (401/403) fail fast; an OpenRouter daily free-tier
+    quota error skips remaining `:free` models while still trying any paid
+    fallback configured in the list.
+    """
+    candidates: List[str] = []
+    seen: set[str] = set()
+    for raw_name in (model, *(fallback_models or ())):
+        name = str(raw_name or "").strip()
+        if name and name not in seen:
+            seen.add(name)
+            candidates.append(name)
+    if not candidates:
+        raise LLMError("no model specified")
+
+    total_retries = 0
+    errors: List[str] = []
+    skip_free = False
+
+    for idx, candidate in enumerate(candidates):
+        if skip_free and candidate.endswith(":free"):
+            continue
+        per_model_attempts = attempts if idx == 0 else min(attempts, 2)
+        try:
+            content, used = _chat_single(
+                messages,
+                api_key=api_key,
+                base_url=base_url,
+                model=candidate,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                reasoning_effort=reasoning_effort,
+                json_mode=json_mode,
+                timeout=timeout,
+                attempts=per_model_attempts,
+                client=client,
+                sleep=sleep,
+            )
+            return content, total_retries + used
+        except _ModelAttemptError as exc:
+            total_retries += exc.retries
+            errors.append(str(exc))
+            if exc.status_code in (401, 403):
+                raise LLMError(str(exc)) from exc
+            if exc.free_quota_exhausted:
+                skip_free = True
+
+    if len(errors) == 1:
+        raise LLMError(errors[0])
+    raise LLMError(f"all {len(candidates)} model(s) failed: " + " | ".join(errors))
 
 
 def parse_json_response(text: str):
