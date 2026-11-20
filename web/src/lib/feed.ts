@@ -25,7 +25,7 @@ export type { Taggable }
 
 // Comprehensive topic catalog, matched against title, summary and reason.
 export const TOPICS: Topic[] = [
-  { label: 'Privacy', pattern: /privacy|differentially|\bDP\b|anonymi[sz]|de-?identif|membership inference|memoriz|epsilon|\bε\b|re-?identif/i },
+  { label: 'Privacy', pattern: /privacy|differentially|\bDP\b|anonymi[sz]|de-?identif|membership inference|memoriz|epsilon|(?:^|[^\p{L}\p{N}])ε(?=$|[^\p{L}\p{N}])|re-?identif/iu },
   { label: 'Tabular', pattern: /tabular|relational|spreadsheet|\btables?\b|\brows?\b|structured data|dataframe/i },
   { label: 'Healthcare', pattern: /clinical|medical|health|patient|\bEHR\b|hospital|biomedical|genom|pharmac|radiolog/i },
   { label: 'Evaluation', pattern: /benchmark|evaluat|leaderboard|fidelity|utility|metric|audit|verif|validat/i },
@@ -36,7 +36,7 @@ export const TOPICS: Topic[] = [
   { label: 'Fairness', pattern: /fairness|\bbias(?:ed)?\b|debias|equity|demographic|subgroup|disparit/i },
   { label: 'Simulation', pattern: /simulat|digital twin|sim-to-real|world model|monte carlo/i },
   { label: 'Vision', pattern: /\bimages?\b|vision|\bvideos?\b|3D|splatting|multimodal|render/i },
-  { label: 'Time series', pattern: /time[- ]series|forecast|temporal|sequential| longitudinal/i },
+  { label: 'Time series', pattern: /time[- ]series|forecast|temporal|sequential|longitudinal/i },
   { label: 'Finance', pattern: /financ|fraud|banking|trading|credit|transaction|anti[- ]money/i },
   { label: 'Federated & Distributed', pattern: /federated|decentraliz|cross[- ]silo|collaborative learning|distributed/i },
   { label: 'Watermarking & Provenance', pattern: /watermark|provenance|detection|attribution|fingerprint|model collapse/i },
@@ -81,19 +81,19 @@ export function sectionCounts(items: ReportItem[]): Record<FeedSection, number> 
 /**
  * The item lists behind the chip counts on a filtered page.
  *
- * Each chip set ignores its own dimension — selecting "Tools" must not make the
- * Tools chip read 0 — and honours everything else, including the search text.
+ * Each chip set ignores ONLY its own dimension — selecting "Tools" must not
+ * make the Tools chip read 0, while selecting "Read later" or "Important"
+ * keeps section and keyword chip counts truthful to the active view.
  */
 export function chipScopes(
   items: ReportItem[],
   filters: FeedFilters,
   saved: Map<string, SavedState>,
 ): { section: ReportItem[]; keyword: ReportItem[]; view: ReportItem[] } {
-  const withoutView: FeedFilters = { ...filters, view: 'all' }
   return {
-    section: filterItems(items, { ...withoutView, section: 'all' }, saved),
-    keyword: filterItems(items, { ...withoutView, keyword: null }, saved),
-    view: filterItems(items, withoutView, saved),
+    section: filterItems(items, { ...filters, section: 'all' }, saved),
+    keyword: filterItems(items, { ...filters, keyword: null }, saved),
+    view: filterItems(items, { ...filters, view: 'all' }, saved),
   }
 }
 

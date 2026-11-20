@@ -1,44 +1,61 @@
-import { ArrowRight, CalendarDays, Check, RefreshCw } from 'lucide-react'
+import { ArrowRight, CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
 
+import { Link } from '@/components/link'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
 import { briefTitle, formatDate } from '@/lib/report'
-import { navigate } from '@/lib/router'
 import { useReports } from '@/lib/use-report'
+import { cn } from '@/lib/utils'
 
 interface ArchivePageProps {
   isAdmin: boolean
   running: boolean
+  pipelineError: string | null
   onRunPipeline: () => void
 }
 
 /**
- * `/archive` (spec, public): every week, oldest to newest, each row opening
- * the week's brief at /brief/<id>. The admin pipeline button lives here.
+ * `/archive` (public): every published week, newest to oldest, linking to /brief/<id>.
  */
-export function ArchivePage({ isAdmin, running, onRunPipeline }: ArchivePageProps) {
+export function ArchivePage({ isAdmin, running, pipelineError, onRunPipeline }: ArchivePageProps) {
   const { reports, loading, error, retry } = useReports()
-  const rows = [...reports].reverse()
 
   return (
-    <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
-      <div className="grid gap-10 lg:grid-cols-[0.65fr_1.35fr] lg:gap-20">
+    <section className="mx-auto max-w-7xl px-5 pb-20 pt-10 sm:px-8 sm:pt-14">
+      {pipelineError && (
+        <div className="mb-8 flex items-center gap-2.5 rounded-2xl border border-destructive/25 bg-[#fff5f7] px-4 py-3 text-sm text-destructive" role="alert">
+          <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
+          <span>{pipelineError}</span>
+        </div>
+      )}
+
+      <div className="grid gap-10 lg:grid-cols-[0.65fr_1.35fr] lg:gap-16">
         <div>
-          <p className="text-sm font-semibold text-primary">Report archive</p>
-          <h1 className="text-balance font-display text-4xl font-medium tracking-[-0.03em]">Every week, kept in context.</h1>
-          <p className="mt-5 max-w-md leading-7 text-muted-foreground">Return to an earlier brief without losing its rankings, source links, or editorial perspective.</p>
+          <h1 className="text-balance font-display text-3xl font-medium tracking-[-0.03em] text-ink sm:text-4xl">
+            Weekly report archive
+          </h1>
+          <p className="mt-4 max-w-md text-sm leading-6 text-muted-foreground sm:text-base sm:leading-7">
+            Every edition kept in context — return to any earlier brief without losing its rankings, source links, PDF edition, or editorial notes.
+          </p>
           {isAdmin && (
-            <Button className="mt-6" variant="ink" onClick={onRunPipeline} disabled={running}>
-              <RefreshCw aria-hidden="true" />
+            <Button
+              className="mt-6"
+              variant="ink"
+              onClick={onRunPipeline}
+              disabled={running}
+              aria-busy={running}
+            >
+              <RefreshCw className={cn(running && 'motion-safe:animate-spin')} aria-hidden="true" />
               {running ? 'Running the pipeline…' : 'Run the pipeline now'}
             </Button>
           )}
         </div>
 
-        <div className="overflow-hidden rounded-[24px] border border-border bg-white shadow-[0_20px_60px_-42px_rgba(16,42,67,0.4)]">
+        <div className="overflow-hidden rounded-2xl border border-border bg-white shadow-xs">
           {error && (
-            <div className="flex items-center justify-between gap-4 p-6 text-sm text-destructive" role="alert">
+            <div className="flex flex-wrap items-center justify-between gap-4 p-6 text-sm text-destructive" role="alert">
               <span>{error}</span>
               <Button variant="outline" size="sm" onClick={retry}>
                 <RefreshCw aria-hidden="true" />
@@ -46,38 +63,80 @@ export function ArchivePage({ isAdmin, running, onRunPipeline }: ArchivePageProp
               </Button>
             </div>
           )}
-          {loading && <div className="space-y-5 p-6"><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /><Skeleton className="h-20 w-full" /></div>}
-          {!loading && !error && rows.length === 0 && (
-            <div className="px-6 py-16 text-center">
-              <p className="text-balance font-display text-2xl text-ink">Your first brief starts with the pipeline.</p>
-              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">Publish a completed weekly report and it will be archived here.</p>
+
+          {loading && (
+            <div role="status" aria-label="Loading weekly archive" className="space-y-4 p-6">
+              <Skeleton className="h-20 w-full rounded-xl" />
+              <Skeleton className="h-20 w-full rounded-xl" />
+              <Skeleton className="h-20 w-full rounded-xl" />
             </div>
           )}
-          {!loading && rows.map((report, index) => {
-            const activeReport = false
-            return (
-              <div key={report.id}>
-                {index > 0 && <Separator />}
-                <button
-                  type="button"
-                  onClick={() => navigate(`/brief/${report.id}`)}
-                  className="group flex w-full items-center gap-4 px-5 py-6 text-left transition-colors hover:bg-secondary/45 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-7"
-                >
-                  <span className={`grid size-11 shrink-0 place-items-center rounded-xl ${activeReport ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground'}`}>
-                    {activeReport ? <Check className="size-5" aria-hidden="true" /> : <CalendarDays className="size-5" aria-hidden="true" />}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words font-display text-lg font-medium leading-snug text-ink">{briefTitle(report.subject)}</span>
-                    <span className="mt-1.5 block text-sm text-muted-foreground">Week ending {formatDate(report.week_end, 'short')}</span>
-                  </span>
-                  <ArrowRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" aria-hidden="true" />
-                </button>
-              </div>
-            )
-          })}
-          {!loading && rows.length > 0 && (
-            <div className="px-5 py-3 text-xs text-muted-foreground sm:px-7">
-              Oldest to newest. Open a week to read the brief. Each brief also links back here from its archive entry.
+
+          {!loading && !error && reports.length === 0 && (
+            <div className="px-6 py-16 text-center">
+              <h2 className="text-balance font-display text-2xl font-medium text-ink">
+                No briefs archived yet.
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                Publish a completed weekly report and it will appear here.
+              </p>
+            </div>
+          )}
+
+          {!loading && reports.length > 0 && (
+            <ul>
+              {reports.map((report, index) => {
+                const isLatest = index === 0
+                return (
+                  <li key={report.id}>
+                    {index > 0 && <Separator />}
+                    <Link
+                      to={`/brief/${report.id}`}
+                      className="group flex w-full items-center gap-4 px-5 py-5 text-left transition-colors hover:bg-secondary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:px-7 sm:py-6"
+                    >
+                      <span
+                        className={cn(
+                          'grid size-11 shrink-0 place-items-center rounded-xl',
+                          isLatest ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground',
+                        )}
+                      >
+                        <CalendarDays className="size-5" aria-hidden="true" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span className="break-words font-display text-lg font-medium leading-snug text-ink transition-colors group-hover:text-primary">
+                            {briefTitle(report.subject)}
+                          </span>
+                          {isLatest && (
+                            <Badge variant="secondary" className="bg-primary/10 text-primary">
+                              Latest
+                            </Badge>
+                          )}
+                          {Boolean(report.has_pdf) && (
+                            <Badge variant="outline" className="text-muted-foreground">
+                              <FileText className="size-3" aria-hidden="true" />
+                              PDF
+                            </Badge>
+                          )}
+                        </span>
+                        <span className="mt-1 block text-sm text-muted-foreground">
+                          Week ending {formatDate(report.week_end, 'short')}
+                        </span>
+                      </span>
+                      <ArrowRight
+                        className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:text-primary motion-safe:group-hover:translate-x-1"
+                        aria-hidden="true"
+                      />
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+
+          {!loading && reports.length > 0 && (
+            <div className="border-t border-border/70 bg-background/50 px-5 py-3 text-xs text-muted-foreground sm:px-7">
+              Newest to oldest. Select any week to read its brief.
             </div>
           )}
         </div>

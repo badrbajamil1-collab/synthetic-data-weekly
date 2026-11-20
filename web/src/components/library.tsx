@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ArrowUpRight, BookmarkCheck, Star } from 'lucide-react'
+import { useState } from 'react'
+import { ArrowUpRight, BookmarkCheck, Check, Star } from 'lucide-react'
 
 import { NotesPanel } from '@/components/notes-panel'
 import { PaperActions } from '@/components/paper-actions'
@@ -12,20 +12,65 @@ import type { LibraryEntry } from '@/lib/api'
 interface LibraryProps {
   entries: LibraryEntry[]
   onToggle: (itemId: string, field: 'read_later' | 'important') => void
-  onNote: (itemId: string, note: string) => void
+  onNote: (itemId: string, note: string) => Promise<void> | void
   loading: boolean
   error: string | null
   reload?: () => void
 }
 
-function NoteEditor({ itemId, note, onSave }: { itemId: string; note: string; onSave: (id: string, note: string) => void }) {
+function NoteEditor({
+  itemId,
+  note,
+  onSave,
+}: {
+  itemId: string
+  note: string
+  onSave: (id: string, note: string) => Promise<void> | void
+}) {
   const [draft, setDraft] = useState(note)
-  useEffect(() => setDraft(note), [note])
+  const [syncedNote, setSyncedNote] = useState(note)
+  const [saving, setSaving] = useState(false)
+  const [justSaved, setJustSaved] = useState(false)
+
+  if (syncedNote !== note) {
+    setSyncedNote(note)
+    setDraft(note)
+  }
+
+  const dirty = draft !== note
+
+  async function commit() {
+    if (!dirty || saving) return
+    setSaving(true)
+    setJustSaved(false)
+    try {
+      await onSave(itemId, draft)
+      setJustSaved(true)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="mt-4">
-      <label htmlFor={`note-${itemId}`} className="text-xs font-semibold text-muted-foreground">
-        Your note
-      </label>
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={`note-${itemId}`} className="text-xs font-semibold text-muted-foreground">
+          Your note
+        </label>
+        <div className="flex items-center gap-2">
+          {justSaved && !dirty && (
+            <span role="status" className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+              <Check className="size-3.5" aria-hidden="true" />
+              Saved
+            </span>
+          )}
+          {dirty && (
+            <Button type="button" variant="outline" size="sm" onClick={() => void commit()} disabled={saving}>
+              {saving ? 'Saving…' : 'Save note'}
+            </Button>
+          )}
+        </div>
+      </div>
       <textarea
         id={`note-${itemId}`}
         name="note"
@@ -33,10 +78,19 @@ function NoteEditor({ itemId, note, onSave }: { itemId: string; note: string; on
         maxLength={2000}
         rows={2}
         autoComplete="off"
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => draft !== note && onSave(itemId, draft)}
+        onChange={(event) => {
+          setDraft(event.target.value)
+          if (justSaved) setJustSaved(false)
+        }}
+        onBlur={() => void commit()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            void commit()
+          }
+        }}
         placeholder="Why it matters to you, what to check next…"
-        className="mt-1.5 w-full resize-y rounded-xl border border-border bg-white px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mt-1.5 w-full resize-y rounded-xl border border-input bg-white px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </div>
   )
@@ -45,20 +99,35 @@ function NoteEditor({ itemId, note, onSave }: { itemId: string; note: string; on
 function Entry({ entry, onToggle, onNote }: { entry: LibraryEntry; onToggle: LibraryProps['onToggle']; onNote: LibraryProps['onNote'] }) {
   return (
     <article className="border-t border-border py-6 first:border-t-0 first:pt-0">
-      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
         <Badge variant="secondary">{sourceLabel(entry.source)}</Badge>
         <span>Week ending {formatDate(entry.week_end, 'long')}</span>
-        {entry.important === 1 && <span className="inline-flex items-center gap-1 text-primary"><Star className="size-3.5 fill-current" aria-hidden="true" />Important</span>}
-        {entry.read_later === 1 && <span className="inline-flex items-center gap-1 text-primary"><BookmarkCheck className="size-3.5" aria-hidden="true" />Read later</span>}
+        {entry.important === 1 && (
+          <span className="inline-flex items-center gap-1 font-medium text-primary">
+            <Star className="size-3.5 fill-current" aria-hidden="true" />
+            Important
+          </span>
+        )}
+        {entry.read_later === 1 && (
+          <span className="inline-flex items-center gap-1 font-medium text-primary">
+            <BookmarkCheck className="size-3.5" aria-hidden="true" />
+            Read later
+          </span>
+        )}
       </div>
-      <h3 className="mt-2 break-words text-balance font-display text-xl font-medium leading-snug text-ink">
-        <a href={entry.url} target="_blank" rel="noreferrer" className="hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+      <h2 className="mt-2 break-words text-balance font-display text-xl font-medium leading-snug text-ink">
+        <a
+          href={entry.url}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-sm hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           {entry.title}
           <ArrowUpRight className="mb-1 ml-1 inline size-4" aria-hidden="true" />
           <span className="sr-only"> (opens in a new tab)</span>
         </a>
-      </h3>
-      {entry.summary && <p className="mt-2 max-w-3xl text-[15px] leading-7 text-muted-foreground">{entry.summary}</p>}
+      </h2>
+      {entry.summary && <p className="mt-2 max-w-[72ch] text-[15px] leading-7 text-muted-foreground">{entry.summary}</p>}
       <div className="mt-4">
         <PaperActions
           readLater={entry.read_later === 1}
@@ -72,14 +141,14 @@ function Entry({ entry, onToggle, onNote }: { entry: LibraryEntry; onToggle: Lib
 }
 
 export function Library({ entries, onToggle, onNote, loading, error, reload }: LibraryProps) {
+  const [activeTab, setActiveTab] = useState('all')
   const readLater = entries.filter((e) => e.read_later === 1)
   const important = entries.filter((e) => e.important === 1)
-
   const notes = entries.filter((e) => e.note.trim() !== '')
 
-  // One page-level alert above a surviving list: a failed save or reload must
-  // not erase the library (spec: failed API call → error with a retry button).
-  if (loading) {
+  // Only show full loading state on initial empty load; keep Tabs mounted on
+  // background syncs so saving a note or toggling Read later never resets tabs or scroll.
+  if (loading && entries.length === 0) {
     return (
       <div>
         {error && (
@@ -97,13 +166,13 @@ export function Library({ entries, onToggle, onNote, loading, error, reload }: L
 
   if (entries.length === 0 && !error) {
     return (
-      <div className="rounded-3xl border border-dashed border-border bg-white/70 px-6 py-14 text-center">
-        <p className="font-display text-2xl">Nothing saved yet.</p>
-        <p className="mx-auto mt-2 max-w-md text-muted-foreground">
+      <div className="rounded-3xl border border-dashed border-border bg-white/80 px-6 py-12 text-center">
+        <h2 className="font-display text-2xl font-medium text-ink">Nothing saved yet.</h2>
+        <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
           Use Read later or Mark important on any paper and it will appear here, private to you.
         </p>
-        <div className="mt-10 max-w-xl text-left">
-          <p className="mb-4 text-center text-sm font-semibold text-muted-foreground">Upcoming already lives here:</p>
+        <div className="mx-auto mt-10 max-w-xl text-left">
+          <p className="mb-4 text-center text-sm font-semibold text-muted-foreground">Track upcoming leads here:</p>
           <NotesPanel />
         </div>
       </div>
@@ -127,30 +196,32 @@ export function Library({ entries, onToggle, onNote, loading, error, reload }: L
           )}
         </div>
       )}
-      <Tabs defaultValue="all">
-      <TabsList className="max-w-full overflow-x-auto overscroll-contain">
-        {lists.map((list) => (
-          <TabsTrigger key={list.value} value={list.value}>
-            {list.label}
-            <span className="ml-1.5 rounded-full bg-black/6 px-1.5 py-0.5 text-[11px] leading-none">{list.items.length}</span>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="max-w-full overflow-x-auto overscroll-contain">
+          {lists.map((list) => (
+            <TabsTrigger key={list.value} value={list.value}>
+              {list.label}
+              <span className="ml-1.5 rounded-full bg-black/8 px-1.5 py-0.5 font-mono text-[11px] leading-none tabular-nums group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
+                {list.items.length}
+              </span>
+            </TabsTrigger>
+          ))}
+          <TabsTrigger value="upcoming">
+            Upcoming
           </TabsTrigger>
+        </TabsList>
+        {lists.map((list) => (
+          <TabsContent key={list.value} value={list.value}>
+            {list.items.length === 0 ? (
+              <p className="py-10 text-center text-sm text-muted-foreground">Nothing in this list yet.</p>
+            ) : (
+              list.items.map((entry) => <Entry key={entry.id} entry={entry} onToggle={onToggle} onNote={onNote} />)
+            )}
+          </TabsContent>
         ))}
-        <TabsTrigger value="upcoming">
-          Upcoming
-        </TabsTrigger>
-      </TabsList>
-      {lists.map((list) => (
-        <TabsContent key={list.value} value={list.value}>
-          {list.items.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">Nothing in this list yet.</p>
-          ) : (
-            list.items.map((entry) => <Entry key={entry.id} entry={entry} onToggle={onToggle} onNote={onNote} />)
-          )}
+        <TabsContent value="upcoming">
+          <NotesPanel />
         </TabsContent>
-      ))}
-      <TabsContent value="upcoming">
-        <NotesPanel />
-      </TabsContent>
       </Tabs>
     </div>
   )

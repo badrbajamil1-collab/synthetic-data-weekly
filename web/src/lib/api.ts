@@ -43,18 +43,7 @@ export interface SavableItemMeta {
   reason?: string
   summary?: string
   section?: string
-}
-
-export async function getJson<T>(path: string): Promise<T | null> {
-  let response = await fetch(path, { headers: { Accept: 'application/json', ...(await authHeaders()) } })
-  if (response.status === 401 && apiTokenGetter) {
-    response = await fetch(path, { headers: { Accept: 'application/json', ...(await authHeaders(true)) } })
-  }
-  if (response.status === 401) {
-    throw new Error('Your session was not accepted. Sign in again to load this.')
-  }
-  if (!response.ok) throw new Error(`Request failed (${response.status}). Try again in a moment.`)
-  return (await response.json()) as T
+  week_end?: string
 }
 
 /**
@@ -78,24 +67,56 @@ export async function authHeaders(skipCache = false): Promise<Record<string, str
   }
 }
 
+async function fetchWithAuthRetry(
+  url: string,
+  init: Omit<RequestInit, 'headers'> & { headers?: Record<string, string> },
+): Promise<Response> {
+  const baseHeaders = init.headers ?? {}
+  let response = await fetch(url, {
+    ...init,
+    headers: { ...baseHeaders, ...(await authHeaders()) },
+  })
+  if (response.status === 401 && apiTokenGetter) {
+    response = await fetch(url, {
+      ...init,
+      headers: { ...baseHeaders, ...(await authHeaders(true)) },
+    })
+  }
+  return response
+}
+
+export async function getJson<T>(path: string): Promise<T | null> {
+  const response = await fetchWithAuthRetry(path, { headers: { Accept: 'application/json' } })
+  if (response.status === 401) {
+    throw new Error('Your session was not accepted. Sign in again to load this.')
+  }
+  if (!response.ok) throw new Error(`Request failed (${response.status}). Try again in a moment.`)
+  return (await response.json()) as T
+}
+
 export async function saveState(
   itemId: string,
   patch: Partial<Pick<PaperState, 'read_later' | 'important' | 'note'>> & { item?: SavableItemMeta },
 ): Promise<PaperState> {
-  let response = await fetch(`/api/my/items/${encodeURIComponent(itemId)}`, {
+  const response = await fetchWithAuthRetry(`/api/my/items/${encodeURIComponent(itemId)}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders()) },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(patch),
   })
-  if (response.status === 401 && apiTokenGetter) {
-    response = await fetch(`/api/my/items/${encodeURIComponent(itemId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders(true)) },
-      body: JSON.stringify(patch),
-    })
-  }
   if (!response.ok) throw new Error(`Could not save (${response.status}). Try again in a moment.`)
   return (await response.json()) as PaperState
+}
+
+export async function runPipelineRequest(): Promise<{ status?: string; error?: string }> {
+  const response = await fetchWithAuthRetry('/api/pipeline/run', {
+    method: 'POST',
+    headers: { Accept: 'application/json' },
+  })
+  const body = (await response.json().catch(() => ({}))) as { status?: string; error?: string }
+  if (!response.ok || body.status !== 'succeeded') {
+    throw new Error(body.error ?? `The run failed (${response.status}). Try again in a moment.`)
+  }
+  return body
 }
 
 export function errorText(error: unknown): string {
@@ -136,22 +157,15 @@ export async function fetchArchiveCounts(): Promise<ArchiveCounts | null> {
 }
 
 async function toggleFollow(method: 'PUT' | 'DELETE', follow: TopicFollow): Promise<TopicFollow[]> {
-  let response = await fetch('/api/my/topics', {
-    method: 'PUT' === method ? 'PUT' : 'DELETE',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders()) },
+  const response = await fetchWithAuthRetry('/api/my/topics', {
+    method,
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify(follow),
   })
-  if (response.status === 401 && apiTokenGetter) {
-    response = await fetch('/api/my/topics', {
-      method: 'PUT' === method ? 'PUT' : 'DELETE',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders(true)) },
-      body: JSON.stringify(follow),
-    })
-  }
   if (!response.ok) {
     throw new Error(`Could not update your follows (${response.status}). Try again in a moment.`)
   }
-  return (await response.json() as { topics: TopicFollow[] }).topics
+  return ((await response.json()) as { topics: TopicFollow[] }).topics
 }
 
 export function putTopic(follow: TopicFollow): Promise<TopicFollow[]> {
@@ -168,26 +182,26 @@ export async function fetchMyNotes(): Promise<UserNote[]> {
 }
 
 export async function addMyNote(body: string): Promise<UserNote> {
-  const response = await fetch('/api/my/notes', {
+  const response = await fetchWithAuthRetry('/api/my/notes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(await authHeaders()) },
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ body }),
   })
   if (!response.ok) {
     throw new Error(`Could not save the note (${response.status}). Try again in a moment.`)
   }
-  return (await response.json() as { note: UserNote }).note
+  return ((await response.json()) as { note: UserNote }).note
 }
 
 export async function deleteMyNote(id: string): Promise<UserNote[]> {
-  const response = await fetch(`/api/my/notes/${encodeURIComponent(id)}`, {
+  const response = await fetchWithAuthRetry(`/api/my/notes/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: { Accept: 'application/json', ...(await authHeaders()) },
+    headers: { Accept: 'application/json' },
   })
   if (!response.ok) {
     throw new Error(`Could not delete the note (${response.status}). Try again in a moment.`)
   }
-  return (await response.json() as { notes: UserNote[] }).notes
+  return ((await response.json()) as { notes: UserNote[] }).notes
 }
 
 export interface SourceStatInfo {
@@ -306,6 +320,43 @@ export async function fetchResearchSession(id: string): Promise<ResearchSessionD
   }
 }
 
+function dispatchSseBlock(
+  block: string,
+  handlers: {
+    onStart?: (info: { sessionId: string; mode: 'query' | 'weekly'; query: string; days: number }) => void
+    onNode: (event: ResearchNodeStreamEvent) => void
+    onDone: (session: ResearchSessionDetail) => void
+    onError: (message: string) => void
+  },
+): 'terminal' | 'non-terminal' {
+  const lines = block.split('\n')
+  let eventType = 'message'
+  const dataLines: string[] = []
+  for (const line of lines) {
+    if (line.startsWith('event:')) eventType = line.slice(6).trim()
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+  }
+  const dataText = dataLines.join('\n')
+  if (!dataText) return 'non-terminal'
+  try {
+    const parsed = JSON.parse(dataText)
+    if (eventType === 'start') {
+      handlers.onStart?.(parsed)
+    } else if (eventType === 'node') {
+      handlers.onNode(parsed as ResearchNodeStreamEvent)
+    } else if (eventType === 'done') {
+      handlers.onDone(parsed as ResearchSessionDetail)
+      return 'terminal'
+    } else if (eventType === 'error') {
+      handlers.onError(String(parsed?.error ?? 'Research run failed.'))
+      return 'terminal'
+    }
+  } catch {
+    // Ignore malformed frame
+  }
+  return 'non-terminal'
+}
+
 export async function streamResearchRun(
   params: {
     mode?: 'query' | 'weekly'
@@ -321,13 +372,12 @@ export async function streamResearchRun(
   },
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch('/api/research/stream', {
+  const response = await fetchWithAuthRetry('/api/research/stream', {
     method: 'POST',
     signal,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
-      ...(await authHeaders()),
     },
     body: JSON.stringify(params),
   })
@@ -343,32 +393,32 @@ export async function streamResearchRun(
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let sawTerminal = false
 
   while (true) {
     const { value, done } = await reader.read()
-    if (done) break
+    if (done) {
+      buffer += decoder.decode()
+      break
+    }
     buffer += decoder.decode(value, { stream: true })
+    buffer = buffer.replace(/\r\n/g, '\n')
     const blocks = buffer.split('\n\n')
     buffer = blocks.pop() ?? ''
 
     for (const block of blocks) {
-      const lines = block.split('\n')
-      let eventType = 'message'
-      let dataText = ''
-      for (const line of lines) {
-        if (line.startsWith('event:')) eventType = line.slice(6).trim()
-        else if (line.startsWith('data:')) dataText += line.slice(5).trim()
-      }
-      if (!dataText) continue
-      try {
-        const parsed = JSON.parse(dataText)
-        if (eventType === 'start') handlers.onStart?.(parsed)
-        else if (eventType === 'node') handlers.onNode(parsed as ResearchNodeStreamEvent)
-        else if (eventType === 'done') handlers.onDone(parsed as ResearchSessionDetail)
-        else if (eventType === 'error') handlers.onError(String(parsed?.error ?? 'Research run failed.'))
-      } catch {
-        // Ignore malformed frame
+      if (dispatchSseBlock(block, handlers) === 'terminal') {
+        sawTerminal = true
       }
     }
+  }
+
+  const tail = buffer.replace(/\r\n/g, '\n').trim()
+  if (tail && dispatchSseBlock(tail, handlers) === 'terminal') {
+    sawTerminal = true
+  }
+
+  if (!sawTerminal && !signal?.aborted) {
+    handlers.onError('The live search stream ended before finishing. Try again.')
   }
 }

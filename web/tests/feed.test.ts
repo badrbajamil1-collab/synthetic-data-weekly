@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { chipScopes, filterItems, type FeedFilters, type SavedState } from '../src/lib/feed.ts'
+import { chipScopes, filterItems, topicsFor, type FeedFilters, type SavedState } from '../src/lib/feed.ts'
 import type { ReportItem } from '../src/lib/report.ts'
 
 const empty: FeedFilters = { query: '', section: 'all', keyword: null, view: 'all' }
@@ -67,4 +67,19 @@ test('chipScopes: empty scopes describe an empty result, so chips read zero not 
   assert.equal(scopes.section.length, 0)
   assert.equal(scopes.keyword.length, 0)
   assert.equal(scopes.view.length, 0)
+})
+
+test('chipScopes: section and keyword scopes honour the active saved view', () => {
+  const readLaterScopes = chipScopes(items, { ...empty, view: 'read_later' }, saved)
+  assert.deepEqual(readLaterScopes.section.map((i) => i.id), ['a'])
+  assert.deepEqual(readLaterScopes.keyword.map((i) => i.id), ['a'])
+
+  const importantScopes = chipScopes(items, { ...empty, view: 'important' }, saved)
+  assert.deepEqual(importantScopes.section.map((i) => i.id), ['c'])
+  assert.deepEqual(importantScopes.keyword.map((i) => i.id), ['c'])
+})
+
+test('topicsFor: matches Unicode epsilon and start-of-title Longitudinal', () => {
+  assert.ok(topicsFor(item({ id: 'eps', title: 'Tight (ε, δ) accounting', summary: '', reason: '' })).includes('Privacy'))
+  assert.ok(topicsFor(item({ id: 'lon', title: 'Longitudinal patient synthesis', summary: '', reason: '' })).includes('Time series'))
 })

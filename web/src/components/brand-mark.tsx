@@ -12,14 +12,14 @@ interface BrandMarkProps {
 export function BrandMark({ className }: BrandMarkProps) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden="true" focusable="false">
-      <rect width="48" height="48" rx="12" fill="#102a43" />
+      <rect width="48" height="48" rx="12" fill="#0f172a" />
       {NOISE.map(([cx, cy, r]) => (
-        <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} fill="#4f6479" />
+        <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} fill="#334155" />
       ))}
       <polyline
         points="11,37 17,26 24,31 37,11"
         fill="none"
-        stroke="#818cf8"
+        stroke="#14b8a6"
         strokeWidth={2.6}
         strokeLinecap="round"
         strokeLinejoin="round"

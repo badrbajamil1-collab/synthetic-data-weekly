@@ -26,12 +26,11 @@ const NODE_STEPS: Array<{
   { id: 'rank', label: 'Rank' },
   { id: 'fetch', label: 'Fetch' },
   { id: 'summarise', label: 'Summarise' },
-  { id: 'publish', label: 'Checkpoint' },
+  { id: 'publish', label: 'Save' },
 ]
 
 /**
- * Quiet, single-row progress rail for the 6-node LangGraph.js pipeline.
- * Avoids nested cards and decorative icon boxes.
+ * Quiet, single-row progress rail for the 6-stage live search pipeline.
  */
 export function PipelineStepper({
   status,
@@ -49,25 +48,41 @@ export function PipelineStepper({
       case 'collect': {
         if (!sourceStats.length && !cleanStats) return null
         const total = cleanStats?.raw ?? sourceStats.reduce((sum, s) => sum + s.count, 0)
-        return `${total} raw`
+        return `${total} found`
       }
       case 'clean':
         if (!cleanStats) return null
-        return `${cleanStats.fresh} fresh`
+        return `${cleanStats.fresh} unique`
       case 'rank':
-        return scoredCount > 0 ? `${scoredCount} scored` : null
+        return scoredCount > 0 ? `${scoredCount} ranked` : null
       case 'fetch':
-        return fetchedCount > 0 ? `${fetchedCount} texts` : null
+        return fetchedCount > 0 ? `${fetchedCount} read` : null
       case 'summarise':
-        return sectionCount > 0 ? `${sectionCount} guarded` : null
+        return sectionCount > 0 ? `${sectionCount} summaries` : null
       case 'publish':
         if (reportId) return reportId
-        return completedNodes.includes('publish') ? 'D1 saved' : null
+        return completedNodes.includes('publish') ? 'Saved' : null
     }
   }
 
+  const activeLabel = NODE_STEPS.find((step) => step.id === activeNode)?.label
+  const liveStatusText =
+    status === 'running'
+      ? activeLabel
+        ? `Search in progress: ${activeLabel}.`
+        : 'Search in progress.'
+      : status === 'succeeded'
+        ? 'Search completed.'
+        : status === 'failed'
+          ? 'Search failed.'
+          : ''
+
   return (
-    <div className="rounded-2xl border border-border/75 bg-white px-5 py-4 sm:px-6">
+    <div className="rounded-2xl border border-border bg-white px-5 py-4 sm:px-6">
+      <p className="sr-only" role="status" aria-live="polite">
+        {liveStatusText}
+      </p>
+
       <ol className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
         {NODE_STEPS.map((step, index) => {
           const done = completedNodes.includes(step.id)
@@ -77,29 +92,36 @@ export function PipelineStepper({
           return (
             <li
               key={step.id}
-              className="flex items-center justify-between gap-2 border-b border-border/50 pb-2 sm:border-b-0 sm:pb-0"
+              aria-current={active ? 'step' : undefined}
+              className="flex items-center justify-between gap-2 border-b border-border/60 pb-2 sm:border-b-0 sm:pb-0"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <span
                   className={cn(
-                    'grid size-5 shrink-0 place-items-center rounded-full font-mono text-[10px] transition-colors',
-                    done && 'bg-emerald-600 text-white',
+                    'grid size-5 shrink-0 place-items-center rounded-full font-mono text-[11px] font-medium transition-colors',
+                    done && 'bg-emerald-700 text-white',
                     active && 'bg-primary text-white',
-                    !done && !active && 'border border-border text-muted-foreground',
+                    !done && !active && 'border border-slate-300 text-muted-foreground',
                   )}
                 >
                   {done ? (
-                    <Check className="size-3" aria-label="Completed" />
+                    <>
+                      <Check className="size-3" aria-hidden="true" />
+                      <span className="sr-only">Completed</span>
+                    </>
                   ) : active ? (
-                    <Loader2 className="size-3 animate-spin" aria-label="Running" />
+                    <>
+                      <Loader2 className="size-3 motion-safe:animate-spin" aria-hidden="true" />
+                      <span className="sr-only">Running</span>
+                    </>
                   ) : (
-                    index + 1
+                    <span aria-hidden="true">{index + 1}</span>
                   )}
                 </span>
                 <span
                   className={cn(
                     'truncate text-xs',
-                    done || active ? 'font-medium text-ink' : 'text-muted-foreground',
+                    done || active ? 'font-semibold text-ink' : 'text-muted-foreground',
                   )}
                 >
                   {step.label}
@@ -117,18 +139,19 @@ export function PipelineStepper({
       </ol>
 
       {sourceStats.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-border/60 pt-3 font-mono text-[11px] text-muted-foreground">
-          <span className="uppercase tracking-wider text-muted-foreground/75">Sources</span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/70 pt-3 font-mono text-xs text-muted-foreground">
+          <span className="font-sans text-xs font-semibold text-muted-foreground">Sources</span>
           {sourceStats.map((source) => (
             <span
               key={source.name}
               className={cn(
                 'tabular-nums',
-                source.error ? 'text-amber-700' : source.count > 0 ? 'text-ink/80' : 'text-muted-foreground/60',
+                source.error ? 'text-amber-800' : source.count > 0 ? 'text-ink' : 'text-muted-foreground',
               )}
-              title={source.error ? `${source.name}: ${source.error}` : `${source.durationMs}ms`}
             >
-              {source.name} <strong className="font-medium">{source.count}</strong>
+              {source.name}{' '}
+              <strong className="font-semibold">{source.count}</strong>
+              {source.error && <span className="ml-1 font-sans text-[11px]">(unavailable)</span>}
             </span>
           ))}
         </div>

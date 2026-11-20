@@ -1,5 +1,6 @@
 import { Star } from 'lucide-react'
 
+import { sourceLabel } from '@/lib/report'
 import type { TopicKind } from '@/lib/topics'
 import { cn } from '@/lib/utils'
 
@@ -11,28 +12,28 @@ interface FollowToggleProps {
 }
 
 /**
- * The followable star on topic chips and source badges (spec "Following topics
- * and sources"): filled when followed, outline when not.
+ * The followable star on source badges: filled when followed, outline when not.
  */
 export function FollowToggle({ kind, value, followed, onToggle }: FollowToggleProps) {
+  const display = kind === 'source' ? sourceLabel(value) : value
   return (
     <button
       type="button"
       aria-pressed={followed}
-      aria-label={followed ? `Stop following ${value}` : `Follow ${value} in your feed`}
-      title={followed ? 'Stop following' : 'Follow in your feed'}
+      aria-label={`Follow ${display} in your feed`}
+      title={followed ? `Following ${display} (click to unfollow)` : `Follow ${display} in your feed`}
       onClick={(event) => {
         event.stopPropagation()
         void onToggle(kind, value, !followed)
       }}
       className={cn(
-        'grid size-7 shrink-0 cursor-pointer place-items-center rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-90',
+        'touch-target grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-safe:active:scale-95',
         followed
-          ? 'border-amber-400/60 bg-amber-50 text-amber-600 shadow-2xs hover:bg-amber-100'
-          : 'border-transparent text-muted-foreground/70 hover:border-border hover:bg-white hover:text-amber-600',
+          ? 'border-amber-400/70 bg-amber-50 text-amber-700 hover:bg-amber-100'
+          : 'border-transparent text-slate-600 hover:border-border hover:bg-background hover:text-amber-700',
       )}
     >
-      <Star className={cn('size-3.5 transition-transform', followed && 'scale-110 fill-current')} aria-hidden="true" />
+      <Star className={cn('size-3.5 transition-transform', followed && 'fill-current')} aria-hidden="true" />
     </button>
   )
 }

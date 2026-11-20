@@ -198,7 +198,7 @@ export default {
 
     if (path === '/api/reports' && method === 'GET') {
       const { results } = await env.DB.prepare(
-        'SELECT id, week_end, subject, created_at FROM reports ORDER BY week_end DESC',
+        'SELECT id, week_end, subject, created_at, (pdf_r2_key IS NOT NULL) AS has_pdf FROM reports ORDER BY week_end DESC',
       ).all()
       return json({ reports: results })
     }
@@ -215,7 +215,10 @@ export default {
     const itemsMatch = path.match(/^\/api\/reports\/([^/]+)\/items$/)
     if (itemsMatch && method === 'GET') {
       const { results } = await env.DB.prepare(
-        'SELECT id, title, url, source, published, score, well7_fit, reason, summary, section, position FROM items WHERE report_id = ? ORDER BY section, position',
+        `SELECT id, title, url, source, published, score, well7_fit, reason, summary, section, position
+         FROM items
+         WHERE report_id = ?
+         ORDER BY CASE section WHEN 'top' THEN 1 WHEN 'tool' THEN 2 ELSE 3 END, position`,
       ).bind(itemsMatch[1]).all()
       return json({ items: results })
     }

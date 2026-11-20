@@ -1,15 +1,15 @@
-import { useEffect, useState } from 'react'
-import { CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { ArrowLeft, CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
 
 import { EditorialTakeaway } from '@/components/editorial-takeaway'
-import { FeedFilterBar, FeedList, KeywordStrip } from '@/components/feed-panel'
-import { NewsList } from '@/components/news-list'
+import { FeedFilterBar, FeedList, KeywordStrip, type BriefSortOrder } from '@/components/feed-panel'
+import { Link } from '@/components/link'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { type LibraryBundle } from '@/lib/api'
 import { chipScopes, filterItems, keywordCounts, sectionCounts, type FeedFilters } from '@/lib/feed'
-import { briefTitle, formatDate } from '@/lib/report'
-import { Link, navigate } from '@/lib/router'
+import { briefTitle, formatDate, parseUtcTimestamp, type Report, type ReportItem } from '@/lib/report'
+import { navigate } from '@/lib/router'
 import { useReport, useReports } from '@/lib/use-report'
 import type { TopicFollow, TopicKind } from '@/lib/topics'
 
@@ -24,22 +24,31 @@ interface BriefPageProps {
   onFollow?: (kind: TopicKind, value: string, next: boolean) => void
 }
 
-export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefPageProps) {
-  const { reports, loading: reportsLoading, error: reportsError, retry: retryReports } = useReports()
-  const { report, items, loading, error, notFound, retry: retryReport } = useReport(week ?? null)
-  const [filters, setFilters] = useState<FeedFilters>(emptyFilters)
+interface BriefContentProps {
+  report: Report
+  items: ReportItem[]
+  signedIn: boolean
+  library: LibraryBundle
+  follows?: TopicFollow[]
+  onFollow?: (kind: TopicKind, value: string, next: boolean) => void
+}
 
-  useEffect(() => {
-    if (!week && !reportsLoading && reports.length > 0) {
-      navigate(`/brief/${reports[0].id}`, { replace: true })
-    }
-  }, [week, reportsLoading, reports])
+function BriefContent({ report, items, signedIn, library, follows, onFollow }: BriefContentProps) {
+  const [filters, setFilters] = useState<FeedFilters>(emptyFilters)
+  const [sortOrder, setSortOrder] = useState<BriefSortOrder>('ranked')
 
   const savedById = library.savedById
-  const visibleItems = filterItems(items, filters, savedById)
-  const scopes = chipScopes(items, filters, savedById)
-  const keywords = keywordCounts(scopes.keyword)
-  const totals = sectionCounts(scopes.section)
+  const visibleItems = useMemo(() => {
+    const filtered = filterItems(items, filters, savedById)
+    if (sortOrder === 'newest') {
+      return [...filtered].sort((a, b) => parseUtcTimestamp(b.published) - parseUtcTimestamp(a.published))
+    }
+    return filtered
+  }, [items, filters, savedById, sortOrder])
+
+  const scopes = useMemo(() => chipScopes(items, filters, savedById), [items, filters, savedById])
+  const keywords = useMemo(() => keywordCounts(scopes.keyword), [scopes])
+  const totals = useMemo(() => sectionCounts(scopes.section), [scopes])
   const activeFilters = [
     filters.query.trim() !== '',
     filters.section !== 'all',
@@ -50,6 +59,124 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
   function toggleKeyword(label: string) {
     setFilters((current) => ({ ...current, keyword: current.keyword === label ? null : label }))
   }
+
+  return (
+    <div className="min-w-0">
+      <div className="mb-4">
+        <Link
+          to="/archive"
+          className="inline-flex items-center gap-1.5 rounded-sm text-xs font-semibold text-muted-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          All weekly briefs
+        </Link>
+      </div>
+
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
+        <div>
+          <h1 className="max-w-3xl text-balance font-display text-3xl font-medium leading-tight tracking-[-0.025em] text-ink sm:text-4xl">
+            {briefTitle(report.subject)}
+          </h1>
+          <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+            <CalendarDays className="size-4" aria-hidden="true" />
+            Week ending {formatDate(report.week_end)}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" asChild>
+            <Link to="/studio">Search a topic live</Link>
+          </Button>
+          {Boolean(report.has_pdf) && (
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noreferrer">
+                <FileText aria-hidden="true" />
+                Open PDF
+                <span className="sr-only"> (opens in a new tab)</span>
+              </a>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {report.trend && (
+        <EditorialTakeaway text={report.trend} label="Weekly takeaway" />
+      )}
+
+      <KeywordStrip counts={keywords} active={filters.keyword} onToggle={toggleKeyword} follows={follows} onFollow={onFollow} />
+
+      <div className="mt-8">
+        <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-balance font-display text-2xl font-medium tracking-[-0.02em] text-ink">
+              Inside this brief
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Filter by topic or section, switch between ranked and newest order, or expand any item to read the full summary.
+            </p>
+          </div>
+          <p role="status" className="font-mono text-xs text-muted-foreground tabular-nums">
+            Showing {visibleItems.length} of {items.length}
+          </p>
+        </div>
+
+        <FeedFilterBar
+          query={filters.query}
+          onQuery={(query) => setFilters((current) => ({ ...current, query }))}
+          section={filters.section}
+          onSection={(section) => setFilters((current) => ({ ...current, section }))}
+          sectionCounts={totals}
+          activeFilters={activeFilters}
+          onClear={() => setFilters(emptyFilters)}
+          sortOrder={sortOrder}
+          onSortOrder={setSortOrder}
+        />
+
+        {library.error && (
+          <p className="mt-6 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
+            {library.error}
+          </p>
+        )}
+
+        <div className="mt-6">
+          {visibleItems.length > 0 ? (
+            <FeedList
+              items={visibleItems}
+              weekEnd={report.week_end}
+              headingLevel="h3"
+              saved={savedById}
+              signedIn={signedIn}
+              active={filters.keyword}
+              onKeyword={toggleKeyword}
+              onToggle={library.togglePaper}
+              follows={follows}
+              onFollow={onFollow}
+            />
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-12 text-center">
+              <FileText className="mx-auto size-6 text-muted-foreground" aria-hidden="true" />
+              <p className="mt-3 font-medium text-ink">Nothing matches these filters.</p>
+              <p className="mt-1 text-sm text-muted-foreground">Try another keyword or section, or clear the filters.</p>
+              <Button className="mt-5" variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>
+                Clear filters
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefPageProps) {
+  const { reports, loading: reportsLoading, error: reportsError, retry: retryReports } = useReports()
+  const resolvedWeek = week ?? reports[0]?.id ?? null
+  const { report, items, loading, error, notFound, retry: retryReport } = useReport(resolvedWeek)
+
+  useEffect(() => {
+    if (!week && !reportsLoading && reports.length > 0) {
+      navigate(`/brief/${reports[0].id}`, { replace: true })
+    }
+  }, [week, reportsLoading, reports])
 
   return (
     <section className="mx-auto max-w-7xl px-5 pb-20 pt-10 sm:px-8 sm:pt-14">
@@ -67,7 +194,11 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
         <div role="status" aria-live="polite" aria-label="Loading the brief…" className="space-y-8">
           <Skeleton className="h-12 w-full max-w-2xl" />
           <Skeleton className="h-32 w-full rounded-2xl" />
-          <div className="space-y-5"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
+          <div className="space-y-5">
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-24 w-full" />
+          </div>
         </div>
       )}
 
@@ -91,11 +222,11 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
         </div>
       )}
 
-      {!loading && !reportsLoading && !notFound && !error && reports.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
-          <p className="text-balance font-display text-2xl text-ink">Your first brief starts with the pipeline.</p>
+      {!loading && !reportsLoading && !notFound && !error && !reportsError && !report && reports.length === 0 && (
+        <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-12 text-center">
+          <h1 className="text-balance font-display text-3xl font-medium text-ink">No weekly briefs published yet.</h1>
           <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
-            Nothing has been published yet. Once a weekly report runs, the latest brief lands here.
+            Once a weekly report runs, the latest brief lands here. You can search live sources anytime.
           </p>
           <Button className="mt-5" variant="outline" size="sm" asChild>
             <Link to="/studio">Search live</Link>
@@ -104,89 +235,15 @@ export function BriefPage({ week, signedIn, library, follows, onFollow }: BriefP
       )}
 
       {!loading && !reportsLoading && report && (
-        <div className="min-w-0">
-          <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-            <div>
-              <h1 className="max-w-3xl text-balance font-display text-2xl font-medium leading-tight tracking-[-0.025em] text-ink sm:text-3xl">
-                {briefTitle(report.subject)}
-              </h1>
-              <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground sm:text-sm">
-                <CalendarDays className="size-4" aria-hidden="true" />
-                Week ending {formatDate(report.week_end)}
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/studio">Search a topic live</Link>
-              </Button>
-              {Boolean(report.has_pdf) && (
-                <Button variant="outline" size="sm" asChild>
-                  <a href={`/api/reports/${report.id}/pdf`} target="_blank" rel="noopener">
-                    <FileText aria-hidden="true" />
-                    Open PDF
-                  </a>
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {report.trend && (
-            <EditorialTakeaway text={report.trend} label="Weekly takeaway" />
-          )}
-
-          <KeywordStrip counts={keywords} active={filters.keyword} onToggle={toggleKeyword} follows={follows} onFollow={onFollow} />
-
-          <div className="mt-8">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-balance font-display text-2xl font-medium tracking-[-0.02em] text-ink">
-                  Inside this brief
-                </h2>
-                <p className="mt-1 text-xs text-muted-foreground sm:text-sm">
-                  Filter by topic or section, expand any paper to read the full summary, or save items to your library.
-                </p>
-              </div>
-            </div>
-
-            <FeedFilterBar
-              query={filters.query}
-              onQuery={(query) => setFilters((current) => ({ ...current, query }))}
-              section={filters.section}
-              onSection={(section) => setFilters((current) => ({ ...current, section }))}
-              sectionCounts={totals}
-              activeFilters={activeFilters}
-              onClear={() => setFilters(emptyFilters)}
-            />
-
-            {library.error && (
-              <p className="mt-6 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">{library.error}</p>
-            )}
-
-            <div className="mt-7">
-              {visibleItems.length > 0 ? (
-                <FeedList
-                  items={visibleItems}
-                  saved={savedById}
-                  signedIn={signedIn}
-                  active={filters.keyword}
-                  onKeyword={toggleKeyword}
-                  onToggle={library.togglePaper}
-                  follows={follows}
-                  onFollow={onFollow}
-                />
-              ) : (
-                <div className="rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
-                  <FileText className="mx-auto size-6 text-muted-foreground" aria-hidden="true" />
-                  <p className="mt-3 font-medium">Nothing matches these filters.</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Try another key word or section, or clear the filters.</p>
-                  <Button className="mt-5" variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>Clear filters</Button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <NewsList items={visibleItems} active={filters.keyword} onKeyword={toggleKeyword} follows={follows} onFollow={onFollow} />
-        </div>
+        <BriefContent
+          key={report.id}
+          report={report}
+          items={items}
+          signedIn={signedIn}
+          library={library}
+          follows={follows}
+          onFollow={onFollow}
+        />
       )}
     </section>
   )

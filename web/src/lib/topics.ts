@@ -37,6 +37,16 @@ export function sortFollows(follows: TopicFollow[]): TopicFollow[] {
   return [...follows].sort((a, b) => a.kind.localeCompare(b.kind) || a.value.localeCompare(b.value))
 }
 
+/** Case-insensitive, whitespace-trimmed comparison for topic labels/custom terms. */
+export function sameTopic(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase()
+}
+
+/** True when a follow entry represents the same kind + value (case-insensitive). */
+export function sameFollow(a: TopicFollow, kind: TopicKind, value: string): boolean {
+  return a.kind === kind && (kind === 'source' ? sameSource(a.value, value) : sameTopic(a.value, value))
+}
+
 /**
  * An item is in my feed iff any of its topic labels is followed as a topic,
  * or a custom topic keyword appears in its text, or its source is followed.
@@ -48,7 +58,7 @@ export function matchesFollows(item: Pick<ReportLike, 'source'> & Taggable, foll
     if (follow.kind === 'source') {
       return sameSource(item.source, follow.value)
     }
-    if (itemTopics.includes(follow.value)) return true
+    if (itemTopics.some((topic) => sameTopic(topic, follow.value))) return true
     const needle = follow.value.trim().toLowerCase()
     return needle.length >= 2 && fullText.includes(needle)
   })

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, CircleAlert, RefreshCw, Sparkles, X } from 'lucide-react'
+import { CalendarDays, CircleAlert, RefreshCw, X } from 'lucide-react'
 
 import { FeedFilterBar, FeedList, FeedSidebar } from '@/components/feed-panel'
 import { TopicPanel, type TopicCount } from '@/components/topic-panel'
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { fetchArchiveCounts, type LibraryBundle, type ArchiveCounts } from '@/lib/api'
 import { chipScopes, filterItems, sectionCounts, type FeedFilters, type FeedView } from '@/lib/feed'
-import { briefTitle, formatDate } from '@/lib/report'
+import { briefTitle, formatDate, sourceLabel } from '@/lib/report'
 import { useReport, useReports } from '@/lib/use-report'
 import { matchesFollows, sourceCounts, topicCounts, type TopicFollow, type TopicKind } from '@/lib/topics'
 
@@ -22,14 +22,11 @@ interface FeedPageProps {
 }
 
 /**
- * `/feed` (spec, signed in): the current brief filtered to the topics and
- * sources I follow, with the **My topics** manager. With nothing followed the
- * whole brief shows plus a pick-topics prompt — never an empty page.
+ * `/feed` (signed in): the current brief filtered to followed topics and sources,
+ * plus the anchored Topics & sources manager.
  */
 export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: FeedPageProps) {
   const { reports, loading: reportsLoading, error: reportsError, retry: retryReports } = useReports()
-  // The week shown: the reader's own pick, else the latest report. Derived, so
-  // a report landing after the handshake needs no effect to take effect.
   const [pickedWeek, setPickedWeek] = useState<string | null>(null)
   const weekId = pickedWeek ?? reports[0]?.id ?? null
 
@@ -37,10 +34,6 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
   const [filters, setFilters] = useState<FeedFilters>(emptyFilters)
 
   const savedById = library.savedById
-  // The week narrowed to the starred topics and sources. Every number on the
-  // page (the list, the section chips, the view counts) is derived from this,
-  // so starring a topic visibly changes the whole page rather than only the
-  // rows below the fold.
   const followedItems = useMemo(() => {
     if (follows.length === 0) return items
     return items.filter((item) => matchesFollows(item, follows))
@@ -50,9 +43,6 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
     () => filterItems(followedItems, filters, savedById),
     [followedItems, filters, savedById],
   )
-  // Every count on the page describes what the same click would produce, so a
-  // search or a section filter cannot leave a chip reading "3" beside an empty
-  // list (WEB-10).
   const scopes = useMemo(
     () => chipScopes(followedItems, filters, savedById),
     [followedItems, filters, savedById],
@@ -63,6 +53,7 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
     read_later: scopes.view.filter((item) => savedById.get(item.id)?.read_later === 1).length,
     important: scopes.view.filter((item) => savedById.get(item.id)?.important === 1).length,
   }), [scopes, savedById])
+
   const activeFilters = [
     filters.query.trim() !== '',
     filters.section !== 'all',
@@ -70,14 +61,15 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
     filters.view !== 'all',
   ].filter(Boolean).length
 
+  function handleSelectWeek(id: string) {
+    setPickedWeek(id)
+    setFilters(emptyFilters)
+  }
+
   function toggleKeyword(label: string) {
     setFilters((current) => ({ ...current, keyword: current.keyword === label ? null : label }))
   }
 
-  // Spec: My topics lists every topic and source seen in the ARCHIVE, not just
-  // the picked week — so a follow made in an earlier week is still visible and
-  // unfollowable. Falls back to the current week's counts if the endpoint is
-  // unavailable; never blocks the panel.
   const [archiveCounts, setArchiveCounts] = useState<ArchiveCounts | null>(null)
   useEffect(() => {
     let active = true
@@ -104,29 +96,23 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
 
   if (!signedIn) {
     return (
-      <section className="mx-auto max-w-3xl px-5 py-20 text-center sm:px-8">
-        <Sparkles className="mx-auto size-6 text-primary" aria-hidden="true" />
-        <h1 className="mt-4 text-balance font-display text-4xl font-medium tracking-[-0.03em] text-ink">Your feed is yours only.</h1>
+      <section className="mx-auto max-w-3xl px-5 pb-20 pt-10 text-center sm:px-8 sm:pt-16">
+        <h1 className="text-balance font-display text-4xl font-medium tracking-[-0.03em] text-ink">
+          Follow the topics you care about.
+        </h1>
         <p className="mx-auto mt-3 max-w-md text-muted-foreground">
-          Sign in to pick the topics and sources you care about — this brief never collects anything about you.
+          Sign in to star topics and sources for a personalized weekly view — your follows stay private to your account.
         </p>
-        <Button className="mt-8" variant="ink" size="lg" onClick={onSignIn}>Sign in</Button>
+        <Button className="mt-8" variant="ink" size="lg" onClick={onSignIn}>
+          Sign in
+        </Button>
       </section>
     )
   }
 
   return (
-    <section className="mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
-      <div className={report ? 'flex flex-col lg:grid lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-16' : undefined}>
-        <FeedSidebar
-          reports={reports}
-          selectedId={weekId}
-          onSelectWeek={setPickedWeek}
-          view={filters.view}
-          viewCounts={viewCounts}
-          onView={(view) => setFilters((current) => ({ ...current, view }))}
-        />
-
+    <section className="mx-auto max-w-7xl px-5 pb-20 pt-10 sm:px-8 sm:pt-14">
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_270px] lg:gap-12">
         <div className="min-w-0">
           {reportsError && (
             <div className="mb-8 flex flex-col items-start gap-4 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-5 text-destructive sm:flex-row sm:items-center sm:justify-between" role="alert">
@@ -139,32 +125,36 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
           )}
 
           {(loading || reportsLoading) && (
-            <div role="status" aria-live="polite" className="space-y-8">
-              <Skeleton className="h-40 w-full rounded-3xl" />
-              <div className="space-y-5"><Skeleton className="h-24 w-full" /><Skeleton className="h-24 w-full" /></div>
+            <div role="status" aria-live="polite" aria-label="Loading your feed…" className="space-y-8">
+              <Skeleton className="h-32 w-full rounded-2xl" />
+              <div className="space-y-5">
+                <Skeleton className="h-24 w-full" />
+                <Skeleton className="h-24 w-full" />
+              </div>
             </div>
           )}
 
           {!reportsLoading && !reportsError && reports.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
-              <p className="font-medium">The pipeline has not published a brief yet.</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Once a report runs, your feed shows it here. In the meantime the archive stays empty.
+            <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-12 text-center">
+              <h1 className="font-display text-3xl font-medium text-ink">Your feed is ready.</h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                No weekly brief has been published yet. Once a report runs, your feed will appear here.
               </p>
             </div>
           )}
 
           {notFound && !loading && (
-            <p className="rounded-2xl border border-destructive/25 bg-[#fff5f7] p-5 text-sm text-destructive" role="alert">
-              This week no longer exists.
-              <Button className="ml-3" variant="outline" size="sm" onClick={retryReports}>Reload the weeks</Button>
-            </p>
+            <div className="rounded-2xl border border-destructive/25 bg-[#fff5f7] p-6 text-destructive" role="alert">
+              <h1 className="font-display text-2xl font-medium">This week no longer exists.</h1>
+              <Button className="mt-4" variant="outline" size="sm" onClick={retryReports}>Reload the weeks</Button>
+            </div>
           )}
 
           {error && !loading && !notFound && (
             <div className="rounded-2xl border border-destructive/25 bg-[#fff5f7] p-6 text-destructive" role="alert">
               <CircleAlert className="size-5" aria-hidden="true" />
-              <p className="mt-2 text-sm">{error}</p>
+              <h1 className="mt-2 font-display text-2xl font-medium">Could not load this week</h1>
+              <p className="mt-1 text-sm">{error}</p>
               <Button className="mt-4" variant="outline" size="sm" onClick={retryReport}><RefreshCw aria-hidden="true" />Try again</Button>
             </div>
           )}
@@ -173,57 +163,56 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
             <>
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
-                  <p className="text-sm font-semibold text-primary">Your feed</p>
-                  <h1 className="mt-2 max-w-3xl text-balance font-display text-3xl font-medium leading-tight tracking-[-0.03em] sm:text-4xl">
+                  <h1 className="max-w-3xl text-balance font-display text-3xl font-medium leading-tight tracking-[-0.03em] text-ink sm:text-4xl">
                     {briefTitle(report.subject)}
                   </h1>
-                  <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+                  <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                     <CalendarDays className="size-4" aria-hidden="true" />
-                    Week ending {formatDate(report.week_end)}
+                    Your feed · Week ending {formatDate(report.week_end)}
                   </p>
                 </div>
                 <p role="status" className="text-sm text-muted-foreground sm:text-right">
-                  {follows.length === 0
-                    ? `Showing all ${items.length} ${items.length === 1 ? 'item' : 'items'} until you star a topic.`
-                    : `${followedItems.length} of ${items.length} ${items.length === 1 ? 'item matches' : 'items match'} your ${follows.length} starred ${follows.length === 1 ? 'topic' : 'topics'}.`}
+                  {activeFilters > 0
+                    ? `Showing ${feedItems.length} of ${followedItems.length} ${followedItems.length === 1 ? 'item' : 'items'} after filters.`
+                    : follows.length === 0
+                      ? `Showing all ${items.length} ${items.length === 1 ? 'item' : 'items'} until you follow a topic.`
+                      : `${followedItems.length} of ${items.length} ${items.length === 1 ? 'item matches' : 'items match'} your ${follows.length} followed ${follows.length === 1 ? 'topic' : 'topics'}.`}
                 </p>
               </div>
 
               {follows.length === 0 ? (
-                <div className="mt-6 rounded-2xl border border-primary/25 bg-[#eef7f5] p-4 text-sm text-ink/80">
-                  <Sparkles className="mr-2 inline size-4 text-primary" aria-hidden="true" />
-                  Star a few topics below (or on any chip) and your feed narrows to them.
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3.5 text-sm text-ink">
+                  <span>Star any topic or source to narrow your feed automatically each week.</span>
+                  <a
+                    href="#manage-topics"
+                    className="rounded-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    Choose topics below
+                  </a>
                 </div>
               ) : (
                 <div className="mt-6 flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-muted-foreground">Only showing</span>
-                  {follows.map((follow) => (
-                    <button
-                      key={`${follow.kind}:${follow.value}`}
-                      type="button"
-                      onClick={() => onFollow(follow.kind, follow.value, false)}
-                      title={`Stop following ${follow.value}`}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary transition-colors hover:border-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
-                      {follow.kind === 'source' ? `${follow.value} (source)` : follow.value}
-                      <X className="size-3" aria-hidden="true" />
-                    </button>
-                  ))}
+                  <span className="text-xs font-semibold text-muted-foreground">Following</span>
+                  {follows.map((follow) => {
+                    const display = follow.kind === 'source' ? sourceLabel(follow.value) : follow.value
+                    return (
+                      <button
+                        key={`${follow.kind}:${follow.value}`}
+                        type="button"
+                        aria-label={`Stop following ${display}`}
+                        onClick={() => onFollow(follow.kind, follow.value, false)}
+                        className="touch-target inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-primary/45 bg-primary/10 px-3 py-1 text-xs font-semibold text-[#0c5f59] transition-colors hover:border-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span>{follow.kind === 'source' ? `${display} (source)` : display}</span>
+                        <X className="size-3.5" aria-hidden="true" />
+                      </button>
+                    )
+                  })}
                 </div>
               )}
 
-              {/* Onboarding vs steady state: with nothing starred the picker
-                  belongs next to the prompt that sends you to it; once you
-                  have follows it drops below the list, so starring visibly
-                  changes the rows right under the cursor instead of pushing
-                  them further down the page. */}
-              {follows.length === 0 && (
-                <div className="mt-8">
-                  <TopicPanel follows={follows} counts={counts} onToggle={onFollow} />
-                </div>
-              )}
-
-              <div className="mt-10">
+              <div className="mt-8">
+                <h2 className="sr-only">Matching papers and tools</h2>
                 <FeedFilterBar
                   query={filters.query}
                   onQuery={(query) => setFilters((current) => ({ ...current, query }))}
@@ -234,14 +223,31 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                   onClear={() => setFilters(emptyFilters)}
                 />
 
-                {library.error && (
-                  <p className="mt-6 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">{library.error}</p>
+                {filters.keyword && (
+                  <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                    <span>Filtered by topic: <strong className="font-semibold text-ink">{filters.keyword}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => setFilters((current) => ({ ...current, keyword: null }))}
+                      className="cursor-pointer rounded-sm font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      Clear topic
+                    </button>
+                  </div>
                 )}
 
-                <div className="mt-8">
+                {library.error && (
+                  <p className="mt-6 rounded-2xl border border-destructive/25 bg-[#fff5f7] p-4 text-sm text-destructive" role="alert">
+                    {library.error}
+                  </p>
+                )}
+
+                <div className="mt-6">
                   {feedItems.length > 0 ? (
                     <FeedList
                       items={feedItems}
+                      weekEnd={report.week_end}
+                      headingLevel="h3"
                       saved={savedById}
                       signedIn
                       active={filters.keyword}
@@ -251,25 +257,38 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                       onFollow={onFollow}
                     />
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-border bg-white/60 px-6 py-12 text-center">
-                      <p className="mt-3 font-medium">
+                    <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-12 text-center">
+                      <p className="font-medium text-ink">
                         {follows.length > 0 ? 'Nothing followed matches these filters this week.' : 'Nothing matches these filters.'}
                       </p>
-                      <p className="mt-1 text-sm text-muted-foreground">Try a different week or section, star more topics, or clear the filters.</p>
-                      <Button className="mt-5" variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>Clear filters</Button>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Try a different week or section, follow more topics below, or clear the filters.
+                      </p>
+                      {activeFilters > 0 && (
+                        <Button className="mt-5" variant="outline" size="sm" onClick={() => setFilters(emptyFilters)}>
+                          Clear filters
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
-              {follows.length > 0 && (
-                <div className="mt-14">
-                  <TopicPanel follows={follows} counts={counts} onToggle={onFollow} />
-                </div>
-              )}
+              <div className="mt-12">
+                <TopicPanel id="manage-topics" follows={follows} counts={counts} onToggle={onFollow} />
+              </div>
             </>
           )}
         </div>
+
+        <FeedSidebar
+          reports={reports}
+          selectedId={weekId}
+          onSelectWeek={handleSelectWeek}
+          view={filters.view}
+          viewCounts={viewCounts}
+          onView={(view) => setFilters((current) => ({ ...current, view }))}
+        />
       </div>
     </section>
   )

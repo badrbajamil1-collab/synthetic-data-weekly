@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   ArrowUpRight,
   CalendarDays,
   CircleAlert,
+  Loader2,
   Play,
   Search,
   Square,
@@ -11,6 +12,7 @@ import {
 import { EditorialTakeaway } from '@/components/editorial-takeaway'
 import { FilterChip } from '@/components/filter-chip'
 import { FollowToggle } from '@/components/follow-toggle'
+import { Link } from '@/components/link'
 import { PaperActions } from '@/components/paper-actions'
 import { PipelineStepper, type StepperNodeId } from '@/components/pipeline-stepper'
 import { ReportItemRow } from '@/components/report-item'
@@ -28,8 +30,8 @@ import {
 } from '@/lib/api'
 import { topicsFor } from '@/lib/feed'
 import { formatDate, type ReportItem } from '@/lib/report'
-import { navigate } from '@/lib/router'
-import { sameSource, type TopicFollow, type TopicKind } from '@/lib/topics'
+import { navigate, useLocationSearch } from '@/lib/router'
+import { sameFollow, type TopicFollow, type TopicKind } from '@/lib/topics'
 import { cn } from '@/lib/utils'
 
 const PRESET_QUERIES = [
@@ -75,7 +77,6 @@ function stableItemId(url: string): string {
 }
 
 interface StudioPageProps {
-  initialQuery?: string
   signedIn: boolean
   isAdmin: boolean
   onSignIn: () => void
@@ -85,7 +86,6 @@ interface StudioPageProps {
 }
 
 export function StudioPage({
-  initialQuery = '',
   signedIn,
   isAdmin,
   onSignIn,
@@ -93,7 +93,12 @@ export function StudioPage({
   follows,
   onFollow,
 }: StudioPageProps) {
-  const [query, setQuery] = useState(initialQuery)
+  const locationSearch = useLocationSearch()
+  const urlParams = useMemo(() => new URLSearchParams(locationSearch), [locationSearch])
+  const urlQuery = urlParams.get('q') ?? ''
+  const shouldAutoRun = urlParams.get('run') === '1'
+
+  const [query, setQuery] = useState(() => urlQuery)
   const [days, setDays] = useState(7)
   const [mode, setMode] = useState<'query' | 'weekly'>('query')
   const [selectedSources, setSelectedSources] = useState<string[]>(SOURCE_OPTIONS.map((s) => s.id))
@@ -108,6 +113,7 @@ export function StudioPage({
   const [cleanStats, setCleanStats] = useState<CleanStatsInfo | undefined>(undefined)
   const [cleanItems, setCleanItems] = useState<NonNullable<ResearchSessionDetail['result']['cleanItems']>>([])
   const [scoredItems, setScoredItems] = useState<NonNullable<ResearchSessionDetail['result']['scoredItems']>>([])
+  const [fetchedCount, setFetchedCount] = useState(0)
   const [sections, setSections] = useState<StreamedSectionItem[]>([])
   const [trendText, setTrendText] = useState<string>('')
   const [warnings, setWarnings] = useState<string[]>([])
@@ -115,7 +121,14 @@ export function StudioPage({
 
   const [sessions, setSessions] = useState<ResearchSessionSummary[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null)
+
   const abortRef = useRef<AbortController | null>(null)
+  const mountedRef = useRef(true)
+  const sessionReqRef = useRef(0)
+  const autoRunHandledRef = useRef(false)
+  const queryInputRef = useRef<HTMLInputElement>(null)
+  const queryInputId = useId()
 
   const refreshSessions = useCallback(async () => {
     const list = await fetchResearchSessions()
@@ -133,6 +146,15 @@ export function StudioPage({
     }
   }, [])
 
+  // Abort any live SSE stream if the user navigates away from /studio.
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      abortRef.current?.abort()
+    }
+  }, [])
+
   function toggleSourceFamily(id: string) {
     setSelectedSources((current) => {
       if (current.includes(id)) {
@@ -143,28 +165,43 @@ export function StudioPage({
   }
 
   async function handleSelectSession(id: string) {
-    setActiveSessionId(id)
+    abortRef.current?.abort()
+    sessionReqRef.current += 1
+    const reqId = sessionReqRef.current
+
+    setLoadingSessionId(id)
     setError(null)
+    setKeywordFilter(null)
+
     const detail = await fetchResearchSession(id)
-    if (!detail) return
+    if (reqId !== sessionReqRef.current) return
+    setLoadingSessionId(null)
+
+    if (!detail) {
+      setError('Could not load that saved search session. Try selecting it again.')
+      return
+    }
+
+    setActiveSessionId(id)
     setQuery(detail.query)
     setDays(detail.days)
     setMode(detail.mode)
     setStatus(detail.status)
     setActiveNode(detail.status === 'running' ? (detail.current_node as StepperNodeId) : null)
     setCompletedNodes(detail.status === 'succeeded' ? [...NODE_ORDER] : [])
-    setSourceStats(detail.result.sourceStats ?? detail.stats.sourceStats ?? [])
-    setCleanStats(detail.result.cleanStats ?? detail.stats.cleanStats)
-    setCleanItems(detail.result.cleanItems ?? [])
-    setScoredItems(detail.result.scoredItems ?? [])
-    setSections(detail.result.sections ?? [])
-    setTrendText(detail.result.trend ?? '')
-    setWarnings(detail.result.warnings ?? detail.stats.warnings ?? [])
-    setReportId(detail.result.reportId ?? detail.stats.reportId ?? null)
+    setSourceStats(detail.result?.sourceStats ?? detail.stats?.sourceStats ?? [])
+    setCleanStats(detail.result?.cleanStats ?? detail.stats?.cleanStats)
+    setCleanItems(detail.result?.cleanItems ?? [])
+    setScoredItems(detail.result?.scoredItems ?? [])
+    setFetchedCount(detail.stats?.fetchedCount ?? detail.result?.sections?.length ?? 0)
+    setSections(detail.result?.sections ?? [])
+    setTrendText(detail.result?.trend ?? '')
+    setWarnings(detail.result?.warnings ?? detail.stats?.warnings ?? [])
+    setReportId(detail.result?.reportId ?? detail.stats?.reportId ?? null)
     if (detail.error) setError(detail.error)
   }
 
-  async function startLiveRun(overrideQuery?: string) {
+  const startLiveRun = useCallback(async (overrideQuery?: string) => {
     if (!signedIn) {
       onSignIn()
       return
@@ -172,6 +209,8 @@ export function StudioPage({
     const targetQuery = overrideQuery !== undefined ? overrideQuery : query
     if (overrideQuery !== undefined) setQuery(overrideQuery)
 
+    sessionReqRef.current += 1
+    setLoadingSessionId(null)
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -179,11 +218,13 @@ export function StudioPage({
     setStatus('running')
     setActiveNode('collect')
     setCompletedNodes([])
+    setKeywordFilter(null)
     setError(null)
     setSourceStats([])
     setCleanStats(undefined)
     setCleanItems([])
     setScoredItems([])
+    setFetchedCount(0)
     setSections([])
     setTrendText('')
     setWarnings([])
@@ -199,38 +240,53 @@ export function StudioPage({
         },
         {
           onStart: (info) => {
+            if (abortRef.current !== controller) return
             setActiveSessionId(info.sessionId)
             setActiveNode('collect')
           },
           onNode: (ev) => {
+            if (abortRef.current !== controller) return
             const node = ev.node as StepperNodeId
             setCompletedNodes((prev) => (prev.includes(node) ? prev : [...prev, node]))
             setActiveNode(nextNodeAfter(node))
             const snap = ev.stateSnapshot
-            if (snap.sourceStats) setSourceStats(snap.sourceStats)
-            if (snap.cleanStats) setCleanStats(snap.cleanStats)
-            if (snap.cleanItems) setCleanItems(snap.cleanItems)
-            if (snap.scoredItems) setScoredItems(snap.scoredItems)
-            if (snap.sections) setSections(snap.sections)
-            if (snap.trend !== undefined) setTrendText(snap.trend)
-            if (snap.warnings) setWarnings(snap.warnings)
-            if (snap.reportId !== undefined) setReportId(snap.reportId ?? null)
+            if (snap?.sourceStats) setSourceStats(snap.sourceStats)
+            if (snap?.cleanStats) setCleanStats(snap.cleanStats)
+            if (snap?.cleanItems) setCleanItems(snap.cleanItems)
+            if (snap?.scoredItems) setScoredItems(snap.scoredItems)
+            if (node === 'fetch') {
+              const reported = Number(ev.summary?.fetched ?? ev.summary?.fetchedCount ?? ev.summary?.count ?? 0)
+              if (reported > 0) setFetchedCount(reported)
+            }
+            if (snap?.sections) {
+              setSections(snap.sections)
+              setFetchedCount((prev) => Math.max(prev, snap.sections?.length ?? 0))
+            }
+            if (snap?.trend !== undefined) setTrendText(snap.trend)
+            if (snap?.warnings) setWarnings(snap.warnings)
+            if (snap?.reportId !== undefined) setReportId(snap.reportId ?? null)
           },
           onDone: (detail) => {
+            if (abortRef.current !== controller) return
             setStatus('succeeded')
             setActiveNode(null)
             setCompletedNodes([...NODE_ORDER])
-            if (detail.result.sourceStats) setSourceStats(detail.result.sourceStats)
-            if (detail.result.cleanStats) setCleanStats(detail.result.cleanStats)
-            if (detail.result.cleanItems) setCleanItems(detail.result.cleanItems)
-            if (detail.result.scoredItems) setScoredItems(detail.result.scoredItems)
-            if (detail.result.sections) setSections(detail.result.sections)
-            if (detail.result.trend !== undefined) setTrendText(detail.result.trend)
-            if (detail.result.warnings) setWarnings(detail.result.warnings)
-            if (detail.result.reportId !== undefined) setReportId(detail.result.reportId ?? null)
+            if (detail.result?.sourceStats) setSourceStats(detail.result.sourceStats)
+            if (detail.result?.cleanStats) setCleanStats(detail.result.cleanStats)
+            if (detail.result?.cleanItems) setCleanItems(detail.result.cleanItems)
+            if (detail.result?.scoredItems) setScoredItems(detail.result.scoredItems)
+            if (detail.stats?.fetchedCount) setFetchedCount(detail.stats.fetchedCount)
+            if (detail.result?.sections) {
+              setSections(detail.result.sections)
+              setFetchedCount((prev) => Math.max(prev, detail.result.sections?.length ?? 0))
+            }
+            if (detail.result?.trend !== undefined) setTrendText(detail.result.trend)
+            if (detail.result?.warnings) setWarnings(detail.result.warnings)
+            if (detail.result?.reportId !== undefined) setReportId(detail.result.reportId ?? null)
             void refreshSessions()
           },
           onError: (msg) => {
+            if (abortRef.current !== controller) return
             setStatus('failed')
             setActiveNode(null)
             setError(msg)
@@ -240,6 +296,7 @@ export function StudioPage({
         controller.signal,
       )
     } catch (err) {
+      if (abortRef.current !== controller) return
       if (controller.signal.aborted) {
         setStatus('idle')
         setActiveNode(null)
@@ -249,7 +306,21 @@ export function StudioPage({
       setActiveNode(null)
       setError(err instanceof Error ? err.message : 'Live search failed.')
     }
-  }
+  }, [signedIn, onSignIn, query, mode, days, selectedSources, refreshSessions])
+
+  // Auto-run once when arriving from Landing's explicit "Search live" submit (?q=...&run=1).
+  useEffect(() => {
+    const trimmed = urlQuery.trim()
+    if (!shouldAutoRun || !trimmed || autoRunHandledRef.current) return
+    if (!signedIn) return
+    autoRunHandledRef.current = true
+    navigate(`/studio?q=${encodeURIComponent(trimmed)}`, { replace: true })
+    queueMicrotask(() => {
+      if (mountedRef.current) {
+        void startLiveRun(trimmed)
+      }
+    })
+  }, [shouldAutoRun, urlQuery, signedIn, startLiveRun])
 
   function stopRun() {
     abortRef.current?.abort()
@@ -321,12 +392,17 @@ export function StudioPage({
         </div>
 
         {isAdmin && (
-          <div className="flex items-center gap-1 rounded-xl border border-border/80 bg-white p-1">
+          <div
+            role="group"
+            aria-label="Search mode"
+            className="flex items-center gap-1 rounded-xl border border-border bg-white p-1"
+          >
             <button
               type="button"
+              aria-pressed={mode === 'query'}
               onClick={() => setMode('query')}
               className={cn(
-                'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                'touch-target min-h-8 cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 mode === 'query' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-ink',
               )}
             >
@@ -334,9 +410,10 @@ export function StudioPage({
             </button>
             <button
               type="button"
+              aria-pressed={mode === 'weekly'}
               onClick={() => setMode('weekly')}
               className={cn(
-                'cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                'touch-target min-h-8 cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 mode === 'weekly' ? 'bg-ink text-white' : 'text-muted-foreground hover:text-ink',
               )}
             >
@@ -346,129 +423,155 @@ export function StudioPage({
         )}
       </div>
 
-      <form
-        onSubmit={(event) => {
-          event.preventDefault()
-          void startLiveRun()
-        }}
-        className="mt-6 flex flex-col gap-2.5 sm:flex-row"
-      >
-        <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder={
-              mode === 'weekly'
-                ? 'Full weekly brief across all synthetic-data sources (optional focus topic)…'
-                : 'Search a topic (e.g. tabular differential privacy, clinical EHR, time series)…'
-            }
-            className="h-12 w-full rounded-xl border border-border/90 bg-white pl-11 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
-        </div>
-
-        {status === 'running' ? (
-          <Button
-            type="button"
-            size="lg"
-            variant="outline"
-            onClick={stopRun}
-            className="h-12 rounded-xl border-destructive/40 px-6 text-destructive hover:bg-destructive/5"
-          >
-            <Square className="size-3.5 fill-current" aria-hidden="true" />
-            Stop
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            size="lg"
-            variant="ink"
-            className="h-12 rounded-xl px-6"
-          >
-            <Play className="size-3.5 fill-current" aria-hidden="true" />
-            {signedIn
-              ? mode === 'weekly'
-                ? 'Publish weekly brief'
-                : 'Search now'
-              : 'Sign in to search'}
-          </Button>
-        )}
-      </form>
-
-      {/* Focus & Scope Controls */}
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4 text-xs">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-muted-foreground">Popular:</span>
-          {PRESET_QUERIES.map((preset) => {
-            const active = query.toLowerCase() === preset.query.toLowerCase()
-            return (
-              <button
-                key={preset.label}
-                type="button"
-                onClick={() => {
-                  setQuery(preset.query)
-                  if (signedIn && status !== 'running') {
-                    void startLiveRun(preset.query)
-                  }
-                }}
-                className={cn(
-                  'cursor-pointer rounded-full border px-2.5 py-1 transition-colors',
-                  active
-                    ? 'border-primary/45 bg-primary/10 font-medium text-primary'
-                    : 'border-border/75 bg-white text-ink/80 hover:border-primary/30 hover:text-primary',
-                )}
-              >
-                {preset.label}
-              </button>
-            )
-          })}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="inline-flex items-center gap-1 rounded-lg border border-border/80 bg-white p-0.5 font-mono text-[11px]">
-            {WINDOW_OPTIONS.map((opt) => (
-              <button
-                key={opt.days}
-                type="button"
-                onClick={() => setDays(opt.days)}
-                className={cn(
-                  'cursor-pointer rounded-md px-2 py-1 transition-colors',
-                  days === opt.days
-                    ? 'bg-secondary font-semibold text-ink'
-                    : 'text-muted-foreground hover:text-ink',
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
+      <search className="mt-6">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void startLiveRun()
+          }}
+          className="flex flex-col gap-2.5 sm:flex-row"
+        >
+          <div className="relative flex-1">
+            <label htmlFor={queryInputId} className="sr-only">
+              Search synthetic data topics across live sources
+            </label>
+            <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <input
+              ref={queryInputRef}
+              id={queryInputId}
+              name="q"
+              type="search"
+              value={query}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              enterKeyHint="search"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={
+                mode === 'weekly'
+                  ? 'Full weekly brief across all synthetic-data sources (optional focus topic)…'
+                  : 'Search a topic (e.g. tabular differential privacy, clinical EHR, time series)…'
+              }
+              className="h-12 w-full rounded-xl border border-input bg-white pl-11 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
           </div>
 
-          <div className="flex flex-wrap items-center gap-1">
-            {SOURCE_OPTIONS.map((source) => {
-              const checked = selectedSources.includes(source.id)
-              return (
-                <button
-                  key={source.id}
-                  type="button"
-                  aria-pressed={checked}
-                  onClick={() => toggleSourceFamily(source.id)}
-                  className={cn(
-                    'cursor-pointer rounded-md border px-2 py-1 font-mono text-[11px] transition-colors',
-                    checked
-                      ? 'border-border/80 bg-white text-ink'
-                      : 'border-transparent bg-transparent text-muted-foreground/55 hover:text-muted-foreground',
-                  )}
-                >
-                  {source.label}
-                </button>
-              )
-            })}
+          {status === 'running' ? (
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              onClick={stopRun}
+              className="h-12 rounded-xl border-destructive/40 px-6 text-destructive hover:border-destructive hover:bg-destructive/5 hover:text-destructive"
+            >
+              <Square className="size-3.5 fill-current" aria-hidden="true" />
+              Stop search
+            </Button>
+          ) : (
+            <Button
+              type="submit"
+              size="lg"
+              variant="ink"
+              className="h-12 rounded-xl px-6"
+            >
+              <Play className="size-3.5 fill-current" aria-hidden="true" />
+              {signedIn
+                ? mode === 'weekly'
+                  ? 'Publish weekly brief'
+                  : 'Search now'
+                : 'Sign in to search'}
+            </Button>
+          )}
+        </form>
+
+        {/* Structured Focus & Scope Controls */}
+        <div className="mt-4 space-y-3 rounded-2xl border border-border/80 bg-white/80 p-4 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold text-muted-foreground">Presets</span>
+            <div role="group" aria-label="Preset topics" className="flex flex-wrap items-center gap-1.5">
+              {PRESET_QUERIES.map((preset) => {
+                const active = query.trim().toLowerCase() === preset.query.toLowerCase()
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    aria-pressed={active}
+                    disabled={status === 'running'}
+                    onClick={() => {
+                      setQuery(preset.query)
+                      queryInputRef.current?.focus()
+                    }}
+                    className={cn(
+                      'touch-target min-h-8 cursor-pointer rounded-full border px-3 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+                      active
+                        ? 'border-primary/50 bg-primary/10 font-semibold text-primary'
+                        : 'border-border bg-white text-ink hover:border-primary/40 hover:text-primary',
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 border-t border-border/60 pt-3">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold text-muted-foreground">Window</span>
+              <div
+                role="group"
+                aria-label="Time window"
+                className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 font-mono text-xs"
+              >
+                {WINDOW_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.days}
+                    type="button"
+                    aria-pressed={days === opt.days}
+                    onClick={() => setDays(opt.days)}
+                    className={cn(
+                      'touch-target min-h-8 cursor-pointer rounded-md px-2.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      days === opt.days
+                        ? 'bg-white font-semibold text-ink shadow-2xs'
+                        : 'text-muted-foreground hover:text-ink',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-semibold text-muted-foreground">Sources</span>
+              <div role="group" aria-label="Research sources" className="flex flex-wrap items-center gap-1.5">
+                {SOURCE_OPTIONS.map((source) => {
+                  const checked = selectedSources.includes(source.id)
+                  return (
+                    <button
+                      key={source.id}
+                      type="button"
+                      aria-pressed={checked}
+                      onClick={() => toggleSourceFamily(source.id)}
+                      className={cn(
+                        'touch-target min-h-8 cursor-pointer rounded-lg border px-2.5 py-1 font-mono text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        checked
+                          ? 'border-primary/45 bg-primary/10 font-medium text-primary'
+                          : 'border-border bg-white text-muted-foreground hover:border-slate-400 hover:text-ink',
+                      )}
+                    >
+                      {source.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </search>
 
-      {/* Progress Rail — shown only while searching or viewing a run */}
+      {/* Progress Rail — shown while searching or viewing a session */}
       {status !== 'idle' && (
         <div className="mt-6">
           <PipelineStepper
@@ -478,7 +581,7 @@ export function StudioPage({
             sourceStats={sourceStats}
             cleanStats={cleanStats}
             scoredCount={scoredItems.length}
-            fetchedCount={sections.length}
+            fetchedCount={fetchedCount}
             sectionCount={sections.length}
             reportId={reportId}
           />
@@ -496,25 +599,27 @@ export function StudioPage({
       )}
 
       {warnings.length > 0 && (
-        <div className="mt-4 rounded-xl border border-amber-300/80 bg-amber-50/70 px-4 py-2.5 text-xs text-amber-900">
-          <span className="font-medium">Note: </span>
-          {warnings.join(' · ')}
+        <div role="status" className="mt-4 rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-2.5 text-xs text-amber-950">
+          <span className="font-semibold">Note: </span>
+          {warnings.join(' — ')}
         </div>
       )}
 
       {reportId && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-500/30 bg-emerald-500/8 px-5 py-3.5 text-sm text-emerald-950">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-600/30 bg-emerald-50 px-5 py-3.5 text-sm text-emerald-950">
           <span>
             Published weekly brief <strong>{reportId}</strong> to the archive.
           </span>
-          <Button size="sm" variant="outline" onClick={() => navigate(`/brief/${reportId}`)}>
-            Open weekly brief
-            <ArrowUpRight className="size-4" aria-hidden="true" />
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/brief/${reportId}`}>
+              Open weekly brief
+              <ArrowUpRight className="size-4" aria-hidden="true" />
+            </Link>
           </Button>
         </div>
       )}
 
-      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_260px]">
+      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_270px]">
         <div className="min-w-0">
           {trendText && (
             <div className="mb-6">
@@ -530,7 +635,7 @@ export function StudioPage({
                 </h2>
                 {keywordFilter && (
                   <Button variant="ghost" size="sm" onClick={() => setKeywordFilter(null)}>
-                    Clear "{keywordFilter}" filter
+                    Clear &ldquo;{keywordFilter}&rdquo; filter
                   </Button>
                 )}
               </div>
@@ -543,6 +648,7 @@ export function StudioPage({
                     key={item.id}
                     item={item}
                     rank={idx + 1}
+                    headingLevel="h3"
                     tags={
                       itemTopics.length > 0
                         ? itemTopics.map((label) => (
@@ -554,8 +660,7 @@ export function StudioPage({
                                 setKeywordFilter((curr) => (curr === label ? null : label))
                               }
                               followed={
-                                follows?.some((f) => f.kind === 'topic' && f.value === label) ??
-                                false
+                                follows?.some((f) => sameFollow(f, 'topic', label)) ?? false
                               }
                               onFollowToggle={
                                 onFollow ? (next) => onFollow('topic', label, next) : undefined
@@ -570,9 +675,7 @@ export function StudioPage({
                           kind="source"
                           value={item.source}
                           followed={
-                            follows?.some(
-                              (f) => f.kind === 'source' && sameSource(f.value, item.source),
-                            ) ?? false
+                            follows?.some((f) => sameFollow(f, 'source', item.source)) ?? false
                           }
                           onToggle={(kind, value, next) => onFollow(kind, value, next)}
                         />
@@ -591,8 +694,20 @@ export function StudioPage({
                 )
               })}
             </div>
+          ) : displayItems.length > 0 && keywordFilter ? (
+            <div className="rounded-2xl border border-dashed border-border bg-white/80 px-6 py-12 text-center">
+              <h2 className="font-display text-xl font-medium text-ink">
+                No results match &ldquo;{keywordFilter}&rdquo;
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                {displayItems.length} {displayItems.length === 1 ? 'result is' : 'results are'} hidden by this topic filter.
+              </p>
+              <Button className="mt-5" variant="outline" size="sm" onClick={() => setKeywordFilter(null)}>
+                Clear &ldquo;{keywordFilter}&rdquo; filter
+              </Button>
+            </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-14 text-center">
+            <div className="rounded-2xl border border-dashed border-border bg-white/80 px-6 py-14 text-center">
               <h2 className="font-display text-2xl font-medium text-ink">
                 {status === 'running'
                   ? 'Searching live sources…'
@@ -601,7 +716,7 @@ export function StudioPage({
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
                 {status === 'running'
                   ? 'Papers and repositories appear here as soon as they are collected.'
-                  : 'Pick a popular focus chip above or enter a keyword to search across sources.'}
+                  : 'Pick a preset topic above or enter a keyword, choose your window and sources, then run a live search.'}
               </p>
             </div>
           )}
@@ -609,26 +724,36 @@ export function StudioPage({
 
         {/* Recent Searches */}
         <aside aria-label="Recent searches">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <h2 className="text-sm font-semibold text-ink">
             Recent searches
-          </h3>
+          </h2>
           {sessions.length === 0 ? (
             <p className="mt-3 text-xs text-muted-foreground">
               No recent searches yet.
             </p>
           ) : (
-            <ul className="mt-3 divide-y divide-border/70 rounded-2xl border border-border/75 bg-white">
+            <ul className="mt-3 divide-y divide-border/70 rounded-2xl border border-border bg-white">
               {sessions.map((session) => {
                 const selected = session.id === activeSessionId
+                const loadingThis = session.id === loadingSessionId
+                const itemCount = session.stats?.cleanStats?.fresh ?? 0
+                const statusLabel =
+                  session.status === 'failed'
+                    ? 'Failed'
+                    : session.status === 'running'
+                      ? 'Running'
+                      : `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`
                 return (
                   <li key={session.id}>
                     <button
                       type="button"
+                      aria-current={selected ? 'true' : undefined}
+                      aria-busy={loadingThis || undefined}
                       onClick={() => void handleSelectSession(session.id)}
                       className={cn(
-                        'w-full cursor-pointer px-4 py-3 text-left transition-colors first:rounded-t-2xl last:rounded-b-2xl',
+                        'touch-target w-full cursor-pointer px-4 py-3 text-left transition-colors first:rounded-t-2xl last:rounded-b-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                         selected
-                          ? 'bg-primary/[0.06]'
+                          ? 'bg-primary/8'
                           : 'hover:bg-secondary/50',
                       )}
                     >
@@ -641,7 +766,8 @@ export function StudioPage({
                         >
                           {session.query || (session.mode === 'weekly' ? 'Weekly brief' : 'All synthetic data')}
                         </span>
-                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+                        <span className="inline-flex shrink-0 items-center gap-1 font-mono text-[11px] text-muted-foreground tabular-nums">
+                          {loadingThis && <Loader2 className="size-3 motion-safe:animate-spin" aria-hidden="true" />}
                           {session.days}d
                         </span>
                       </div>
@@ -650,8 +776,13 @@ export function StudioPage({
                           <CalendarDays className="size-3" aria-hidden="true" />
                           {formatDate(session.created_at, 'short')}
                         </span>
-                        <span className="font-mono tabular-nums">
-                          {session.stats?.cleanStats?.fresh ?? 0} items
+                        <span
+                          className={cn(
+                            'font-mono tabular-nums',
+                            session.status === 'failed' && 'font-medium text-destructive',
+                          )}
+                        >
+                          {statusLabel}
                         </span>
                       </div>
                     </button>

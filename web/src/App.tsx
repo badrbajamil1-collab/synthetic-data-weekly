@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { UserButton, useAuth, useClerk } from '@clerk/react'
-import { CircleAlert, Menu, X } from 'lucide-react'
+import { CircleAlert, Menu } from 'lucide-react'
 
 import { BrandMark } from '@/components/brand-mark'
+import { Link } from '@/components/link'
+import { MobileNavDrawer } from '@/components/mobile-nav-drawer'
 import { Button } from '@/components/ui/button'
 import {
-  authHeaders,
   deleteTopic,
   errorText,
   getJson,
   putTopic,
+  runPipelineRequest,
   saveState,
   setApiTokenGetter,
   type LibraryBundle,
@@ -17,8 +19,9 @@ import {
   type Me,
   type SavableItemMeta,
 } from '@/lib/api'
-import { Link, useRoute } from '@/lib/router'
-import { sortFollows, sameSource, type TopicFollow, type TopicKind } from '@/lib/topics'
+import { useRoute } from '@/lib/router'
+import { sameFollow, sortFollows, type TopicFollow, type TopicKind } from '@/lib/topics'
+import { invalidateReportsCache } from '@/lib/use-report'
 import { ArchivePage } from '@/pages/ArchivePage'
 import { BriefPage } from '@/pages/BriefPage'
 import { FeedPage } from '@/pages/FeedPage'
@@ -48,9 +51,9 @@ function NavLink({ to, active, highlight, className, children, onClick }: NavLin
       aria-current={active ? 'page' : undefined}
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'relative inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active
-          ? 'bg-primary/10 font-medium text-primary'
+          ? 'bg-primary/10 font-semibold text-primary after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
           : highlight
             ? 'font-medium text-ink hover:bg-secondary hover:text-primary'
             : 'text-muted-foreground hover:bg-secondary/70 hover:text-ink',
@@ -59,7 +62,7 @@ function NavLink({ to, active, highlight, className, children, onClick }: NavLin
     >
       {highlight && (
         <span
-          className="size-1.5 rounded-full bg-emerald-500"
+          className="size-1.5 rounded-full bg-primary"
           aria-hidden="true"
         />
       )}
@@ -69,17 +72,22 @@ function NavLink({ to, active, highlight, className, children, onClick }: NavLin
 }
 
 const ROUTE_TITLES: Array<[RegExp, string]> = [
-  [/^\/studio/, 'Live Search'],
-  [/^\/feed/, 'Your feed'],
-  [/^\/library/, 'Your library'],
-  [/^\/archive/, 'Archive'],
-  [/^\/brief/, 'Weekly brief'],
+  [/^\/studio$/, 'Live Search'],
+  [/^\/feed$/, 'Your feed'],
+  [/^\/library$/, 'Your library'],
+  [/^\/archive$/, 'Archive'],
+  [/^\/brief(?:\/|$)/, 'Weekly brief'],
 ]
 
 function pageTitle(route: string): string {
   if (route === '/') return 'Well7 Research Lab — Synthetic Data Weekly'
   const found = ROUTE_TITLES.find(([pattern]) => pattern.test(route))
   return `${found ? found[1] : 'Page not found'} — Well7 Research Lab`
+}
+
+interface ScopedError {
+  route: string
+  message: string
 }
 
 export default function App() {
@@ -89,41 +97,64 @@ export default function App() {
   const [meError, setMeError] = useState<string | null>(null)
   const [meRetryTick, setMeRetryTick] = useState(0)
   const [topics, setTopics] = useState<TopicFollow[]>([])
-  const [followError, setFollowError] = useState<string | null>(null)
+  const [followErr, setFollowErr] = useState<ScopedError | null>(null)
   const [library, setLibrary] = useState<LibraryEntry[]>([])
   const [libraryLoading, setLibraryLoading] = useState(false)
-  const [libraryError, setLibraryError] = useState<string | null>(null)
+  const [libraryErr, setLibraryErr] = useState<ScopedError | null>(null)
   const [running, setRunning] = useState(false)
-  const [pipelineError, setPipelineError] = useState<string | null>(null)
+  const [pipelineErr, setPipelineErr] = useState<ScopedError | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
-  const [studioQuerySeed, setStudioQuerySeed] = useState('')
+  const [routeAnnouncement, setRouteAnnouncement] = useState('')
+
+  const followError = followErr?.route === route ? followErr.message : null
+  const libraryError = libraryErr?.route === route ? libraryErr.message : null
+  const pipelineError = pipelineErr?.route === route ? pipelineErr.message : null
 
   const { getToken, userId, isLoaded } = useAuth()
   const clerk = useClerk()
   const getTokenRef = useRef(getToken)
+  const topicsRef = useRef(topics)
+  const libraryRef = useRef(library)
+  const routeRef = useRef(route)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+
   useEffect(() => {
     getTokenRef.current = getToken
     setApiTokenGetter((opts) => getTokenRef.current(opts))
   }, [getToken])
 
-  const loadLibrary = useCallback(async () => {
-    setLibraryLoading(true)
-    setLibraryError(null)
+  useEffect(() => {
+    topicsRef.current = topics
+  }, [topics])
+
+  useEffect(() => {
+    libraryRef.current = library
+  }, [library])
+
+  useEffect(() => {
+    routeRef.current = route
+  }, [route])
+
+  const loadLibrary = useCallback(async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setLibraryLoading(true)
+    setLibraryErr(null)
     try {
       const data = await getJson<{ items: LibraryEntry[] }>('/api/my/library')
       setLibrary(data?.items ?? [])
     } catch (error) {
-      setLibraryError(errorText(error))
+      setLibraryErr({ route: routeRef.current, message: errorText(error) })
     } finally {
-      setLibraryLoading(false)
+      if (!options?.silent) setLibraryLoading(false)
     }
   }, [])
 
   useEffect(() => {
     if (!isLoaded) return
     let active = true
+    const attempt = meRetryTick
 
     async function loadMe() {
+      if (attempt < 0) return
       if (!userId) {
         if (active) {
           setMe(null)
@@ -171,46 +202,46 @@ export default function App() {
   }, [])
 
   async function toggleFollow(kind: TopicKind, value: string, next: boolean) {
-    setFollowError(null)
-    const matches = (follow: TopicFollow) =>
-      follow.kind === kind && (kind === 'source' ? sameSource(follow.value, value) : follow.value === value)
-    const before = topics
-    const stored = before.find(matches)
-    setTopics(
-      sortFollows(
-        next
-          ? [...before.filter((follow) => !matches(follow)), { kind, value }]
-          : before.filter((follow) => !matches(follow)),
-      ),
+    setFollowErr(null)
+    const before = topicsRef.current
+    const stored = before.find((follow) => sameFollow(follow, kind, value))
+    const optimistic = sortFollows(
+      next
+        ? [...before.filter((follow) => !sameFollow(follow, kind, value)), { kind, value }]
+        : before.filter((follow) => !sameFollow(follow, kind, value)),
     )
+    topicsRef.current = optimistic
+    setTopics(optimistic)
     try {
       const updated = next
         ? await putTopic({ kind, value })
         : await deleteTopic({ kind, value: stored?.value ?? value })
-      setTopics(sortFollows(updated))
+      const sorted = sortFollows(updated)
+      topicsRef.current = sorted
+      setTopics(sorted)
     } catch (error) {
+      topicsRef.current = before
       setTopics(before)
-      setFollowError(errorText(error))
+      setFollowErr({ route: routeRef.current, message: errorText(error) })
     }
   }
 
   const togglePaper = useCallback(
     async (itemId: string, field: 'read_later' | 'important', itemMeta?: SavableItemMeta) => {
-      setLibraryError(null)
-      const before = library
-      const current = before.find((entry) => entry.id === itemId)
+      setLibraryErr(null)
+      const prevList = libraryRef.current
+      const current = prevList.find((entry) => entry.id === itemId)
       const nextReadLater = field === 'read_later' ? current?.read_later !== 1 : current?.read_later === 1
       const nextImportant = field === 'important' ? current?.important !== 1 : current?.important === 1
       const nowIso = new Date().toISOString()
 
-      // Instant optimistic update so the button reacts immediately on click
-      setLibrary((prev) => {
-        const existing = prev.find((entry) => entry.id === itemId)
+      const optimistic = (() => {
+        const existing = prevList.find((entry) => entry.id === itemId)
         if (!nextReadLater && !nextImportant && !existing?.note) {
-          return prev.filter((entry) => entry.id !== itemId)
+          return prevList.filter((entry) => entry.id !== itemId)
         }
         if (existing) {
-          return prev.map((entry) =>
+          return prevList.map((entry) =>
             entry.id === itemId
               ? {
                   ...entry,
@@ -232,15 +263,17 @@ export default function App() {
             reason: itemMeta?.reason ?? '',
             summary: itemMeta?.summary ?? '',
             section: itemMeta?.section ?? 'top',
-            week_end: nowIso.slice(0, 10),
+            week_end: itemMeta?.week_end ?? itemMeta?.published ?? nowIso.slice(0, 10),
             read_later: nextReadLater ? 1 : 0,
             important: nextImportant ? 1 : 0,
             note: '',
             updated_at: nowIso,
           },
-          ...prev,
+          ...prevList,
         ]
-      })
+      })()
+      libraryRef.current = optimistic
+      setLibrary(optimistic)
 
       try {
         await saveState(itemId, {
@@ -248,40 +281,34 @@ export default function App() {
           important: nextImportant,
           item: itemMeta,
         })
-        await loadLibrary()
+        await loadLibrary({ silent: true })
       } catch (error) {
-        setLibrary(before)
-        setLibraryError(errorText(error))
+        await loadLibrary({ silent: true })
+        setLibraryErr({ route: routeRef.current, message: errorText(error) })
       }
     },
-    [library, loadLibrary],
+    [loadLibrary],
   )
 
   const saveNote = useCallback(async (itemId: string, note: string) => {
-    setLibraryError(null)
+    setLibraryErr(null)
     try {
       await saveState(itemId, { note })
-      await loadLibrary()
+      await loadLibrary({ silent: true })
     } catch (error) {
-      setLibraryError(errorText(error))
+      setLibraryErr({ route: routeRef.current, message: errorText(error) })
     }
   }, [loadLibrary])
 
   async function runPipeline() {
     setRunning(true)
-    setPipelineError(null)
+    setPipelineErr(null)
     try {
-      const response = await fetch('/api/pipeline/run', {
-        method: 'POST',
-        headers: { Accept: 'application/json', ...(await authHeaders()) },
-      })
-      const body = (await response.json()) as { status?: string; error?: string }
-      if (!response.ok || body.status !== 'succeeded') {
-        throw new Error(body.error ?? `The run failed (${response.status}). Try again in a moment.`)
-      }
+      await runPipelineRequest()
+      invalidateReportsCache()
       window.location.reload()
     } catch (error) {
-      setPipelineError(getErrorMessage(error))
+      setPipelineErr({ route: routeRef.current, message: getErrorMessage(error) })
     } finally {
       setRunning(false)
     }
@@ -299,28 +326,34 @@ export default function App() {
   }), [library, savedById, libraryLoading, libraryError, togglePaper, saveNote, loadLibrary])
 
   const signedIn = Boolean(userId)
-  const active = (path: string) => route === path || (path !== '/' && route.startsWith(path))
+  const active = (path: string) =>
+    path === '/' ? route === '/' : route === path || route.startsWith(`${path}/`)
   const briefWeek = route.match(/^\/brief\/([^/]+)$/)?.[1]
   const needsIdentity = route === '/feed' || route === '/library'
   const identityPending = needsIdentity && (!isLoaded || !sessionChecked)
 
   const firstRouteRef = useRef(true)
   const mainRef = useRef<HTMLElement>(null)
+
   useEffect(() => {
-    /* eslint-disable react/set-state-in-effect */
-    setFollowError(null)
-    setLibraryError(null)
-    setPipelineError(null)
-    setMenuOpen(false)
-    /* eslint-enable react/set-state-in-effect */
-    document.title = pageTitle(route)
+    const title = pageTitle(route)
+    document.title = title
     if (firstRouteRef.current) {
       firstRouteRef.current = false
       return
     }
-    window.scrollTo(0, 0)
+    window.scrollTo({ top: 0, behavior: 'instant' })
     mainRef.current?.focus({ preventScroll: true })
+    const timer = window.setTimeout(() => setRouteAnnouncement(title), 50)
+    return () => window.clearTimeout(timer)
   }, [route])
+
+  // Close mobile drawer automatically on browser back/forward navigation.
+  useEffect(() => {
+    const handlePop = () => setMenuOpen(false)
+    window.addEventListener('popstate', handlePop)
+    return () => window.removeEventListener('popstate', handlePop)
+  }, [])
 
   const navLinks: Array<{ to: string; label: string; highlight?: boolean }> = signedIn
     ? [
@@ -346,33 +379,41 @@ export default function App() {
     route === '/archive'
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-background text-ink">
+    <div className="flex min-h-screen flex-col overflow-x-clip bg-background text-ink">
+      <div role="status" aria-live="polite" className="sr-only">
+        {routeAnnouncement}
+      </div>
+
       <a
         href="#top"
-        className="sr-only focus-visible:not-sr-only focus-visible:absolute focus-visible:left-5 focus-visible:top-3 focus-visible:z-[60] focus-visible:rounded-lg focus-visible:bg-white focus-visible:px-4 focus-visible:py-2 focus-visible:text-sm focus-visible:font-semibold focus-visible:text-ink focus-visible:shadow-md focus-visible:ring-2 focus-visible:ring-ring"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-5 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-ink focus:shadow-md focus:ring-2 focus:ring-ring"
       >
         Skip to main content
       </a>
+
       <header className="sticky top-0 z-50 border-b border-border/80 bg-white/95 text-ink backdrop-blur-md">
         <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link to={signedIn ? '/library' : '/'} className="flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3">
+          <Link
+            to="/"
+            aria-label="Well7 Research Lab — Home"
+            className="flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3"
+          >
             <BrandMark className="size-9 shrink-0" />
             <span className="whitespace-nowrap">
-              <span className="block font-display text-base font-medium leading-tight text-ink sm:text-lg" translate="no">Well7 Research Lab</span>
+              <span className="block font-display text-base font-medium leading-tight text-ink sm:text-lg" translate="no">
+                Well7 Research Lab
+              </span>
               <span className="hidden text-xs text-muted-foreground sm:block">Synthetic Data Weekly</span>
             </span>
           </Link>
 
-          <nav className="hidden items-center gap-1 md:flex" aria-label="Main navigation">
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
             {navLinks.map((link) => (
               <NavLink key={link.to} to={link.to} active={active(link.to)} highlight={link.highlight}>
                 {link.label}
               </NavLink>
             ))}
-            {signedIn && me?.email && (
-              <span className="ml-2 hidden max-w-44 truncate text-xs text-muted-foreground lg:block">{me.email}</span>
-            )}
-            <div className="ml-2 flex items-center gap-2">
+            <div className="ml-3 flex items-center gap-2 border-l border-border/80 pl-3">
               {signedIn ? (
                 <UserButton />
               ) : (
@@ -399,84 +440,57 @@ export default function App() {
           <div className="flex items-center gap-2 md:hidden">
             {signedIn && <UserButton />}
             <button
+              ref={menuButtonRef}
               type="button"
               aria-expanded={menuOpen}
               aria-controls="mobile-navigation"
-              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
               onClick={() => setMenuOpen((open) => !open)}
-              className="grid size-9 place-items-center rounded-full border border-border bg-white text-ink transition-colors hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid size-11 cursor-pointer place-items-center rounded-full border border-border bg-white text-ink transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
-              {menuOpen ? <X className="size-4" aria-hidden="true" /> : <Menu className="size-4" aria-hidden="true" />}
+              <Menu className="size-5" aria-hidden="true" />
             </button>
           </div>
         </div>
-
-        {menuOpen && (
-          <div id="mobile-navigation" className="border-t border-border/80 bg-white px-5 pb-5 pt-3 md:hidden">
-            <nav className="flex flex-col gap-1" aria-label="Mobile navigation">
-              {navLinks.map((link) => (
-                <NavLink
-                  key={link.to}
-                  to={link.to}
-                  active={active(link.to)}
-                  highlight={link.highlight}
-                  className="w-full justify-start"
-                >
-                  {link.label}
-                </NavLink>
-              ))}
-              {!signedIn && (
-                <div className="mt-2 flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => { setMenuOpen(false); clerk.openSignUp() }}
-                  >
-                    Sign up
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ink"
-                    className="flex-1"
-                    onClick={() => { setMenuOpen(false); clerk.openSignIn() }}
-                  >
-                    Sign in
-                  </Button>
-                </div>
-              )}
-            </nav>
-          </div>
-        )}
       </header>
 
+      <MobileNavDrawer
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        links={navLinks}
+        isActive={active}
+        signedIn={signedIn}
+        onSignUp={() => clerk.openSignUp()}
+        onSignIn={() => clerk.openSignIn()}
+        triggerRef={menuButtonRef}
+      />
+
       {followError && (
-        <div className="mx-auto mt-3 max-w-7xl px-5 sm:px-8" role="alert">
-          <p className="flex items-center gap-2 rounded-xl border border-destructive/25 bg-[#fff5f7] px-4 py-2.5 text-sm text-destructive">
+        <div className="mx-auto mt-3 w-full max-w-7xl px-5 sm:px-8" role="alert">
+          <div className="flex items-center gap-2 rounded-xl border border-destructive/25 bg-[#fff5f7] px-4 py-2.5 text-sm text-destructive">
             <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-            {followError}
-          </p>
+            <span>{followError}</span>
+          </div>
         </div>
       )}
 
       {signedIn && meError && (
-        <div className="mx-auto mt-3 max-w-7xl px-5 sm:px-8" role="alert">
-          <p className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/25 bg-[#fff5f7] px-4 py-2.5 text-sm text-destructive">
+        <div className="mx-auto mt-3 w-full max-w-7xl px-5 sm:px-8" role="alert">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/25 bg-[#fff5f7] px-4 py-2.5 text-sm text-destructive">
             <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
             <span>{meError}</span>
             <Button variant="outline" size="sm" className="ml-auto shrink-0" onClick={retryMe}>
               Try again
             </Button>
-          </p>
+          </div>
         </div>
       )}
 
       <main
         id="top"
-        key={route}
         ref={mainRef}
         tabIndex={-1}
-        className="route-in focus:outline-none focus-visible:outline-none"
+        className="flex-1 focus:outline-none focus-visible:outline-none"
       >
         {identityPending && (
           <section className="mx-auto max-w-3xl px-5 py-24 text-center" aria-live="polite">
@@ -485,12 +499,11 @@ export default function App() {
         )}
 
         {!identityPending && (
-          <>
-            {route === '/' && <LandingPage onLaunchStudio={(q) => setStudioQuerySeed(q)} />}
+          <div className="route-in">
+            {route === '/' && <LandingPage />}
 
             {route === '/studio' && (
               <StudioPage
-                initialQuery={studioQuerySeed}
                 signedIn={signedIn}
                 isAdmin={Boolean(me?.isAdmin)}
                 onSignIn={() => clerk.openSignIn()}
@@ -526,31 +539,23 @@ export default function App() {
               <ArchivePage
                 isAdmin={Boolean(me?.isAdmin)}
                 running={running}
+                pipelineError={pipelineError}
                 onRunPipeline={() => void runPipeline()}
               />
             )}
 
             {!isKnownRoute && <NotFoundPage />}
-          </>
-        )}
-
-        {route === '/archive' && pipelineError && (
-          <div className="mx-auto max-w-7xl px-5 pb-10 sm:px-8" role="alert">
-            <p className="flex items-center gap-2 rounded-xl border border-destructive/25 bg-[#fff5f7] px-4 py-2.5 text-sm text-destructive">
-              <CircleAlert className="size-4 shrink-0" aria-hidden="true" />
-              {pipelineError}
-            </p>
           </div>
         )}
       </main>
 
-      <footer className="border-t border-border/80 bg-white/80">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
+      <footer className="border-t border-border/80 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-7 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div className="flex items-center gap-2.5">
             <BrandMark className="size-6 shrink-0" />
             <span className="font-medium text-ink" translate="no">Well7 Research Lab</span>
           </div>
-          <p>Well7 Research Lab · Synthetic Data Weekly & Live Topic Search.</p>
+          <p>Synthetic Data Weekly &amp; Live Topic Search.</p>
         </div>
       </footer>
     </div>
