@@ -20,13 +20,15 @@ the Well7 team.
   Research Studio ([synthetic-data-web.coolbadrtv1.workers.dev](https://synthetic-data-web.coolbadrtv1.workers.dev)),
   synced directly from `main`'s verified weekly output via `POST /api/reports/publish`.
 
-**Status:** Phases 0–5 are done: SMTP is configured, a real `send_report.py --test`
+**Status:** Phases 0–5 are done and Phase 6 live delivery is underway (**1 of 2 Saturdays sent**): SMTP is configured, a real `send_report.py --test`
 send landed in Primary Inbox (matching `From == SMTP_USER`, no PDF attachment, direct
-publisher links), and GitHub Actions (`.github/workflows/weekly-report.yml`) is set up
+publisher links), GitHub Actions (`.github/workflows/weekly-report.yml`) is set up
 as the sole live Saturday scheduler (`05:17 UTC` / `08:17 UTC+3` / `13:17 UTC+8`, with
 `LLM_API_KEY` and `SMTP_*` secrets configured; the local Windows task `SyntheticDataWeekly`
-was removed so only one scheduler sends). What remains is running the two-week Phase 6
-pilot and moving long-term production sending to an authenticated company-domain email
+was removed so only one scheduler sends), and live catch-up run [`44910594323`](https://github.com/badrbajamil1-collab/synthetic-data-weekly/actions/runs/44910594323) (`2026-11-21`)
+emailed all 5 Well7 recipients and published `week-2026-11-20` + PDF to Cloudflare D1/R2.
+What remains is letting next Saturday (`2026-11-28`) run unattended, gathering recipient
+feedback, and moving long-term production sending to an authenticated company-domain email
 service. [Build plan and status](#build-plan-and-status) is the
 honest scoreboard. Running `main.py` with no flags still performs the Phase 1
 "print every raw item" deliverable; `--pipeline` is the one command for the whole
@@ -50,21 +52,22 @@ This is where each phase stood on 2026-11-21.
 | **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (structural checks plus the 2026-11-11 schema gates) |
 | **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
 | **5 — Email and schedule** | You receive a correct test email | ✅ Email verified; scheduler active | `send_report.py --test` delivered to Primary Inbox (`From == SMTP_USER`, no PDF attachment); GitHub Actions scheduled live for Saturday `05:17 UTC` with `SMTP_*` secrets configured (local Windows task deleted to prevent duplicates) |
-| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ In progress | GitHub Actions scheduled for Saturday `05:17 UTC` (next scheduled live run 2026-11-28; 2026-11-21 missed the old :00 cron before moving to :17). Watch two Saturdays, gather feedback, then tune; move to a company-domain sending service if spam filtering appears |
+| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ In progress (1 / 2) | Live Saturday #1 delivered via catch-up run `44910594323` on 2026-11-21 (5/5 recipients emailed + Cloudflare D1/R2 published; missed the old `:00` cron before moving to `:17`). Next scheduled unattended run is 2026-11-28, then gather team feedback and tune |
 
-**Where that leaves the project:** ready for the two-week Phase 6 pilot.
+**Where that leaves the project:** 1 of 2 Phase 6 live Saturdays delivered; awaiting the 2026-11-28 unattended run and team feedback.
 
 **The brief's "done" test** is that the agent runs unattended for two Saturdays and
 the team finds the reports useful. **GitHub Actions** (`.github/workflows/weekly-report.yml`)
 is active with `LLM_API_KEY` and `SMTP_*` secrets for Saturday `05:17 UTC` (`08:17 UTC+3` /
-`13:17 UTC+8`, next scheduled live run 2026-11-28), and the local Windows task (`SyntheticDataWeekly`)
-was removed so delivery does not duplicate or depend on the laptop staying awake. Neither
-live Saturday run has happened yet.
+`13:17 UTC+8`), and the local Windows task (`SyntheticDataWeekly`)
+was removed so delivery does not duplicate or depend on the laptop staying awake. Live
+catch-up run `44910594323` delivered Saturday #1 on `2026-11-21`; next scheduled unattended
+live run is `2026-11-28`.
 
 What is still next, in order:
 
-1. Let two Saturday runs complete and check the GitHub Actions workflow run logs (`mode: send`) and uploaded artefacts plus the
-   recipients' feedback. Do not tune from a single week.
+1. Let Saturday #2 (`2026-11-28`) run unattended, check the GitHub Actions workflow run logs (`mode: send`) and uploaded artefacts, and collect the
+   recipients' feedback across both weeks. Do not tune from a single week.
 2. Then tune keywords, sources and prompts (Phase 6).
 3. If consumer SMTP starts hitting spam on multi-recipient sends, move delivery
    to a dedicated sending service on the company domain (SPF/DKIM/DMARC).
@@ -292,11 +295,12 @@ from scratch.
   land in Inbox (with `From == SMTP_USER`, no PDF attachment, and reduced direct
   article links), but long-term production delivery should move to a dedicated
   sending service authenticated on the company domain (SPF/DKIM/DMARC).
-- **Two live Saturday runs have not been observed yet.** GitHub Actions
+- **Second unattended Saturday run and team feedback are still pending (1 of 2 live Saturdays done).** GitHub Actions
   (`.github/workflows/weekly-report.yml`) is configured to send live on Saturday
   `05:17 UTC` (`08:17 UTC+3` / `13:17 UTC+8`), and the local Windows task
-  `SyntheticDataWeekly` was removed so only one scheduler sends. Next scheduled Saturday run
-  is `2026-11-28` (`2026-11-21` missed the old `:00` cron before moving to `:17`).
+  `SyntheticDataWeekly` was removed so only one scheduler sends. Live catch-up run
+  `44910594323` delivered Saturday #1 on `2026-11-21` (after missing the old `:00` cron
+  before moving to `:17`); next scheduled unattended Saturday run is `2026-11-28`.
 - **Ranker substance judgement is improved, not proven.** Since 2026-11-06 each
   repo's stars and creation date reach the prompt, the rubric discounts old
   low-star repos, and the shortlist caps GitHub's share at 3; since 2026-11-07

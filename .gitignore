@@ -26,6 +26,7 @@ Thumbs.db
 
 # agent tooling — local, not part of the deliverable
 .agents/
+.codex/
 .superpowers/
 skills-lock.json
 .wrangler/
