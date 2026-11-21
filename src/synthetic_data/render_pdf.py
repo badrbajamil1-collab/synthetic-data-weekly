@@ -198,6 +198,18 @@ def _section(title: str) -> List[Any]:
     ]
 
 
+def format_counts_line(report: Dict[str, Any]) -> str:
+    """Format the PDF cover count line with correct singular/plural nouns."""
+    n_picks = len(report.get("top_picks", []))
+    n_tools = len(report.get("tools", []))
+    n_worth = len(report.get("worth_a_look", []))
+    return (
+        f"{n_picks} top {'pick' if n_picks == 1 else 'picks'} · "
+        f"{n_tools} new {'tool' if n_tools == 1 else 'tools'} · "
+        f"{n_worth} worth a look"
+    )
+
+
 def render_pdf(report: Dict[str, Any], path: str) -> str:
     doc = BaseDocTemplate(
         path,
@@ -218,12 +230,7 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
     story.append(
         Paragraph(f"Week of {escape(format_week(report['week_start'], report['week_end']))}", STYLE["title"])
     )
-    counts = (
-        f"{len(report.get('top_picks', []))} top picks · "
-        f"{len(report.get('tools', []))} new tools · "
-        f"{len(report.get('worth_a_look', []))} worth a look"
-    )
-    story.append(Paragraph(escape(counts), STYLE["subject"]))
+    story.append(Paragraph(escape(format_counts_line(report)), STYLE["subject"]))
     story.append(Spacer(1, 10))
     story.append(HRFlowable(width="100%", thickness=1.6, color=NAVY, spaceBefore=2, spaceAfter=2))
 
@@ -300,23 +307,24 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
     tools = report.get("tools", [])
     if tools:
         for tool in tools:
-            story.append(
+            entry_block: List[Any] = [
                 Paragraph(
                     f"{_link(tool['url'], tool['name'], font=FONT_SEMI, size=9.5)}"
                     f" — {escape(' '.join(tool['note'].split()))}",
                     STYLE["bullet"],
                     bulletText="•",
                 )
-            )
+            ]
             wim = (tool.get("why_it_matters") or "").strip()
             if wim:
-                story.append(
+                entry_block.append(
                     Paragraph(
                         f"Why it matters for Well7: {escape(' '.join(wim.split()))}",
                         STYLE["why"],
                     )
                 )
-            story.append(Spacer(1, 5))
+            entry_block.append(Spacer(1, 5))
+            story.append(KeepTogether(entry_block))
     else:
         story.append(Paragraph("Nothing worth listing this week.", STYLE["body"]))
 
@@ -325,23 +333,24 @@ def render_pdf(report: Dict[str, Any], path: str) -> str:
     extra = report.get("worth_a_look", [])
     if extra:
         for item in extra:
-            story.append(
+            entry_block = [
                 Paragraph(
                     f"{_link(item['url'], item['title'], font=FONT_REG, size=9.5)}"
                     f" — {escape(' '.join(item['note'].split()))}",
                     STYLE["bullet"],
                     bulletText="•",
                 )
-            )
+            ]
             wim = (item.get("why_it_matters") or "").strip()
             if wim:
-                story.append(
+                entry_block.append(
                     Paragraph(
                         f"Why it matters for Well7: {escape(' '.join(wim.split()))}",
                         STYLE["why"],
                     )
                 )
-            story.append(Spacer(1, 5))
+            entry_block.append(Spacer(1, 5))
+            story.append(KeepTogether(entry_block))
     else:
         story.append(Paragraph("Nothing this week.", STYLE["body"]))
 

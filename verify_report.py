@@ -223,17 +223,28 @@ check(
     int(log.get("items_found") or 0) > 0 and "links_dead" in log,
     str(log),
 )
-check("no dead links recorded", int(log.get("links_dead") or 0) == 0, str(log.get("links_dead")))
+_dead_links = log.get("links_dead")
+_dead_links_valid = (
+    isinstance(_dead_links, int)
+    and not isinstance(_dead_links, bool)
+    and _dead_links >= 0
+)
+check("dead links were checked and dropped", _dead_links_valid, str(_dead_links))
+if _dead_links_valid and _dead_links > 0:
+    print(f"  WARN  dropped {_dead_links} dead link(s) before render (0 remain in report)")
 check(
     "found is the raw count, not the deduped one",
     int(log.get("items_found") or 0) >= int(log.get("items_after_dedupe") or 0) > 0,
     f"found={log.get('items_found')} after_dedupe={log.get('items_after_dedupe')}",
 )
+_src_errors = log.get("source_errors")
 check(
     "source errors were actually checked",
-    isinstance(log.get("source_errors"), list) and log.get("source_errors") == [],
-    str(log.get("source_errors")),
+    isinstance(_src_errors, list),
+    str(_src_errors),
 )
+if isinstance(_src_errors, list) and _src_errors:
+    print(f"  WARN  partial source outage recorded ({len(_src_errors)}): {_src_errors}")
 
 print("PDF")
 # A missing week_end used to raise KeyError here, after every other check had

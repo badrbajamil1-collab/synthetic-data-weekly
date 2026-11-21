@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-467%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-476%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
@@ -76,8 +76,8 @@ read.
 ## Sample output
 
 Excerpt from [`progress/week-2026-11-05/report.md`](progress/week-2026-11-05/report.md)
-(subject `Synthetic Data Weekly — Week of 30 Oct – 5 Nov 2026`, emailed as HTML with
-the PDF attached). Both picks are arXiv papers, and both summaries are model-written
+(subject `Synthetic Data Weekly — Week of 30 Oct – 5 Nov 2026`, automated dry-run excerpt;
+PDF attachment is off by default for deliverability unless `--attach-pdf` is passed). Both picks are arXiv papers, and both summaries are model-written
 and passed the number/length guard — not extractive fallbacks.
 
 > **1. [CoRTeC: A Differentially Private Release for Synthetic Tabular Data, Decodable by Any Generator](https://arxiv.org/abs/2611.06342)**
@@ -116,7 +116,7 @@ stops the report.
 flowchart LR
     A["Collect - 18 sources, 6 collectors"] --> B["Clean - normalise, dedupe, history filter"]
     B --> C["Rank - LLM score 1-10 + well7 fit"]
-    C --> D["Fetch - full text of the top 7"]
+    C --> D["Fetch - full text of the top 10"]
     D --> E["Report - summaries + sections"]
     E --> F["Render - verify links, MD + HTML + PDF"]
     F --> G["Email - 5 recipients from config.yaml"]
@@ -138,6 +138,7 @@ means no link ever appears twice.
 
 ```powershell
 uv sync                          # runtime + dev dependencies into .venv
+Copy-Item .env.example .env      # fill in OPENROUTER_API_KEY (+ SMTP_* / GITHUB_TOKEN as needed)
 ```
 
 Or, for a machine that only runs the job:
@@ -186,7 +187,7 @@ The individual steps are still runnable by hand:
 ```powershell
 uv run python main.py
 uv run python rank_items.py              # LLM scores 1-10 → ranked.json
-uv run python fetch_candidates.py        # top 7 from ranked.json → candidates.json
+uv run python fetch_candidates.py        # top 10 from ranked.json → candidates.json
 uv run python write_report.py            # summaries + sections → source.yaml
 uv run python report_build.py progress/week-2026-11-05/source.yaml
 uv run python send_report.py progress/week-2026-11-05/source.yaml --dry-run
@@ -197,14 +198,16 @@ uv run python verify_report.py
 |---|---|---|
 | `main.py` | Collects, normalises, dedupes, drops already-published URLs; `--pipeline` runs the whole graph | `raw_items.json`, `raw_run_log.json`, `ranked.json`, report + email |
 | `rank_items.py` | Scores each item 1–10 for relevance and 1–10 for Well7 fit, with a reason; collapses same-story coverage | `ranked.json`, `score_cache.json`, merges into `raw_run_log.json` |
-| `fetch_candidates.py` | Takes the top 7 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
+| `fetch_candidates.py` | Takes the top 10 from `ranked.json`, resolves redirects, extracts full article text | `candidates.json` |
 | `write_report.py` | Writes summaries from the fetched text and splits the three sections | `source.yaml` |
 | `report_build.py` | Verifies every link, drops dead ones, renders, records published URLs when run standalone | `report.md`, `report.html`, PDF, `run_log.json`, appends to `history.db` |
 | `send_report.py` | Emails the rendered report as the HTML/plain-text body (PDF omitted by default for deliverability; `--attach-pdf` opts in); `--dry-run` writes `email.eml` | `email.eml`, updates `run_log.json`, appends to `history.db` after a real send |
+| `publish_to_cloudflare.py` | Pushes the verified week + PDF to the Cloudflare web archive (`POST /api/reports/publish`) | Cloudflare D1 + R2 |
 | `schedule_task.py` | Registers/query/deletes the Saturday Windows task from `config.yaml`; dry-run by default, `--send` for real email | Windows Task Scheduler |
 | `verify_report.py` | Checks the rendered report against the brief | exit code only |
 | `selftest.py` | Offline unit tests for parsing, dates, dedupe, history, ranking, email, scheduling | exit code only |
 | `feed_health.py` | Checks all 13 blog feeds are alive | stdout |
+| `link_sample.py` | Samples 5 links per source and checks resolution | stdout |
 | `validate_phase1.py` | Validates window and dedupe in an existing `raw_items.json` | stdout + exit code |
 
 `rank_items.py` needs `OPENROUTER_API_KEY` in `.env`. A rerun costs nothing: scores
@@ -221,8 +224,9 @@ recipients never receive duplicate emails):
   `workflow_dispatch`. `LLM_API_KEY` and `SMTP_*` secrets are configured on the repo so
   scheduled runs send the real email; manual runs with `send_email` unchecked force
   `--dry-run` (writing `email.eml` instead of sending). `history.db`, `score_cache.json`
-  and `summary_cache.json` are persisted through `actions/cache`, so cross-week dedupe
-  keeps working.
+  and `summary_cache.json` are persisted through `actions/cache`, paired with
+  `.github/workflows/cache-keepalive.yml` (Wednesday `05:17 UTC`) so GitHub's 7-day
+  cache eviction never drops cross-week dedupe between Saturdays.
 - **Windows Task Scheduler (inactive / removed locally)** — `schedule_task.py` can
   register a local `SyntheticDataWeekly` task for Saturday 08:00 (`scripts/run_weekly.ps1`),
   dry-run by default or `-Send` with `--send`. It is interactive-only (only fires while
@@ -235,7 +239,7 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 
 | Key | Meaning |
 |---|---|
-| `schedule` | Weekly cadence read by `schedule_task.py` (`Saturday 08:00`). |
+| `schedule` | Weekly cadence read by `schedule_task.py` (`Saturday 08:00`, Windows Task Scheduler only; live GitHub Actions cron lives in `.github/workflows/weekly-report.yml`). |
 | `lookback_days` | Fallback span (default 7) when no fixed week is supplied. The pipeline passes the Saturday-Friday week instead. |
 | `max_top_picks` | Shortlist size. Read by `fetch_candidates.py` and `rank_items.py`. |
 | `ranking.*` | Model, `fallback_models` chain, batch size, concurrency, thresholds, cache toggle, `prefilter`, `editor_pass_size` and `min_scored_to_proceed` for Phase 2. |
@@ -243,6 +247,11 @@ Everything tunable lives in `config.yaml`, never in the collectors.
 | `recipients` | Who the report goes to. Read by `emailer.deliver`. |
 | `keywords` | **Read** by the cheap ranking prefilter (`rank.prefilter_indices`), not just documentation. Collectors still use each source's own `queries` / `tags` / `subreddits`. |
 | `sources.*` | Per-source queries, subreddits, feeds, result caps, `retry_attempts` and `github.include_releases`. |
+
+### Changing recipients and keywords
+
+- **Recipients:** Edit the `recipients:` list in `config.yaml` (one email address per line), then commit and push to `main` so the next GitHub Actions run picks them up immediately.
+- **Keywords & search queries:** Edit `keywords:` in `config.yaml` to update the cheap prefilter gate (`ranking.prefilter`), and edit `sources.arxiv.queries`, `sources.google_news.queries`, `sources.hacker_news.tags`, or `sources.github.queries` to change what collectors fetch upstream. No Python code edits required.
 
 Secrets do not live in `config.yaml`. Copy `.env.example` to `.env` and fill it in.
 `.env` is git-ignored and holds `OPENROUTER_API_KEY` (or `LLM_API_KEY`, the name the
@@ -294,6 +303,9 @@ from scratch.
   `well7_fit` is the primary sort key. Whether that beats the manual report is
   the next real week's test — the before/after comparison is in
   `docs/one-page-note.md`.
+- **Reddit RSS/JSON is currently blocked (`404`/`403`).** `fetch_reddit` treats
+  Reddit as an optional upstream, logs the outage as a non-fatal `[warn]` in
+  `run_log.json`, and contributes 0 items while the other 5 sources run normally.
 
 ## Gotchas
 
@@ -302,9 +314,9 @@ from scratch.
 - **Google News RSS links are opaque redirects.** They return 200 for anyone, so a
   status check proves nothing; `links.resolve_google_news` unwraps them through
   Google's `batchexecute` RPC.
-- **Reddit rate-limits to about one request per minute per IP.** The collector backs
-  off 15/30/45 s. A second full run inside a minute stalls ~90 s — that is backoff,
-  not a hang.
+- **Reddit rate-limits and currently blocks `.rss`/`.json` (`404`/`403`).** When
+  reachable, the collector backs off 15/30/45 s (~90 s on back-to-back runs); when
+  blocked, it records a non-fatal `[warn]` and 0 items without failing the week.
 - **arXiv announces nothing Friday or Saturday.** Most weeks end with a date gap.
 - **`report_build.py` exits 1 when it dropped dead links.** That is a successful
   render of a filtered report, not a crash, provided at least one top pick survives.
@@ -323,6 +335,6 @@ surviving top picks) or missing email fails the run.
 Locally, the suite is two scripts that exit non-zero on failure:
 
 ```powershell
-uv run python selftest.py       # offline (467 checks): parsing, dates, URL normalisation, dedupe, history, LLM fallback, email, schedule
+uv run python selftest.py       # offline (476 checks): parsing, dates, URL normalisation, dedupe, history, LLM fallback, email, schedule
 uv run python verify_report.py  # structural (30 checks): subject, section order, counts, dates, PDF
 ```

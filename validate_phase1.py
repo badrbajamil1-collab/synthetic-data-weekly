@@ -4,14 +4,16 @@ import json
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 
+from synthetic_data.week import in_week, week_bounds
+
 DATA = json.load(open("raw_items.json", encoding="utf-8"))
 NOW = datetime.now(timezone.utc)
-CUTOFF = NOW - timedelta(days=7)
+WEEK_START, WEEK_END = week_bounds(NOW)
 
 ALLOWED = {"arxiv", "news", "blog", "reddit", "hn", "github"}
 
 print(f"Items: {len(DATA)}")
-print(f"Window: {CUTOFF:%Y-%m-%d %H:%M} -> {NOW:%Y-%m-%d %H:%M} UTC\n")
+print(f"Window: {WEEK_START} .. {WEEK_END} (Saturday-Friday)\n")
 
 problems = []
 
@@ -19,7 +21,7 @@ for i, item in enumerate(DATA):
     published = datetime.fromisoformat(item["published"])
     if published.tzinfo is None:
         problems.append(f"[{i}] naive datetime: {item['title'][:50]}")
-    if published < CUTOFF - timedelta(minutes=1):
+    if not in_week(published, (WEEK_START, WEEK_END)):
         problems.append(f"[{i}] OUT OF WINDOW {published:%Y-%m-%d} {item['title'][:50]}")
     if published > NOW + timedelta(hours=1):
         problems.append(f"[{i}] FUTURE DATE {published:%Y-%m-%d} {item['title'][:50]}")
@@ -44,8 +46,9 @@ for source, count in sorted(Counter(item["source"] for item in DATA).items()):
           f"{len(set(i['url'] for i in DATA if i['source'] == source))} unique urls")
 
 print(f"\nUnique URLs: {len(set(urls))} / {len(urls)}")
-print(f"Oldest item: {min(datetime.fromisoformat(i['published']) for i in DATA):%Y-%m-%d %H:%M}")
-print(f"Newest item: {max(datetime.fromisoformat(i['published']) for i in DATA):%Y-%m-%d %H:%M}")
+if DATA:
+    print(f"Oldest item: {min(datetime.fromisoformat(i['published']) for i in DATA):%Y-%m-%d %H:%M}")
+    print(f"Newest item: {max(datetime.fromisoformat(i['published']) for i in DATA):%Y-%m-%d %H:%M}")
 
 if problems:
     print(f"\nFAIL - {len(problems)} problem(s):")

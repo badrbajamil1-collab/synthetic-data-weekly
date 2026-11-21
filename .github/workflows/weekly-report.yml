@@ -70,6 +70,7 @@ jobs:
             weekly-cache-
 
       - name: Run the weekly pipeline
+        id: pipeline
         env:
           # One documented secret feeds both accepted key names, so a repo
           # that only defines LLM_API_KEY cannot silently lose its key.
@@ -83,10 +84,10 @@ jobs:
           REPLY_TO: ${{ secrets.REPLY_TO }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # A real send needs all three SMTP credentials. Anything missing
+          # A real send needs all four SMTP credentials. Anything missing
           # falls back to --dry-run, which keeps the Saturday run green.
           ready=false
-          if [ -n "$SMTP_HOST" ] && [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ]; then
+          if [ -n "$SMTP_HOST" ] && [ -n "$SMTP_PORT" ] && [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ]; then
             ready=true
           fi
 
@@ -96,6 +97,7 @@ jobs:
           elif [ "$ready" = "true" ] && [ "${{ inputs.send_email }}" = "true" ]; then
             send=true
           fi
+          echo "send=$send" >> "$GITHUB_OUTPUT"
 
           if [ "$send" = "true" ]; then
             echo "mode: send"
@@ -109,7 +111,7 @@ jobs:
         run: python verify_report.py
 
       - name: Publish verified report to Cloudflare web archive
-        if: github.event_name == 'schedule' || inputs.publish_web == true || inputs.send_email == true
+        if: steps.pipeline.outputs.send == 'true' || inputs.publish_web == true
         env:
           CF_PUBLISH_TOKEN: ${{ secrets.CF_PUBLISH_TOKEN }}
           CF_WORKER_URL: ${{ vars.CF_WORKER_URL }}

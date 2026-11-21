@@ -1,0 +1,30 @@
+# Keeps the weekly `history.db` / score cache warm mid-week so GitHub Actions'
+# 7-day cache eviction never drops cross-week deduplication between Saturdays.
+
+name: Keep weekly history cache warm
+
+on:
+  schedule:
+    # Wednesday 05:17 UTC (midway between Saturdays; resets the 7-day LRU timer).
+    - cron: "17 5 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Touch latest weekly cache entry
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            history.db
+            history.db.bak
+            score_cache.json
+            summary_cache.json
+          key: weekly-cache-keepalive-${{ github.run_id }}
+          restore-keys: |
+            weekly-cache-

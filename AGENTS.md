@@ -99,7 +99,7 @@ not a Pydantic model — LangGraph requires TypedDict). Nodes:
 `already_sent` count into the run log. `weekly_run` configures `ranked_path="ranked.json"`
 so `rank_node` also writes `ranked.json` for `publish_to_cloudflare.py` to enrich items.
 
-`fetch` calls `fetch_candidates.fetch` for the seven best in-window items, so summaries
+`fetch` calls `fetch_candidates.fetch` for the top 10 (`max_top_picks`) in-window items, so summaries
 are written from the real abstract or page text rather than the ranking snippet. A page
 that cannot be fetched keeps its snippet, and the report discloses that. `render` fills
 `report_markdown` / `report_html` in state from the files `report_build.py` wrote (the
@@ -158,7 +158,7 @@ Three rules that are easy to break:
   never fails `verify_report.py`. Do not "fix" this back into a fatal source error.
 - **arXiv announces nothing Friday or Saturday**, so most weeks end with a date gap.
   Expected. Its `all:` search also matches loosely — expect off-topic papers in the raw list.
-- **GitHub search filters on creation and push dates**, not publication date, and
+- **GitHub search searches `created:` repos plus bounded release lookups for older repos** (not push dates alone), and
   returns repos that merely mention the query. Repos created inside the week are
   news on their own; older ones count only when a release shipped that week.
   Treat the ranking as noise.

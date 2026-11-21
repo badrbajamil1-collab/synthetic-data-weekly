@@ -227,27 +227,21 @@
 <div class="wrap">
 
   <div class="eyebrow">Weekly Synthetic Data Research Agent · Build Review</div>
-  <div style="border-left:3px solid var(--amber);background:rgba(210,153,34,.08);padding:14px 18px;margin:0 0 26px;border-radius:4px;font-size:14px;color:var(--muted)">
-    <strong style="color:var(--fg)">Snapshot — 1 November 2026.</strong>
-    Three findings below were fixed on 4 November in commit <code style="font-family:var(--mono)">5f5ce23</code>:
-    <code style="font-family:var(--mono)">normalize_url</code> is now called by dedupe,
-    <code style="font-family:var(--mono)">memory.py</code> is wired both ways, and the two run-log metrics
-    are real. The verdict on ranking, summarising and email still stands, and Phase 0 is now complete
-    (<code style="font-family:var(--mono)">docs/sources.md</code>). Current status:
-    <code style="font-family:var(--mono)">docs/one-page-note.md</code>.
+  <div style="border-left:3px solid var(--green);background:rgba(63,185,80,.08);padding:14px 18px;margin:0 0 26px;border-radius:4px;font-size:14px;color:var(--muted)">
+    <strong style="color:var(--fg)">Updated — 21 November 2026.</strong>
+    Reflects <code style="font-family:var(--mono)">main</code> after Phases 0–5 completion, offline suite expansion, and green GitHub Actions CI verification (dry-run <code style="font-family:var(--mono)">44907469014</code>).
+    Current executive summary: <code style="font-family:var(--mono)">docs/one-page-note.md</code>.
   </div>
-  <h1>The collectors are real. <em>The agent isn’t yet.</em></h1>
+  <h1>Phases 0–5 are built and verified. <em>Phase 6 pilot is next.</em></h1>
   <p class="lede">
-    Phase 1 is finished and it genuinely works — six sources, 219 items, zero errors, all links live.
-    Everything downstream of <code>raw_items.json</code> is currently a <strong>one-off script run by me</strong>,
-    not a pipeline the machine can repeat. Phase 2 has not started.
+    The full 7-node LangGraph pipeline runs end-to-end on <code style="font-family:var(--mono)">main</code> — 6 collectors across 18 sources, LLM ranking with Well7 fit, full-text grounded summarisation, HTTP-200 link verification, Markdown/HTML/PDF rendering, Gmail SMTP delivery, and Cloudflare web-archive sync.
   </p>
 
   <div class="stats">
-    <div class="stat"><div class="k">Phases done</div><div class="v a">1 / 7</div><div class="n">Phase 0 at ~90%</div></div>
-    <div class="stat"><div class="k">Python written</div><div class="v">1,709</div><div class="n">LOC across 17 agent files</div></div>
-    <div class="stat"><div class="k">Links this week</div><div class="v g">17 / 17</div><div class="n">HTTP 200, 0 dropped</div></div>
-    <div class="stat"><div class="k">Git commits</div><div class="v r">0</div><div class="n">nothing is versioned</div></div>
+    <div class="stat"><div class="k">Phases done</div><div class="v g">6 / 7</div><div class="n">Phases 0–5 done · Phase 6 next</div></div>
+    <div class="stat"><div class="k">Offline self-tests</div><div class="v g">476 / 476</div><div class="n">selftest.py PASS (exit 0)</div></div>
+    <div class="stat"><div class="k">Report verification</div><div class="v g">30 / 30</div><div class="n">CI dry-run 44907469014 green</div></div>
+    <div class="stat"><div class="k">Active scheduler</div><div class="v">Sat 05:17 UTC</div><div class="n">GitHub Actions + Wed keepalive</div></div>
   </div>
 
   <!-- 01 -->
@@ -255,43 +249,43 @@
     <div class="sec-head">
       <div class="sec-num">01</div>
       <h2>Phase board</h2>
-      <p>Spec order · finish &amp; show each phase before the next</p>
+      <p>Spec order · Phases 0–5 complete, Phase 6 awaiting 2 live Saturdays</p>
     </div>
     <div class="phases">
-      <div class="phase part">
-        <div class="phase-top"><span class="phase-id">PHASE 0</span><span class="pill a">~90%</span></div>
+      <div class="phase done">
+        <div class="phase-top"><span class="phase-id">PHASE 0</span><span class="pill g">done</span></div>
         <h3>Manual report &amp; source list</h3>
-        <p>Two PDFs written by hand, 12 keywords, 6 sources configured. Missing the explicit 15–20 source list the brief asks for.</p>
+        <p>Manual baseline (23–29 Oct: 6 picks, 1 tool, 2 worth-a-look), <code>docs/sources.md</code> (18 sources), 22 keywords in <code>config.yaml</code>. Two minor blemishes logged honestly.</p>
       </div>
       <div class="phase done">
         <div class="phase-top"><span class="phase-id">PHASE 1</span><span class="pill g">done</span></div>
         <h3>One collector per source</h3>
-        <p>6 collectors, identical <code>Item</code> shape, 7-day window enforced post-parse. <code>selftest</code> 20/20, <code>validate_phase1</code> PASS.</p>
+        <p>6 collectors emit uniform <code>Item</code> records inside the fixed Sat–Fri week. Reddit 404/403 degrades cleanly to a non-fatal <code>[warn]</code>.</p>
       </div>
-      <div class="phase blk">
-        <div class="phase-top"><span class="phase-id">PHASE 2</span><span class="pill r">blocked</span></div>
+      <div class="phase done">
+        <div class="phase-top"><span class="phase-id">PHASE 2</span><span class="pill g">done</span></div>
         <h3>Normalise · dedupe · score</h3>
-        <p>No <code>langgraph</code> installed, no LLM client, <code>memory.py</code> never called. Ranking this week was me reading 20 tabs.</p>
+        <p>URL normalisation, primary-source dedupe, SQLite atomic <code>history.db</code>, keyword gate, <code>well7_fit</code> ranking, 20-item editor pass, and 4-model fallback chain.</p>
+      </div>
+      <div class="phase done">
+        <div class="phase-top"><span class="phase-id">PHASE 3</span><span class="pill g">done</span></div>
+        <h3>Fetch · summarise · render</h3>
+        <p><code>trafilatura</code> + arXiv/README extraction, numeric fact guard, extractive fallback disclosure, HTTP-200 link drop, Markdown/HTML/PDF output.</p>
+      </div>
+      <div class="phase done">
+        <div class="phase-top"><span class="phase-id">PHASE 4</span><span class="pill g">done</span></div>
+        <h3>LangGraph over one state</h3>
+        <p><code>uv run python main.py --pipeline</code> runs all 7 nodes over <code>AgentState</code>; node errors are recorded rather than raised.</p>
+      </div>
+      <div class="phase done">
+        <div class="phase-top"><span class="phase-id">PHASE 5</span><span class="pill g">done</span></div>
+        <h3>Dry-run · email · scheduler</h3>
+        <p><code>send_report.py --test</code> delivered to Primary Inbox. GitHub Actions active at <code>17 5 * * 6</code> with SMTP/LLM secrets (local Windows task deleted).</p>
       </div>
       <div class="phase part">
-        <div class="phase-top"><span class="phase-id">PHASE 3</span><span class="pill a">partial</span></div>
-        <h3>Fetch · summarise · render</h3>
-        <p>Templates, PDF and link-checking exist and are good. The summarising step is human. Report content lives in a hand-written YAML.</p>
-      </div>
-      <div class="phase todo">
-        <div class="phase-top"><span class="phase-id">PHASE 4</span><span class="pill m">not started</span></div>
-        <h3>LangGraph over one state</h3>
-        <p><code>AgentState</code> exists as a Pydantic model and is imported nowhere. <code>python main.py</code> only collects.</p>
-      </div>
-      <div class="phase todo">
-        <div class="phase-top"><span class="phase-id">PHASE 5</span><span class="pill m">not started</span></div>
-        <h3>Dry-run · Saturday cron</h3>
-        <p>No <code>--dry-run</code>, no workflow file, no SMTP code. No <code>.env</code> exists, so email is impossible today.</p>
-      </div>
-      <div class="phase todo">
-        <div class="phase-top"><span class="phase-id">PHASE 6</span><span class="pill m">not started</span></div>
+        <div class="phase-top"><span class="phase-id">PHASE 6</span><span class="pill a">in progress</span></div>
         <h3>Two unattended Saturdays</h3>
-        <p>Cannot start until 4 and 5 are done. Needs 2 real calendar weeks, so it is the schedule critical path.</p>
+        <p>2026-11-21 missed the old <code>:00</code> cron before moving to <code>:17</code>. Next scheduled run is 2026-11-28 (or manual dispatch) + 5-recipient feedback.</p>
       </div>
     </div>
   </section>
@@ -300,42 +294,18 @@
   <section>
     <div class="sec-head">
       <div class="sec-num">02</div>
-      <h2>What runs today</h2>
-      <p>This week: 26 Oct – 1 Nov 2026</p>
+      <h2>End-to-end LangGraph pipeline</h2>
+      <p>Shared AgentState · no single source or LLM error kills delivery</p>
     </div>
-
-    <div class="flow">
-      <div class="step"><div class="idx">01</div><div class="t">config.yaml</div><div class="d">12 keywords · 6 sources · 13 feeds · 5 recipients</div></div>
-      <div class="arrow">→</div>
-      <div class="step"><div class="idx">02</div><div class="t">6 collectors</div><div class="d"><span class="big">27</span> requests · retries on Reddit &amp; HN</div></div>
-      <div class="arrow">→</div>
-      <div class="step"><div class="idx">03</div><div class="t">raw items</div><div class="d"><span class="big">219</span> in window · 0 source errors</div></div>
-      <div class="arrow">→</div>
-      <div class="step"><div class="idx">04</div><div class="t">exact-URL dedupe</div><div class="d">219 → 219 · no overlap found</div></div>
-      <div class="arrow">→</div>
-      <div class="step"><div class="idx">05</div><div class="t">raw_items.json</div><div class="d">the last machine-written artefact</div></div>
-    </div>
-
-    <div class="flow-gap">handoff to a human</div>
-
-    <div class="flow">
-      <div class="step manual"><div class="idx">06</div><div class="t">open 20 tabs</div><div class="d">resolve Google News redirects, read full text</div></div>
-      <div class="arrow">→</div>
-      <div class="step manual"><div class="idx">07</div><div class="t">score &amp; write</div><div class="d">8 picks · 4 tools · 5 worth a look — by hand</div></div>
-      <div class="arrow">→</div>
-      <div class="step"><div class="idx">08</div><div class="t">reports/*.yaml</div><div class="d">content becomes data, not code</div></div>
-      <div class="arrow">→</div>
-      <div class="step"><div class="idx">09</div><div class="t">link check</div><div class="d"><span class="big">17/17</span> live · dead links dropped</div></div>
-      <div class="arrow">→</div>
-      <div class="step"><div class="idx">10</div><div class="t">3 artefacts</div><div class="d">report.md · report.html · 3-page PDF</div></div>
-      <div class="arrow">→</div>
-      <div class="step missing"><div class="idx">11</div><div class="t">send email</div><div class="d">not written · no SMTP creds</div></div>
-    </div>
-
-    <div class="legend">
-      <span><i class="swatch" style="border-color:var(--line);background:var(--card)"></i> machine</span>
-      <span><i class="swatch" style="border-color:rgba(210,153,34,.6);background:rgba(210,153,34,.08)"></i> human step</span>
-      <span><i class="swatch" style="border-color:rgba(248,81,73,.6);background:rgba(248,81,73,.08)"></i> missing</span>
+    <div class="nodes">
+      <div class="node have"><span class="dot"></span><div class="nt">1. collect</div><div class="ns">6 collectors · 18 sources · Sat–Fri window</div></div>
+      <div class="node have"><span class="dot"></span><div class="nt">2. clean</div><div class="ns">normalize_url + SQLite history.db filter</div></div>
+      <div class="node have"><span class="dot"></span><div class="nt">3. rank</div><div class="ns">well7_fit + editor pass + fallback chain</div></div>
+      <div class="node have"><span class="dot"></span><div class="nt">4. fetch</div><div class="ns">top 10 full text (arXiv / README / HTML)</div></div>
+      <div class="node have"><span class="dot"></span><div class="nt">5. report</div><div class="ns">grounded summaries + numeric guard</div></div>
+      <div class="node have"><span class="dot"></span><div class="nt">6. render</div><div class="ns">HTTP-200 filter + MD · HTML · PDF</div></div>
+      <div class="node have"><span class="dot"></span><div class="nt">7. send</div><div class="ns">HTML email + record history after SMTP</div></div>
+      <div class="node have"><span class="dot"></span><div class="nt">8. publish</div><div class="ns">Cloudflare D1/R2 archive via CI</div></div>
     </div>
   </section>
 
@@ -343,27 +313,19 @@
   <section>
     <div class="sec-head">
       <div class="sec-num">03</div>
-      <h2>What the graph still has to build</h2>
-      <p>One graph, one shared state, no node can kill the run</p>
+      <h2>Latest CI verification (run 44907469014)</h2>
+      <p>GitHub Actions dry-run on ubuntu-latest · 2026-11-21 · 6m47s</p>
     </div>
-    <div class="nodes">
-      <div class="node have"><span class="dot"></span><div class="nt">collect</div><div class="ns">6 collectors → List[Item]</div></div>
-      <div class="node half"><span class="dot"></span><div class="nt">normalise</div><div class="ns">normalize_url() written, never called</div></div>
-      <div class="node gone"><span class="dot"></span><div class="nt">dedupe</div><div class="ns">SQLite across weeks — unwired</div></div>
-      <div class="node gone"><span class="dot"></span><div class="nt">score</div><div class="ns">LLM 1–10 + one-line reason</div></div>
-      <div class="node gone"><span class="dot"></span><div class="nt">select</div><div class="ns">keep top 10, drop the rest</div></div>
-      <div class="node have"><span class="dot"></span><div class="nt">fetch full text</div><div class="ns">trafilatura, works (20/20)</div></div>
-      <div class="node gone"><span class="dot"></span><div class="nt">summarise</div><div class="ns">2–3 lines, source text only</div></div>
-      <div class="node gone"><span class="dot"></span><div class="nt">trend</div><div class="ns">3–4 sentences across the week</div></div>
-      <div class="node have"><span class="dot"></span><div class="nt">render</div><div class="ns">MD · HTML · PDF, spec-exact</div></div>
-      <div class="node have"><span class="dot"></span><div class="nt">verify links</div><div class="ns">drop dead before render</div></div>
-      <div class="node gone"><span class="dot"></span><div class="nt">email</div><div class="ns">5 recipients from config</div></div>
-      <div class="node gone"><span class="dot"></span><div class="nt">commit state</div><div class="ns">write sent URLs to history.db</div></div>
-    </div>
-    <div class="legend">
-      <span><i class="swatch" style="border-color:rgba(63,185,80,.5);background:rgba(63,185,80,.15)"></i> exists and works</span>
-      <span><i class="swatch" style="border-color:rgba(210,153,34,.5);background:rgba(210,153,34,.15)"></i> written, not wired</span>
-      <span><i class="swatch" style="border-color:var(--line);background:var(--card)"></i> does not exist</span>
+    <div class="funnel">
+      <div class="frow"><div class="fl">collected</div><div class="fbar"><i style="width:100%"></i></div><div class="fv">187</div></div>
+      <div class="fnote">arxiv 28 · news 25 · blog 83 · reddit 0 (404 warn) · hn 19 · github 32</div>
+      <div class="frow"><div class="fl">after dedupe</div><div class="fbar"><i style="width:100%"></i></div><div class="fv">187</div></div>
+      <div class="fnote">0 source errors · history.db &amp; caches restored and re-saved</div>
+      <div class="frow"><div class="fl">read in full</div><div class="fbar m"><i style="width:5.4%"></i></div><div class="fv">10</div></div>
+      <div class="fnote">config.yaml max_top_picks = 10 shortlist candidates</div>
+      <div class="frow"><div class="fl">verified links</div><div class="fbar g"><i style="width:3.7%"></i></div><div class="fv">7</div></div>
+      <div class="fnote">5 top picks + 1 new tool + 1 worth a look · 30/30 verify_report.py PASS</div>
+      <div class="frow"><div class="fl">dead links</div><div class="fbar g"><i style="width:0.5%"></i></div><div class="fv">0</div></div>
     </div>
   </section>
 
@@ -371,113 +333,52 @@
   <section>
     <div class="sec-head">
       <div class="sec-num">04</div>
-      <h2>This week’s funnel</h2>
-      <p>run_log.json, unedited</p>
+      <h2>Honest caveats &amp; three next-step ideas</h2>
+      <p>Aligned with docs/one-page-note.md</p>
     </div>
-    <div class="funnel">
-      <div class="frow"><div class="fl">collected</div><div class="fbar"><i style="width:100%"></i></div><div class="fv">219</div></div>
-      <div class="fnote">arxiv 26 · news 28 · blog 74 · reddit 25 · hn 17 · github 49</div>
-      <div class="frow"><div class="fl">after dedupe</div><div class="fbar"><i style="width:100%"></i></div><div class="fv">219</div></div>
-      <div class="fnote">0 duplicates — the six sources overlap less than expected</div>
-      <div class="frow"><div class="fl">read in full</div><div class="fbar m"><i style="width:9.1%"></i></div><div class="fv">20</div></div>
-      <div class="fnote">top of the pile only; the other 199 were never opened</div>
-      <div class="frow"><div class="fl">verified links</div><div class="fbar g"><i style="width:7.8%"></i></div><div class="fv">17</div></div>
-      <div class="fnote">8 picks + 4 tools + 5 worth a look</div>
-      <div class="frow"><div class="fl">dead links</div><div class="fbar g"><i style="width:0.5%"></i></div><div class="fv">0</div></div>
-    </div>
-  </section>
-
-  <!-- 05 -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-num">05</div>
-      <h2>The code, honestly</h2>
-      <p>read line by line</p>
-    </div>
-    <div class="cols">
+    <div class="cols" style="margin-bottom:24px;">
       <div class="col good">
-        <h4>Holds up</h4>
+        <h4>Proven &amp; ready</h4>
         <ul class="list">
-          <li><b>One failure can’t sink the run.</b> Each collector is wrapped in <code>try/except</code>, partial feed failures become warnings, and <code>collect_all</code> always returns items + errors + counts.</li>
-          <li><b>Dates are re-checked, not trusted.</b> Google’s <code>when:7d</code> is treated as a hint; <code>_in_window</code> filters post-parse and rejects future dates.</li>
-          <li><b>Rule #1 is structural.</b> <code>report_build.py</code> verifies all links and <i>removes</i> dead ones before rendering — a broken link can’t reach the report even by accident.</li>
-          <li><b>Real-world traps handled.</b> HN returns 419 to bots, so it’s verified through the Algolia API; Reddit gets one multi-sub request and four backoffs; Google News redirects are resolved via the batchexecute RPC.</li>
-          <li><b>Verification reads the artefacts, not memory.</b> <code>verify_report.py</code> re-parses the emitted Markdown/HTML — 20/20 checks pass, including “link set is exact”.</li>
+          <li><b>All 5 quality locks active in code:</b> HTTP-200 verification before render, source-only numeric guard, strict Sat–Fri window across all sections, atomic <code>history.db</code> recorded only after SMTP success, and per-report <code>run_log.json</code>.</li>
+          <li><b>CI resilience hardened:</b> 4-model OpenRouter fallback chain, pre-DATA-only SMTP retries, off-peak <code>17 5 * * 6</code> Saturday cron, and Wednesday <code>cache-keepalive.yml</code> preventing 7-day cache eviction.</li>
+          <li><b>Secrets &amp; config hygiene:</b> <code>.env</code> git-ignored, zero hardcoded keys, all 5 Well7 recipients in <code>config.yaml</code>, and <code>publish_to_cloudflare.py</code> contract matched 1:1 with the <code>web</code> branch Worker.</li>
         </ul>
       </div>
       <div class="col bad">
-        <h4>Doesn’t hold up</h4>
+        <h4>Open caveats</h4>
         <ul class="list">
-          <li><b>Nothing is versioned.</b> Zero commits, <code>README.md</code> is 0 bytes, no <code>requirements.txt</code>, no <code>.env.example</code>. The project cannot be rebuilt from the repo.</li>
-          <li><b><code>memory.py</code> is dead code.</b> Nothing calls it, <code>history.db</code> is never created — so “no link in two weeks” is unenforced. Next Saturday can resend today’s eight picks.</li>
-          <li><b><code>normalize_url</code> is never called.</b> Dedupe compares raw strings, so <code>?utm_source=…</code> variants survive as distinct items.</li>
-          <li><b><code>categories</code> in config is a lie.</b> The arXiv key at <code>config.yaml:31</code> is read by nobody; the collector searches <code>all:“synthetic data”</code>, so a cs.LG paper that never says the phrase is invisible.</li>
-          <li><b>No pagination anywhere.</b> GitHub gets 15 results per query × 4; arXiv 25 per query. Coverage is capped by config, not by what exists.</li>
-          <li><b>Two metrics are fake.</b> <code>items_found</code> and <code>items_after_dedupe</code> both read <code>len(raw)</code>; <code>source_errors</code> reads <code>raw_run_log.json</code>, which no collector writes — it is always <code>[]</code>.</li>
-          <li><b><code>AgentState</code> is the wrong shape.</b> A Pydantic model can’t be a LangGraph state; Phase 4 needs a reducer-typed state or every node silently overwrites the last.</li>
+          <li><b>Phase 6 live pilot pending:</b> 2 consecutive unattended team Saturdays and recipient feedback remain to be observed (next scheduled run 2026-11-28, or manual catch-up dispatch today).</li>
+          <li><b>Reddit RSS/JSON blocked:</b> Returns 404/403 and contributes 0 items as a non-fatal <code>[warn]</code>; the other 5 sources remain healthy.</li>
+          <li><b>CLI &amp; Phase 0 notes:</b> Full pipeline uses <code>main.py --pipeline</code> (bare <code>main.py</code> prints raw Phase 1 items); Phase 0 had 6 picks instead of 7 and no logged intro reading list.</li>
         </ul>
       </div>
-    </div>
-  </section>
-
-  <!-- 06 -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-num">06</div>
-      <h2>Module map</h2>
-      <p>what each file is actually for</p>
-    </div>
-    <table>
-      <thead><tr><th>File</th><th style="text-align:right">LOC</th><th>Role</th><th style="width:96px">State</th></tr></thead>
-      <tbody>
-        <tr><td class="f">src/…/collectors.py</td><td class="n">386</td><td class="r">Six source adapters, date window, retry/backoff, text cleaning</td><td><span class="pill g">solid</span></td></tr>
-        <tr><td class="f">src/…/links.py</td><td class="n">149</td><td class="r">URL normalisation, Google News resolution, link verification</td><td><span class="pill a">half-used</span></td></tr>
-        <tr><td class="f">src/…/runner.py</td><td class="n">198</td><td class="r">Config → collector jobs → dedupe → summary print</td><td><span class="pill g">solid</span></td></tr>
-        <tr><td class="f">src/…/render.py</td><td class="n">182</td><td class="r">Markdown + HTML, spec-exact section order and footer</td><td><span class="pill g">solid</span></td></tr>
-        <tr><td class="f">src/…/render_pdf.py</td><td class="n">273</td><td class="r">ReportLab layout, glossary-first ordering</td><td><span class="pill g">solid</span></td></tr>
-        <tr><td class="f">src/…/memory.py</td><td class="n">35</td><td class="r">SQLite cross-week dedupe</td><td><span class="pill r">dead</span></td></tr>
-        <tr><td class="f">src/…/models.py</td><td class="n">19</td><td class="r"><code>Item</code> (good) + <code>AgentState</code> (unused)</td><td><span class="pill a">half</span></td></tr>
-        <tr><td class="f">src/…/cli.py</td><td class="n">48</td><td class="r">argparse for the collector run only</td><td><span class="pill a">narrow</span></td></tr>
-        <tr><td class="f">report_build.py</td><td class="n">112</td><td class="r">Verify links → render MD/HTML/PDF → write run_log.json</td><td><span class="pill g">works</span></td></tr>
-        <tr><td class="f">fetch_candidates.py</td><td class="n">86</td><td class="r">Resolve redirects, extract full text → candidates.json</td><td><span class="pill g">works</span></td></tr>
-        <tr><td class="f">verify_report.py</td><td class="n">71</td><td class="r">20 assertions against the files on disk</td><td><span class="pill g">works</span></td></tr>
-        <tr><td class="f">main.py</td><td class="n">8</td><td class="r">Collect and print. Not the spec’s “runs everything”</td><td><span class="pill r">stub</span></td></tr>
-      </tbody>
-    </table>
-  </section>
-
-  <!-- 07 -->
-  <section>
-    <div class="sec-head">
-      <div class="sec-num">07</div>
-      <h2>Next three moves</h2>
-      <p>in this order — each one unblocks the next</p>
     </div>
     <div class="next">
       <div class="nx">
         <div class="num">01</div>
-        <h5>Close the loop before adding intelligence</h5>
-        <p>Wire <code>normalize_url</code> + <code>memory.py</code> into <code>collect_all</code>, fix the two fake metrics, and write the SMTP sender. Until email sends, nothing else counts.</p>
-        <span class="eta">Phase 2 + 5 · ~1 day</span>
+        <h5>Graduate searchable archive (<code>web</code> branch)</h5>
+        <p>Promote the Cloudflare Workers + D1 + R2 + React app with full-text search across past weeks and D1-backed persistent history deduplication.</p>
+        <span class="eta">Next · Web &amp; Search</span>
       </div>
       <div class="nx">
         <div class="num">02</div>
-        <h5>Replace me with an LLM client</h5>
-        <p>Score 1–10 with a one-line reason, summarise from <code>full_text</code> only, write the trend from the week’s top 5. Then the YAML becomes output, not input.</p>
-        <span class="eta">Phase 2 + 3 · ~2 days</span>
+        <h5>Feedback loop &amp; Slack/Teams digest</h5>
+        <p>Add one-click Useful / Off-topic links to drive Phase 6 rubric tuning and mirror the Saturday report into a Well7 Slack or Teams channel.</p>
+        <span class="eta">Next · Phase 6 Tuning</span>
       </div>
       <div class="nx">
         <div class="num">03</div>
-        <h5>Make it a graph, then a cron</h5>
-        <p>Rebuild as LangGraph nodes over one reducer state, collapse <code>main.py</code> to the graph entrypoint, add <code>--dry-run</code>, then schedule Saturday 08:00.</p>
-        <span class="eta">Phase 4 + 5 · ~2 days</span>
+        <h5>Company-domain SMTP &amp; GitHub signals</h5>
+        <p>Move from consumer Gmail SMTP to authenticated company-domain sending (SPF/DKIM/DMARC) and score repos using commit/author/paper-link signals.</p>
+        <span class="eta">Next · Deliverability</span>
       </div>
     </div>
   </section>
 
   <footer>
-    <span>Generated 1 Nov 2026 · reviewed against the working tree, not the plan</span>
-    <span><code>219 → 219 → 20 → 17 → 0 dead</code></span>
+    <span>Updated 21 Nov 2026 · main branch build review</span>
+    <span><code>476/476 selftest PASS · 30/30 verify_report PASS · 0 leaked secrets</code></span>
   </footer>
 
 </div>

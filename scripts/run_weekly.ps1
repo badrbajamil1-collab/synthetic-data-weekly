@@ -10,8 +10,9 @@
 # Scheduler does not inherit the user's PATH.
 #
 # DRY BY DEFAULT when called manually. Without -Send the run composes the
-# email and writes email.eml, but never contacts SMTP. On this machine the
-# Saturday Task Scheduler job (SyntheticDataWeekly) is registered with -Send:
+# email and writes email.eml, but never contacts SMTP. GitHub Actions is now the
+# sole live Saturday scheduler, so the local SyntheticDataWeekly task was removed
+# (`schedule_task.py --delete`); only re-register with `--send` if switching back:
 #
 #     uv run python schedule_task.py --register --send
 #

@@ -15,8 +15,8 @@ this folder is the evidence.
 | `week-2026-11-01/` | First real week, end to end: source YAML → Markdown, HTML, PDF, run log | 1 + 3 |
 | `week-2026-11-05/` | First fully automatic week: 214 items → 6 picks, 1 tool, 3 worth a look; dry-run email | 4 + 5 |
 | `week-2026-11-06/` | First run with the all-fallback guard firing: model quota exhausted mid-run, so every summary is extractive; 0 dead links | 4 + 5 |
-| `week-2026-11-20/` | Current week: 4 picks, 1 tool, 1 worth-a-look, 6/6 links live, real `--test` send to Gmail (Primary Inbox), 30/30 verification checks | 4 + 5 + 6 |
-| `review/` | Build review page (progress + flow diagram + code verdict) and PDF page renders. The page is a 1 Nov snapshot; a banner on it lists what changed on 4 Nov. | — |
+| `week-2026-11-20/` | Current week: 4 picks, 1 tool, 1 worth-a-look, 6/6 links live, real `--test` send to Gmail (Primary Inbox), 30/30 verification checks | 4 + 5 |
+| `review/` | Build review page (`review.html` — updated 21 Nov to match `main` and `docs/one-page-note.md`). | — |
 
 ### `week-2026-11-01/`
 
@@ -36,7 +36,7 @@ this folder is the evidence.
 | `report.md` | The email body, spec format |
 | `report.html` | Same content, rendered |
 | `Synthetic_Data_Weekly_2026-11-05.pdf` | Three-page PDF, glossary first |
-| `email.eml` | Dry-run message: HTML body + plain text + PDF attachment, never sent |
+| `email.eml` | Dry-run message (git-ignored; regenerated locally by `--dry-run`) |
 | `run_log.json` | 219 found → 214 kept (5 already sent) → 10 read → 10 links → 0 dead |
 
 ---

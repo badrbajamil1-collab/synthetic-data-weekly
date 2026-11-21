@@ -3264,6 +3264,120 @@ check(
     f"calls={len(_pub_403_calls)} err={_pub_403_err}",
 )
 
+print("\n[release_polish]")
+# 1. verify_report accepts flagged runs with partial source_errors or dropped links_dead
+_flagged_path = _write_verify_fixture(
+    _fixture_report,
+    {**_fixture_log, "links_dead": 2, "source_errors": ["arxiv: temporary 503"]},
+)
+_flagged_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_flagged_path)],
+    capture_output=True,
+    text=True,
+)
+check(
+    "verify_report accepts a flagged run with source_errors and dropped dead links",
+    _flagged_run.returncode == 0,
+    (_flagged_run.stdout + _flagged_run.stderr)[-500:],
+)
+
+# 2. verify_report rejects malformed source_errors or invalid links_dead
+_bad_src_path = _write_verify_fixture(_fixture_report, {**_fixture_log, "source_errors": "err"})
+_bad_src_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_bad_src_path)],
+    capture_output=True,
+    text=True,
+)
+_neg_dead_path = _write_verify_fixture(_fixture_report, {**_fixture_log, "links_dead": -1})
+_neg_dead_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_neg_dead_path)],
+    capture_output=True,
+    text=True,
+)
+check(
+    "verify_report rejects non-list source_errors and negative links_dead",
+    _bad_src_run.returncode != 0 and _neg_dead_run.returncode != 0,
+    f"bad_src={_bad_src_run.returncode} neg_dead={_neg_dead_run.returncode}",
+)
+
+# 3. rank rubric caps unsubstantiated 0-2 star new repos and bumps RUBRIC_VERSION
+check(
+    "rank rubric bumps version and caps unsubstantiated 0-2 star new repos",
+    _rank.RUBRIC_VERSION == "2026-11-21.1"
+    and "0-2 stars" in _rank._PROMPT_HEADER
+    and "capped at 6" in _rank._PROMPT_HEADER,
+    _rank.RUBRIC_VERSION,
+)
+
+# 4. collectors._github_token reads .env fallback and respects os.environ precedence
+from synthetic_data.collectors import _github_token as _gh_tok
+
+with tempfile.TemporaryDirectory() as _gh_tmp:
+    _gh_env_file = Path(_gh_tmp) / ".env"
+    _gh_env_file.write_text("GITHUB_TOKEN=ghp_from_dotenv\n", encoding="utf-8")
+    check(
+        "collectors._github_token reads GITHUB_TOKEN from .env when unset in environ",
+        _gh_tok(str(_gh_env_file), environ={}) == "ghp_from_dotenv",
+    )
+    check(
+        "collectors._github_token gives os.environ precedence over .env",
+        _gh_tok(str(_gh_env_file), environ={"GITHUB_TOKEN": "ghp_from_env"}) == "ghp_from_env",
+    )
+
+# 5. render_pdf singularizes 1 top pick / 1 new tool and builds valid PDF with KeepTogether bullets
+from synthetic_data.render_pdf import format_counts_line as _pdf_counts_line, render_pdf as _render_pdf_file
+
+_singular_report = {
+    **_fixture_report,
+    "tools": [{
+        "name": "ExampleTool",
+        "url": "https://example.com/tool",
+        "note": "One useful tool.",
+        "why_it_matters": "Helps Well7.",
+        "score": 8,
+    }],
+    "worth_a_look": [{
+        "title": "ExampleItem",
+        "url": "https://example.com/worth",
+        "note": "One worth a look item.",
+        "why_it_matters": "Also relevant.",
+        "score": 6,
+    }],
+}
+check(
+    "render_pdf singularizes 1 top pick and 1 new tool",
+    _pdf_counts_line(_singular_report) == "1 top pick · 1 new tool · 1 worth a look",
+    _pdf_counts_line(_singular_report),
+)
+with tempfile.TemporaryDirectory() as _pdf_tmp:
+    _pdf_out = Path(_pdf_tmp) / "test.pdf"
+    _render_pdf_file(_singular_report, str(_pdf_out))
+    _pdf_bytes = _pdf_out.read_bytes()
+    check(
+        "render_pdf builds valid PDF with KeepTogether tools and worth_a_look",
+        _pdf_bytes[:5] == b"%PDF-" and len(_pdf_bytes) > 4_000,
+        f"bytes={len(_pdf_bytes)}",
+    )
+
+# 6. GitHub Actions workflows validate SMTP_PORT, gate publish, and restore weekly cache mid-week
+_wf_weekly = _yaml.safe_load(Path(".github/workflows/weekly-report.yml").read_text(encoding="utf-8"))
+_wf_steps = {s.get("name"): s for s in _wf_weekly["jobs"]["run"]["steps"]}
+_wf_pipe = _wf_steps["Run the weekly pipeline"]
+_wf_pub = _wf_steps["Publish verified report to Cloudflare web archive"]
+_wf_keep = _yaml.safe_load(Path(".github/workflows/cache-keepalive.yml").read_text(encoding="utf-8"))
+_wf_keep_steps = _wf_keep["jobs"]["keepalive"]["steps"]
+check(
+    "weekly workflow checks SMTP_PORT and gates Cloudflare publish on actual send or manual flag",
+    'SMTP_PORT' in _wf_pipe.get("run", "")
+    and _wf_pipe.get("id") == "pipeline"
+    and "steps.pipeline.outputs.send == 'true'" in str(_wf_pub.get("if", "")),
+)
+check(
+    "cache-keepalive workflow restores weekly-cache- on Wednesday cron",
+    [{"cron": "17 5 * * 3"}] == _wf_keep[True]["schedule"]
+    and "weekly-cache-" in str(_wf_keep_steps[0]["with"].get("restore-keys", "")),
+)
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)
