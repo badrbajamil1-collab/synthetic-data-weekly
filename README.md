@@ -3,7 +3,7 @@
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
 ![Pipeline](https://img.shields.io/badge/pipeline-LangGraph-8A2BE2)
 ![LLM](https://img.shields.io/badge/LLM-OpenRouter%20free%20tier-FF6C37)
-![selftest](https://img.shields.io/badge/selftest-464%20checks%20passing-brightgreen)
+![selftest](https://img.shields.io/badge/selftest-467%20checks%20passing-brightgreen)
 [![web version](https://img.shields.io/badge/web%20version-branch%20web-informational)](../../tree/web)
 
 Collects seven days of synthetic-data content from 18 sources across 6 collectors —
@@ -23,7 +23,7 @@ the Well7 team.
 **Status:** Phases 0–5 are done: SMTP is configured, a real `send_report.py --test`
 send landed in Primary Inbox (matching `From == SMTP_USER`, no PDF attachment, direct
 publisher links), and GitHub Actions (`.github/workflows/weekly-report.yml`) is set up
-as the sole live Saturday scheduler (`05:00 UTC` / `08:00 UTC+3` / `13:00 UTC+8`, with
+as the sole live Saturday scheduler (`05:17 UTC` / `08:17 UTC+3` / `13:17 UTC+8`, with
 `LLM_API_KEY` and `SMTP_*` secrets configured; the local Windows task `SyntheticDataWeekly`
 was removed so only one scheduler sends). What remains is running the two-week Phase 6
 pilot and moving long-term production sending to an authenticated company-domain email
@@ -40,7 +40,7 @@ agent.
 ## Build plan and status
 
 The brief builds the agent in seven phases (0–6) and calls week 4 "the pilot".
-This is where each phase stood on 2026-11-18.
+This is where each phase stood on 2026-11-21.
 
 | Phase | Brief deliverable | Status | Evidence |
 |---|---|---|---|
@@ -49,21 +49,21 @@ This is where each phase stood on 2026-11-18.
 | **2 — Clean, filter and rank** | A ranked list comparable to the manual report | ✅ Done, tuned three times | `rank_items.py` → `ranked.json`; keyword prefilter, one comparative editor pass, structured JSON output; URL normalisation, primary-source dedupe and `history.db` |
 | **3 — Summarise and write** | Markdown/HTML report in the brief's format | ✅ Done | `progress/week-*/report.md`, `.html`, PDF; `verify_report.py` (structural checks plus the 2026-11-11 schema gates) |
 | **4 — LangGraph agent** | One command runs the whole pipeline | ✅ Done | `uv run python main.py --pipeline`; `src/synthetic_data/graph.py`; errors are recorded, not raised |
-| **5 — Email and schedule** | You receive a correct test email | ✅ Email verified; scheduler active | `send_report.py --test` delivered to Primary Inbox (`From == SMTP_USER`, no PDF attachment); GitHub Actions scheduled live for Saturday `05:00 UTC` with `SMTP_*` secrets configured (local Windows task deleted to prevent duplicates) |
-| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ In progress | GitHub Actions scheduled for Saturday `05:00 UTC` (first live run 2026-11-21). Watch two Saturdays, gather feedback, then tune; move to a company-domain sending service if spam filtering appears |
+| **5 — Email and schedule** | You receive a correct test email | ✅ Email verified; scheduler active | `send_report.py --test` delivered to Primary Inbox (`From == SMTP_USER`, no PDF attachment); GitHub Actions scheduled live for Saturday `05:17 UTC` with `SMTP_*` secrets configured (local Windows task deleted to prevent duplicates) |
+| **6 — Pilot and improve** | Two real Saturdays, recipient feedback, tuning | ⏳ In progress | GitHub Actions scheduled for Saturday `05:17 UTC` (next scheduled live run 2026-11-28; 2026-11-21 missed the old :00 cron before moving to :17). Watch two Saturdays, gather feedback, then tune; move to a company-domain sending service if spam filtering appears |
 
 **Where that leaves the project:** ready for the two-week Phase 6 pilot.
 
 **The brief's "done" test** is that the agent runs unattended for two Saturdays and
 the team finds the reports useful. **GitHub Actions** (`.github/workflows/weekly-report.yml`)
-is active with `LLM_API_KEY` and `SMTP_*` secrets for Saturday `05:00 UTC` (`08:00 UTC+3` /
-`13:00 UTC+8`, next live run 2026-11-21), and the local Windows task (`SyntheticDataWeekly`)
+is active with `LLM_API_KEY` and `SMTP_*` secrets for Saturday `05:17 UTC` (`08:17 UTC+3` /
+`13:17 UTC+8`, next scheduled live run 2026-11-28), and the local Windows task (`SyntheticDataWeekly`)
 was removed so delivery does not duplicate or depend on the laptop staying awake. Neither
 live Saturday run has happened yet.
 
 What is still next, in order:
 
-1. Let two Saturday runs complete and check `logs/weekly.log` (`mode: send`) plus the
+1. Let two Saturday runs complete and check the GitHub Actions workflow run logs (`mode: send`) and uploaded artefacts plus the
    recipients' feedback. Do not tune from a single week.
 2. Then tune keywords, sources and prompts (Phase 6).
 3. If consumer SMTP starts hitting spam on multi-recipient sends, move delivery
@@ -217,7 +217,7 @@ Two schedulers ship in the repo (only one may have live SMTP enabled at a time, 
 recipients never receive duplicate emails):
 
 - **GitHub Actions (active live scheduler)** — `.github/workflows/weekly-report.yml`,
-  Saturday `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`), also runnable by hand with
+  Saturday `05:17 UTC` (`08:17 UTC+3` / `13:17 UTC+8`), also runnable by hand with
   `workflow_dispatch`. `LLM_API_KEY` and `SMTP_*` secrets are configured on the repo so
   scheduled runs send the real email; manual runs with `send_email` unchecked force
   `--dry-run` (writing `email.eml` instead of sending). `history.db`, `score_cache.json`
@@ -285,9 +285,9 @@ from scratch.
   sending service authenticated on the company domain (SPF/DKIM/DMARC).
 - **Two live Saturday runs have not been observed yet.** GitHub Actions
   (`.github/workflows/weekly-report.yml`) is configured to send live on Saturday
-  `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`), and the local Windows task
-  `SyntheticDataWeekly` was removed so only one scheduler sends. First real Saturday run
-  is `2026-11-21`.
+  `05:17 UTC` (`08:17 UTC+3` / `13:17 UTC+8`), and the local Windows task
+  `SyntheticDataWeekly` was removed so only one scheduler sends. Next scheduled Saturday run
+  is `2026-11-28` (`2026-11-21` missed the old `:00` cron before moving to `:17`).
 - **Ranker substance judgement is improved, not proven.** Since 2026-11-06 each
   repo's stars and creation date reach the prompt, the rubric discounts old
   low-star repos, and the shortlist caps GitHub's share at 3; since 2026-11-07
@@ -312,7 +312,7 @@ from scratch.
 ## Tests
 
 There is no pytest or linter. CI is one scheduled workflow,
-`.github/workflows/weekly-report.yml` (Saturday 05:00 UTC / 13:00 UTC+8, or manual
+`.github/workflows/weekly-report.yml` (Saturday 05:17 UTC / 13:17 UTC+8, or manual
 `workflow_dispatch`), which runs `selftest.py` before the pipeline, runs
 `verify_report.py` after, sends the weekly report when `SMTP_*` secrets exist on
 scheduled runs (or when `send_email` is checked on manual runs; keep the local
@@ -323,6 +323,6 @@ surviving top picks) or missing email fails the run.
 Locally, the suite is two scripts that exit non-zero on failure:
 
 ```powershell
-uv run python selftest.py       # offline (464 checks): parsing, dates, URL normalisation, dedupe, history, LLM fallback, email, schedule
+uv run python selftest.py       # offline (467 checks): parsing, dates, URL normalisation, dedupe, history, LLM fallback, email, schedule
 uv run python verify_report.py  # structural (30 checks): subject, section order, counts, dates, PDF
 ```

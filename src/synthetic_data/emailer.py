@@ -176,15 +176,19 @@ def compose(
             "Run report_build.py first."
         )
 
+    effective_sender = sender or DEFAULT_SENDER
+    _, sender_addr = parseaddr(effective_sender)
+    msgid_domain = sender_addr.rsplit("@", 1)[1].strip() if "@" in sender_addr else ""
+
     message = EmailMessage(policy=policy.SMTP)
     message["Subject"] = render.subject_line(report)
-    message["From"] = sender or DEFAULT_SENDER
+    message["From"] = effective_sender
     message["To"] = ", ".join(recipients)
     clean_reply_to = (reply_to or "").strip()
     if clean_reply_to:
         message["Reply-To"] = clean_reply_to
     message["Date"] = formatdate(localtime=True)
-    message["Message-ID"] = make_msgid()
+    message["Message-ID"] = make_msgid(domain=msgid_domain or None)
     message["Auto-Submitted"] = "auto-generated"
 
     message.set_content(markdown_path.read_text(encoding="utf-8"), subtype="plain", charset="utf-8")

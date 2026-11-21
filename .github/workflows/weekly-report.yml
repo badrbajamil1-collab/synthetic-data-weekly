@@ -17,9 +17,9 @@ name: Weekly synthetic data report
 
 on:
   schedule:
-    # Saturday 05:00 UTC = Saturday 13:00 UTC+8 (this host's local timezone;
-    # config.yaml's "Saturday 08:00" is 00:00 UTC for the local Windows task).
-    - cron: "0 5 * * 6"
+    # Saturday 05:17 UTC = 08:17 UTC+3 / 13:17 UTC+8 (off-peak minute avoids
+    # GitHub Actions :00 queue delays/drops; local task's "Saturday 08:00" is 00:00 UTC).
+    - cron: "17 5 * * 6"
   workflow_dispatch:
     inputs:
       send_email:

@@ -51,7 +51,7 @@ this folder is the evidence.
 | 3 | Fetch, summarise, render | **done** — summaries written from fetched text, with a number guard and extractive fallback |
 | 4 | LangGraph pipeline | **done** — `collect → clean → rank → fetch → report → render → send`, one shared state |
 | 5 | Dry-run, schedule, email | **done** — SMTP keys are configured; a real `--test` send on 18 Nov landed in the Primary Inbox (no PDF attached, direct publisher links; `week-2026-11-20/run_log.json` lost its `email` block during a pre-fix `report_build.py` re-render, and `report_build.py` now preserves `email`) |
-| 6 | Two unattended Saturdays | **in progress** — GitHub Actions (`.github/workflows/weekly-report.yml`) is scheduled live for Saturday `05:00 UTC` (`13:00 UTC+8`, next run `2026-11-21`); local `SyntheticDataWeekly` was removed to prevent duplicates. Watch two Saturdays before tuning |
+| 6 | Two unattended Saturdays | **in progress** — GitHub Actions (`.github/workflows/weekly-report.yml`) is scheduled live for Saturday `05:17 UTC` (`13:17 UTC+8`, next scheduled run `2026-11-28`); local `SyntheticDataWeekly` was removed to prevent duplicates. Watch two Saturdays before tuning |
 
 The honest summary: **the whole chain runs unattended, and real email delivery has been
 proved.** `python main.py --pipeline --dry-run` writes `email.eml`; a real `--test` send

@@ -216,7 +216,7 @@ Verified against artefacts, not the older prose above:
 ## Update — 2026-11-20
 
 - **GitHub Actions is now the sole live Saturday scheduler.** `.github/workflows/weekly-report.yml`
-  runs every Saturday at `05:00 UTC` (`13:00 UTC+8` / `08:00 UTC+3`) with `LLM_API_KEY` and
+  runs every Saturday at `05:17 UTC` (`13:17 UTC+8` / `08:17 UTC+3`) with `LLM_API_KEY` and
   `SMTP_*` secrets configured; the local Windows `SyntheticDataWeekly` task was deleted via
   `schedule_task.py --delete` so only one scheduler ever sends.
 - **Resilience hardening added before the first live Saturday run (`2026-11-21`):**
@@ -230,3 +230,8 @@ Verified against artefacts, not the older prose above:
   - `emailer.send_message` retries pre-DATA connection/TLS/login errors and explicit temporary
     4xx rejections (421/450/451) while never retrying mid-DATA drops or 5xx/auth rejections;
     `publish_to_cloudflare.publish` retries transient HTTP 429/5xx and transport errors.
+- **2026-11-21 delivery & schedule hardening:** `emailer.compose` now aligns `Message-ID`
+  with the sender's address domain (`make_msgid(domain=...)`) so GitHub Actions runners do
+  not stamp an internal runner hostname, and the Saturday cron moved off-peak from
+  `0 5 * * 6` to `17 5 * * 6` (`05:17 UTC`) after `:00` top-of-hour queue delays and a missed
+  trigger on 2026-11-21.

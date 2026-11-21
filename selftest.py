@@ -589,6 +589,33 @@ with tempfile.TemporaryDirectory() as _tmp:
     check("sender is the configured From", "weekly@example.com" in _msg["From"], str(_msg["From"]))
     check("message has a Message-ID", bool(_msg["Message-ID"]))
     check(
+        "Message-ID domain matches the sender domain",
+        str(_msg["Message-ID"]).endswith("@example.com>"),
+        str(_msg["Message-ID"]),
+    )
+    _msg_bare_sender = _mail.compose(
+        _mail_report,
+        _out,
+        recipients=["a@example.com"],
+        sender="sender@gmail.com",
+    )
+    check(
+        "Message-ID domain matches a bare sender address",
+        str(_msg_bare_sender["Message-ID"]).endswith("@gmail.com>"),
+        str(_msg_bare_sender["Message-ID"]),
+    )
+    _msg_no_domain = _mail.compose(
+        _mail_report,
+        _out,
+        recipients=["a@example.com"],
+        sender="localuser",
+    )
+    check(
+        "Message-ID falls back cleanly when sender has no domain",
+        bool(_msg_no_domain["Message-ID"]) and "@" in str(_msg_no_domain["Message-ID"]),
+        str(_msg_no_domain["Message-ID"]),
+    )
+    check(
         "default email is multipart/alternative with no attachment",
         _msg.get_content_type() == "multipart/alternative",
         _msg.get_content_type(),

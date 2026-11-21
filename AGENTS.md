@@ -189,7 +189,7 @@ Three rules that are easy to break:
   article links), but long-term production delivery should move to an authenticated
   company-domain sending service (SPF/DKIM/DMARC).
 - **Live Saturday delivery runs on GitHub Actions.** `.github/workflows/weekly-report.yml`
-  runs every Saturday at `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`) with `LLM_API_KEY`
+  runs every Saturday at `05:17 UTC` (`08:17 UTC+3` / `13:17 UTC+8`) with `LLM_API_KEY`
   and `SMTP_*` secrets configured on `badrbajamil1-collab/synthetic-data-weekly`. The
   local Windows task `SyntheticDataWeekly` was removed (`schedule_task.py --delete`) so
   only one scheduler sends (and delivery does not depend on this laptop being awake,
