@@ -11,7 +11,35 @@ export interface Viewer {
   /** Clerk user id (user_xxx) — the users.id identity in D1. */
   userId: string
   email: string
+  username: string
   isAdmin: boolean
+}
+
+export function displayUsername(
+  user: {
+    username?: string | null
+    fullName?: string | null
+    firstName?: string | null
+    lastName?: string | null
+  },
+  email: string,
+): string {
+  const combinedName = [user.firstName, user.lastName]
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter(Boolean)
+    .join(' ')
+  const fallbackLocal = email.includes('@') ? email.split('@')[0] : ''
+  const raw =
+    [user.username, user.fullName, combinedName, fallbackLocal].find(
+      (candidate) => typeof candidate === 'string' && candidate.trim().length > 0,
+    ) ?? ''
+  const sanitized = [...raw]
+    .map((ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch))
+    .join('')
+  return sanitized
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120)
 }
 
 /**
@@ -67,18 +95,23 @@ export async function currentViewer(request: Request, env: AuthEnv): Promise<Vie
     return null
   }
 
-  // One Clerk Backend API call per signed-in request for the email: required for
-  // the admin allow-list and the display label, and it doubles as the identity
-  // cache write in the routes below (upsertUser in index.ts).
+  // One Clerk Backend API call per signed-in request for the email & username:
+  // required for the admin allow-list, weekly email list, and display label,
+  // and it doubles as the identity cache write in the routes below (upsertUser).
   let email = ''
+  let username = ''
   try {
     const clerk = createClerkClient({ secretKey: env.CLERK_SECRET_KEY })
     const user = await clerk.users.getUser(userId)
-    email = (user.primaryEmailAddress?.emailAddress ?? '').toLowerCase()
+    email = (user.primaryEmailAddress?.emailAddress ?? user.emailAddresses?.[0]?.emailAddress ?? '')
+      .trim()
+      .toLowerCase()
+    username = displayUsername(user, email)
   } catch {
     email = ''
+    username = ''
   }
 
   const admins = (env.ADMIN_EMAILS ?? '').split(',').map((e) => e.trim().toLowerCase()).filter(Boolean)
-  return { userId, email, isAdmin: admins.includes(email) }
+  return { userId, email, username, isAdmin: admins.includes(email) }
 }

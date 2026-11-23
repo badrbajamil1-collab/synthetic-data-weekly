@@ -1,4 +1,4 @@
-import { authFailureReason, currentViewer, type AuthEnv, type Viewer } from './auth.ts'
+import { authFailureReason, currentViewer, displayUsername, type AuthEnv, type Viewer } from './auth.ts'
 import { executeResearchGraph, runWeeklyPipeline, type PipelineEnv } from './pipeline/index.ts'
 import { parsePublishPayload, publishReportToStorage } from './pipeline/publish.ts'
 import { sanitizeCollectOptions } from './pipeline/sources.ts'
@@ -13,6 +13,15 @@ export interface Env extends PipelineEnv, AuthEnv {
 
 const json = (body: unknown, status = 200) => Response.json(body, { status })
 
+const privateJson = (body: unknown, status = 200, extraHeaders?: Record<string, string>) =>
+  Response.json(body, {
+    status,
+    headers: {
+      'Cache-Control': 'private, no-store',
+      ...(extraHeaders ?? {}),
+    },
+  })
+
 function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
   if (!raw) return fallback
   try {
@@ -22,13 +31,27 @@ function safeJsonParse<T>(raw: string | null | undefined, fallback: T): T {
   }
 }
 
-/** users rows are keyed by Clerk user id; email is refreshed on every pass. */
-async function upsertUser(env: Env, viewer: Viewer, now = new Date()): Promise<void> {
+/**
+ * users rows are keyed by Clerk user id; email and username stay fresh on
+ * every pass, and first sign-in automatically opts the account into weekly
+ * email delivery while preserving any later manual pause/resume choice.
+ */
+async function upsertUser(env: Env, viewer: Viewer, now = new Date()): Promise<boolean> {
+  const username = viewer.username || displayUsername({}, viewer.email)
+  const ts = now.toISOString()
   await env.DB.prepare(
-    'INSERT INTO users (id, email, created_at) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET email = excluded.email',
+    `INSERT INTO users (id, email, username, email_subscribed, subscribed_at, created_at)
+     VALUES (?, ?, ?, 1, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       email = excluded.email,
+       username = CASE WHEN excluded.username <> '' THEN excluded.username ELSE users.username END`,
   )
-    .bind(viewer.userId, viewer.email, now.toISOString())
+    .bind(viewer.userId, viewer.email, username, ts, ts)
     .run()
+  const row = await env.DB.prepare('SELECT email_subscribed FROM users WHERE id = ?')
+    .bind(viewer.userId)
+    .first<{ email_subscribed?: number | string | null }>()
+  return row ? Number(row.email_subscribed ?? 1) === 1 : true
 }
 
 interface StateBody {
@@ -90,7 +113,7 @@ async function putState(env: Env, userId: string, itemId: string, body: StateBod
       .run()
     item = { id: itemId }
   }
-  if (!item) return json({ error: 'item not found' }, 404)
+  if (!item) return privateJson({ error: 'item not found' }, 404)
 
   const current = await env.DB.prepare(
     'SELECT read_later, important, note FROM user_items WHERE user_id = ? AND item_id = ?',
@@ -107,7 +130,7 @@ async function putState(env: Env, userId: string, itemId: string, body: StateBod
 
   if (!next.read_later && !next.important && !next.note) {
     await env.DB.prepare('DELETE FROM user_items WHERE user_id = ? AND item_id = ?').bind(userId, itemId).run()
-    return json({ item_id: itemId, read_later: false, important: false, note: '', updated_at: now })
+    return privateJson({ item_id: itemId, read_later: false, important: false, note: '', updated_at: now })
   }
 
   await env.DB.prepare(
@@ -119,7 +142,7 @@ async function putState(env: Env, userId: string, itemId: string, body: StateBod
     .bind(userId, itemId, next.read_later ? 1 : 0, next.important ? 1 : 0, next.note, now)
     .run()
 
-  return json({ item_id: itemId, ...next, updated_at: now })
+  return privateJson({ item_id: itemId, ...next, updated_at: now })
 }
 
 /** Follows live in user_topics; kind is the same 'topic' | 'source' union as the SPA. */
@@ -227,31 +250,69 @@ export default {
     const reportDelMatch = path.match(/^\/api\/reports\/([^/]+)$/)
     if (reportDelMatch && method === 'DELETE') {
       const deleter = await currentViewer(request, env)
-      if (deleter?.isAdmin !== true) return json({ error: 'admin sign-in required' }, 403)
+      if (deleter?.isAdmin !== true) return privateJson({ error: 'admin sign-in required' }, 403)
       await adminDeleteReport(env, reportDelMatch[1])
-      return json({ deleted: true, id: reportDelMatch[1] })
+      return privateJson({ deleted: true, id: reportDelMatch[1] })
     }
 
     const pdfMatch = path.match(/^\/api\/reports\/([^/]+)\/pdf$/)
-    if (pdfMatch && method === 'GET') {
-      const report = await env.DB.prepare('SELECT pdf_r2_key FROM reports WHERE id = ?').bind(pdfMatch[1]).first<{ pdf_r2_key: string }>()
+    if (pdfMatch && (method === 'GET' || method === 'HEAD')) {
+      const safeId = pdfMatch[1].replace(/[^a-zA-Z0-9._-]/g, '_')
+      const report = await env.DB.prepare('SELECT pdf_r2_key FROM reports WHERE id = ?')
+        .bind(pdfMatch[1])
+        .first<{ pdf_r2_key: string }>()
       if (!report?.pdf_r2_key) return new Response('Not found', { status: 404 })
-      const obj = await env.BUCKET.get(report.pdf_r2_key)
+      const obj =
+        method === 'HEAD' && typeof env.BUCKET.head === 'function'
+          ? await env.BUCKET.head(report.pdf_r2_key)
+          : await env.BUCKET.get(report.pdf_r2_key)
       if (!obj) return new Response('Not found', { status: 404 })
-      return new Response(obj.body, {
-        headers: {
-          'Content-Type': 'application/pdf',
-          'Content-Disposition': `inline; filename="${pdfMatch[1]}.pdf"`,
-          'Cache-Control': 'public, max-age=3600',
-        },
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="${safeId}.pdf"`,
+        'Cache-Control': 'public, max-age=3600',
+      }
+      if (typeof obj.size === 'number') {
+        headers['Content-Length'] = String(obj.size)
+      }
+      return new Response(method === 'HEAD' ? null : (obj as R2ObjectBody).body, {
+        status: 200,
+        headers,
       })
     }
 
     if (path === '/api/pipeline/runs' && method === 'GET') {
+      const via = await pipelineAuth(request, env)
+      if (!via) return privateJson({ error: 'admin sign-in or bearer token required' }, 403)
       const { results } = await env.DB.prepare(
         'SELECT id, trigger, scheduled_for, started_at, finished_at, status, error FROM pipeline_runs ORDER BY started_at DESC LIMIT 20',
       ).all()
-      return json({ runs: results })
+      return privateJson({ runs: results })
+    }
+
+    if (path === '/api/subscribers' && method === 'GET') {
+      const via = await pipelineAuth(request, env)
+      if (!via) return privateJson({ error: 'admin sign-in or bearer token required' }, 403)
+      const { results } = await env.DB.prepare(
+        `SELECT id, email, username, subscribed_at, created_at
+         FROM users
+         WHERE email_subscribed = 1 AND TRIM(email) <> ''
+         ORDER BY created_at ASC`,
+      ).all<{
+        id: string
+        email: string
+        username: string
+        subscribed_at: string | null
+        created_at: string
+      }>()
+      return privateJson({
+        subscribers: results.map((row) => ({
+          user_id: row.id,
+          email: row.email,
+          username: row.username || (row.email.includes('@') ? row.email.split('@')[0] : ''),
+          subscribed_at: row.subscribed_at ?? row.created_at,
+        })),
+      })
     }
 
     if (path === '/api/research/sessions' && method === 'GET') {
@@ -323,11 +384,11 @@ export default {
 
       if (mode === 'weekly') {
         if (!hasCronToken && viewer?.isAdmin !== true) {
-          return json({ error: 'admin sign-in or bearer token required for weekly brief runs' }, 403)
+          return privateJson({ error: 'admin sign-in or bearer token required for weekly brief runs' }, 403)
         }
       } else {
         if (!hasCronToken && !viewer) {
-          return json({ error: 'Sign in to run a live research check.' }, 401)
+          return privateJson({ error: 'Sign in to run a live research check.' }, 401)
         }
       }
 
@@ -445,31 +506,55 @@ export default {
       const viewer = await currentViewer(request, env)
       if (!viewer) {
         const reason = authFailureReason(request) ?? 'unknown'
-        return new Response(JSON.stringify({ error: 'sign in required', reason }), {
-          status: 401,
-          headers: { 'Content-Type': 'application/json', 'X-Auth-Error': reason },
-        })
+        return privateJson({ error: 'sign in required', reason }, 401, { 'X-Auth-Error': reason })
       }
 
-      if (viewer.email) await upsertUser(env, viewer)
+      const emailSubscribed = viewer.email ? await upsertUser(env, viewer) : false
 
       if (path === '/api/me' && method === 'GET') {
-        return json({
+        return privateJson({
           user_id: viewer.userId,
           email: viewer.email,
+          username: viewer.username,
           isAdmin: viewer.isAdmin,
+          emailSubscribed,
           topics: await listFollows(env, viewer.userId),
         })
       }
 
+      if (path === '/api/my/subscription' && method === 'PUT') {
+        if (!viewer.email) {
+          return privateJson({ error: 'your account has no email address' }, 400)
+        }
+        const body = (await request.json().catch(() => null)) as { subscribed?: unknown } | null
+        if (!body || typeof body.subscribed !== 'boolean') {
+          return privateJson({ error: 'expected { subscribed: boolean }' }, 400)
+        }
+        const flag = body.subscribed ? 1 : 0
+        const nowIso = new Date().toISOString()
+        await env.DB.prepare(
+          `UPDATE users
+           SET email_subscribed = ?,
+               subscribed_at = CASE WHEN ? = 1 THEN ? ELSE subscribed_at END
+           WHERE id = ?`,
+        )
+          .bind(flag, flag, nowIso, viewer.userId)
+          .run()
+        return privateJson({
+          email: viewer.email,
+          username: viewer.username,
+          emailSubscribed: body.subscribed,
+        })
+      }
+
       if (path === '/api/my/topics' && (method === 'GET' || method === 'PUT' || method === 'DELETE')) {
-        if (method === 'GET') return json({ topics: await listFollows(env, viewer.userId) })
+        if (method === 'GET') return privateJson({ topics: await listFollows(env, viewer.userId) })
 
         const body = (await request.json().catch(() => null)) as { kind?: unknown; value?: unknown } | null
         const kind = body?.kind
         const value = typeof body?.value === 'string' ? body.value.trim() : ''
         if (!isTopicKind(kind) || !value || value.length > 120) {
-          return json({ error: 'expected { kind: "topic" | "source", value: string } with value of 120 characters or fewer' }, 400)
+          return privateJson({ error: 'expected { kind: "topic" | "source", value: string } with value of 120 characters or fewer' }, 400)
         }
 
         if (method === 'PUT') {
@@ -481,18 +566,18 @@ export default {
             'DELETE FROM user_topics WHERE user_id = ? AND kind = ? AND value = ?',
           ).bind(viewer.userId, kind, value).run()
         }
-        return json({ topics: await listFollows(env, viewer.userId) })
+        return privateJson({ topics: await listFollows(env, viewer.userId) })
       }
 
       if (path === '/api/my/notes' && method === 'GET') {
-        return json({ notes: await listNotes(env, viewer.userId) })
+        return privateJson({ notes: await listNotes(env, viewer.userId) })
       }
 
       if (path === '/api/my/notes' && method === 'POST') {
         const body = (await request.json().catch(() => null)) as { body?: unknown } | null
         const text = typeof body?.body === 'string' ? body.body.trim() : ''
-        if (!text) return json({ error: 'expected { body: string }' }, 400)
-        if (text.length > 2000) return json({ error: 'notes are limited to 2000 characters' }, 400)
+        if (!text) return privateJson({ error: 'expected { body: string }' }, 400)
+        if (text.length > 2000) return privateJson({ error: 'notes are limited to 2000 characters' }, 400)
         const note = {
           id: crypto.randomUUID(),
           body: text,
@@ -501,7 +586,7 @@ export default {
         await env.DB.prepare(
           'INSERT INTO user_notes (id, user_id, body, created_at) VALUES (?, ?, ?, ?)',
         ).bind(note.id, viewer.userId, note.body, note.created_at).run()
-        return json({ note }, 201)
+        return privateJson({ note }, 201)
       }
 
       const noteMatch = path.match(/^\/api\/my\/notes\/([^/]+)$/)
@@ -509,8 +594,8 @@ export default {
         const deleted = await env.DB.prepare(
           'DELETE FROM user_notes WHERE id = ? AND user_id = ?',
         ).bind(noteMatch[1], viewer.userId).run()
-        if (deleted.meta.changes === 0) return json({ error: 'note not found' }, 404)
-        return json({ notes: await listNotes(env, viewer.userId) })
+        if (deleted.meta.changes === 0) return privateJson({ error: 'note not found' }, 404)
+        return privateJson({ notes: await listNotes(env, viewer.userId) })
       }
 
       if (path === '/api/my/library' && method === 'GET') {
@@ -523,45 +608,45 @@ export default {
            WHERE u.user_id = ?
            ORDER BY i.published DESC`,
         ).bind(viewer.userId).all()
-        return json({ items: results })
+        return privateJson({ items: results })
       }
 
       const stateMatch = path.match(/^\/api\/my\/items\/([^/]+)$/)
       if (stateMatch && method === 'PUT') {
         const body = (await request.json().catch(() => null)) as StateBody | null
-        if (!body || typeof body !== 'object') return json({ error: 'expected a JSON body' }, 400)
+        if (!body || typeof body !== 'object') return privateJson({ error: 'expected a JSON body' }, 400)
         return putState(env, viewer.userId, stateMatch[1], body)
       }
 
-      if (path === '/api/my/topics' || path === '/api/my/notes'
+      if (path === '/api/my/topics' || path === '/api/my/notes' || path === '/api/my/subscription'
         || /^\/api\/my\/notes\/([^/]+)$/.test(path) || /^\/api\/my\/items\/([^/]+)$/.test(path)
         || path === '/api/me') {
-        return json({ error: 'method not allowed' }, 405)
+        return privateJson({ error: 'method not allowed' }, 405)
       }
-      return json({ error: 'not found' }, 404)
+      return privateJson({ error: 'not found' }, 404)
     }
 
     if (path === '/api/reports/publish' && method === 'POST') {
       const via = await pipelineAuth(request, env)
-      if (!via) return json({ error: 'admin sign-in or bearer token required' }, 403)
+      if (!via) return privateJson({ error: 'admin sign-in or bearer token required' }, 403)
       const body = await request.json().catch(() => null)
       const parsed = parsePublishPayload(body)
-      if (!parsed.ok) return json({ error: parsed.error }, 400)
+      if (!parsed.ok) return privateJson({ error: parsed.error }, 400)
       const result = await publishReportToStorage(env.DB, env.BUCKET, parsed.data)
-      return json({ ok: true, ...result })
+      return privateJson({ ok: true, ...result })
     }
 
     if (path === '/api/pipeline/run' && method === 'POST') {
       const via = await pipelineAuth(request, env)
-      if (!via) return json({ error: 'admin sign-in or bearer token required' }, 403)
+      if (!via) return privateJson({ error: 'admin sign-in or bearer token required' }, 403)
       const result = await runWeeklyPipeline(env, 'manual', new Date())
-      return json(result, result.status === 'succeeded' ? 200 : 500)
+      return privateJson(result, result.status === 'succeeded' ? 200 : 500)
     }
 
     if (path === '/api/pipeline/auth' && method === 'GET') {
       const via = await pipelineAuth(request, env)
-      if (!via) return json({ error: 'admin sign-in or bearer token required' }, 403)
-      return json({ ok: true, via })
+      if (!via) return privateJson({ error: 'admin sign-in or bearer token required' }, 403)
+      return privateJson({ ok: true, via })
     }
 
     return new Response(null, { status: 404 })

@@ -2,8 +2,8 @@
   "extends": "./tsconfig.node.json",
   "compilerOptions": {
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
-    "types": ["@cloudflare/workers-types", "vite/client"],
+    "types": ["@cloudflare/workers-types", "vite/client", "node"],
     "lib": ["ES2022"]
   },
-  "include": ["worker"]
+  "include": ["worker", "tests/worker-hardening.test.ts"]
 }

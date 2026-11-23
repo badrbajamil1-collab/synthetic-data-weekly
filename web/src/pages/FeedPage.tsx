@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { CalendarDays, CircleAlert, RefreshCw, X } from 'lucide-react'
+import { CalendarDays, CircleAlert, Mail, MailCheck, RefreshCw, X } from 'lucide-react'
 
 import { FeedFilterBar, FeedList, FeedSidebar } from '@/components/feed-panel'
 import { TopicPanel, type TopicCount } from '@/components/topic-panel'
@@ -19,13 +19,31 @@ interface FeedPageProps {
   onFollow: (kind: TopicKind, value: string, next: boolean) => void
   onSignIn: () => void
   library: LibraryBundle
+  email?: string
+  username?: string
+  emailSubscribed?: boolean
+  subscriptionUpdating?: boolean
+  subscriptionError?: string | null
+  onToggleSubscription?: (next: boolean) => void
 }
 
 /**
  * `/feed` (signed in): the current brief filtered to followed topics and sources,
  * plus the anchored Topics & sources manager.
  */
-export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: FeedPageProps) {
+export function FeedPage({
+  signedIn,
+  follows,
+  onFollow,
+  onSignIn,
+  library,
+  email,
+  username,
+  emailSubscribed,
+  subscriptionUpdating = false,
+  subscriptionError,
+  onToggleSubscription,
+}: FeedPageProps) {
   const { reports, loading: reportsLoading, error: reportsError, retry: retryReports } = useReports()
   const [pickedWeek, setPickedWeek] = useState<string | null>(null)
   const weekId = pickedWeek ?? reports[0]?.id ?? null
@@ -214,6 +232,52 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
               )}
 
               <div className="mt-8">
+                {email && onToggleSubscription && (
+                  <div className="mb-6">
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-[#fffdf9] px-4 py-3 text-sm shadow-[0_4px_14px_rgba(14,62,64,0.04)]">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        {emailSubscribed !== false ? (
+                          <MailCheck className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                        ) : (
+                          <Mail className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        )}
+                        <span className="text-ink">
+                          Weekly email list:{' '}
+                          {emailSubscribed !== false ? (
+                            <>
+                              subscribed as{' '}
+                              <strong className="font-semibold text-primary">{username || email}</strong>{' '}
+                              <span className="font-mono text-xs text-muted-foreground">({email})</span>
+                            </>
+                          ) : (
+                            <>
+                              paused for <span className="font-mono text-xs text-muted-foreground">{email}</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={subscriptionUpdating}
+                        aria-busy={subscriptionUpdating}
+                        onClick={() => onToggleSubscription(emailSubscribed === false)}
+                      >
+                        {emailSubscribed !== false ? 'Pause emails' : 'Resume weekly email'}
+                      </Button>
+                    </div>
+                    {subscriptionError && (
+                      <p
+                        className="mt-2.5 rounded-2xl border border-destructive/25 bg-[#fff5f7] px-4 py-2.5 text-sm text-destructive"
+                        role="alert"
+                      >
+                        {subscriptionError}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <h2 className="sr-only">Matching papers and tools</h2>
                 <FeedFilterBar
                   query={filters.query}

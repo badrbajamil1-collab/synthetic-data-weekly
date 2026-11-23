@@ -1,10 +1,12 @@
-import { ArrowRight, CalendarDays, CircleAlert, FileText, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowRight, CalendarDays, CircleAlert, FileText, Mail, RefreshCw } from 'lucide-react'
 
 import { Link } from '@/components/link'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Separator } from '@/components/ui/separator'
+import { errorText, fetchSubscribers, type SubscriberInfo } from '@/lib/api'
 import { briefTitle, formatDate } from '@/lib/report'
 import { useReports } from '@/lib/use-report'
 import { cn } from '@/lib/utils'
@@ -14,6 +16,82 @@ interface ArchivePageProps {
   running: boolean
   pipelineError: string | null
   onRunPipeline: () => void
+}
+
+function WeeklyEmailSubscribersPanel() {
+  const [subscribers, setSubscribers] = useState<SubscriberInfo[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    void fetchSubscribers()
+      .then((list) => {
+        if (active) setSubscribers(list)
+      })
+      .catch((err) => {
+        if (active) setError(errorText(err))
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  return (
+    <div className="mt-6 rounded-2xl border border-border bg-[#fffdf9] p-4 shadow-[0_4px_14px_rgba(14,62,64,0.04)]">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="inline-flex items-center gap-2 font-display text-base font-semibold text-primary">
+          <Mail className="size-4 shrink-0" aria-hidden="true" />
+          Weekly email list
+        </h2>
+        {!loading && !error && (
+          <Badge variant="secondary" className="font-mono text-[11px] tabular-nums">
+            {subscribers.length}
+          </Badge>
+        )}
+      </div>
+
+      {loading && (
+        <div className="mt-3 space-y-2" role="status" aria-label="Loading weekly email subscribers">
+          <Skeleton className="h-5 w-full rounded-md" />
+          <Skeleton className="h-5 w-4/5 rounded-md" />
+        </div>
+      )}
+
+      {error && (
+        <p className="mt-3 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      )}
+
+      {!loading && !error && subscribers.length === 0 && (
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          No signed-in web subscribers yet. Anyone who signs in is added automatically.
+        </p>
+      )}
+
+      {!loading && !error && subscribers.length > 0 && (
+        <ul className="mt-3 space-y-2">
+          {subscribers.map((sub) => (
+            <li
+              key={sub.user_id}
+              className="flex items-baseline justify-between gap-2 border-t border-border/70 pt-2 text-xs first:border-t-0 first:pt-0"
+            >
+              <span className="truncate font-semibold text-ink">{sub.username}</span>
+              <span className="truncate font-mono text-[11px] text-muted-foreground">{sub.email}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-3 border-t border-border/70 pt-2.5 text-[11px] leading-4 text-muted-foreground">
+        Static recipients in <code className="font-mono">config.yaml</code> are also included automatically on Saturday sends.
+      </p>
+    </div>
+  )
 }
 
 /**
@@ -40,16 +118,20 @@ export function ArchivePage({ isAdmin, running, pipelineError, onRunPipeline }: 
             Every edition kept in context — return to any earlier brief without losing its rankings, source links, PDF edition, or editorial notes.
           </p>
           {isAdmin && (
-            <Button
-              className="mt-6"
-              variant="default"
-              onClick={onRunPipeline}
-              disabled={running}
-              aria-busy={running}
-            >
-              <RefreshCw className={cn(running && 'motion-safe:animate-spin')} aria-hidden="true" />
-              {running ? 'Running the pipeline…' : 'Run the pipeline now'}
-            </Button>
+            <>
+              <Button
+                className="mt-6"
+                variant="default"
+                onClick={onRunPipeline}
+                disabled={running}
+                aria-busy={running}
+              >
+                <RefreshCw className={cn(running && 'motion-safe:animate-spin')} aria-hidden="true" />
+                {running ? 'Running the pipeline…' : 'Run the pipeline now'}
+              </Button>
+
+              <WeeklyEmailSubscribersPanel />
+            </>
           )}
         </div>
 

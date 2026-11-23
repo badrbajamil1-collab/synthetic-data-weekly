@@ -14,6 +14,7 @@ import {
   runPipelineRequest,
   saveState,
   setApiTokenGetter,
+  updateEmailSubscription,
   type LibraryBundle,
   type LibraryEntry,
   type Me,
@@ -103,12 +104,15 @@ export default function App() {
   const [libraryErr, setLibraryErr] = useState<ScopedError | null>(null)
   const [running, setRunning] = useState(false)
   const [pipelineErr, setPipelineErr] = useState<ScopedError | null>(null)
+  const [subscriptionUpdating, setSubscriptionUpdating] = useState(false)
+  const [subscriptionErr, setSubscriptionErr] = useState<ScopedError | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [routeAnnouncement, setRouteAnnouncement] = useState('')
 
   const followError = followErr?.route === route ? followErr.message : null
   const libraryError = libraryErr?.route === route ? libraryErr.message : null
   const pipelineError = pipelineErr?.route === route ? pipelineErr.message : null
+  const subscriptionError = subscriptionErr?.route === route ? subscriptionErr.message : null
 
   const { getToken, userId, isLoaded } = useAuth()
   const clerk = useClerk()
@@ -313,6 +317,23 @@ export default function App() {
       setRunning(false)
     }
   }
+
+  const toggleEmailSubscription = useCallback(async (next: boolean) => {
+    if (!me) return
+    setSubscriptionErr(null)
+    setSubscriptionUpdating(true)
+    const previous = me.emailSubscribed
+    setMe((current) => (current ? { ...current, emailSubscribed: next } : current))
+    try {
+      const updated = await updateEmailSubscription(next)
+      setMe((current) => (current ? { ...current, emailSubscribed: updated.emailSubscribed } : current))
+    } catch (error) {
+      setMe((current) => (current ? { ...current, emailSubscribed: previous } : current))
+      setSubscriptionErr({ route: routeRef.current, message: errorText(error) })
+    } finally {
+      setSubscriptionUpdating(false)
+    }
+  }, [me])
 
   const savedById = useMemo(() => new Map(library.map((entry) => [entry.id, entry])), [library])
   const libraryBundle = useMemo<LibraryBundle>(() => ({
@@ -545,6 +566,12 @@ export default function App() {
                 onFollow={toggleFollow}
                 onSignIn={() => clerk.openSignIn()}
                 library={libraryBundle}
+                email={me?.email}
+                username={me?.username}
+                emailSubscribed={me?.emailSubscribed}
+                subscriptionUpdating={subscriptionUpdating}
+                subscriptionError={subscriptionError}
+                onToggleSubscription={(next) => void toggleEmailSubscription(next)}
               />
             )}
 

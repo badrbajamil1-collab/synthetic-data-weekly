@@ -3,9 +3,18 @@ import { type TopicFollow } from '@/lib/topics'
 export interface Me {
   user_id: string
   email: string
+  username?: string
   isAdmin: boolean
+  emailSubscribed?: boolean
   /** Followed topics and sources; the feed filters on first paint. */
   topics?: TopicFollow[]
+}
+
+export interface SubscriberInfo {
+  user_id: string
+  email: string
+  username: string
+  subscribed_at: string
 }
 
 export interface PaperState {
@@ -202,6 +211,26 @@ export async function deleteMyNote(id: string): Promise<UserNote[]> {
     throw new Error(`Could not delete the note (${response.status}). Try again in a moment.`)
   }
   return ((await response.json()) as { notes: UserNote[] }).notes
+}
+
+export async function updateEmailSubscription(
+  subscribed: boolean,
+): Promise<{ email: string; username: string; emailSubscribed: boolean }> {
+  const response = await fetchWithAuthRetry('/api/my/subscription', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ subscribed }),
+  })
+  if (!response.ok) {
+    const errBody = (await response.json().catch(() => null)) as { error?: string } | null
+    throw new Error(errBody?.error ?? `Could not update weekly email settings (${response.status}).`)
+  }
+  return (await response.json()) as { email: string; username: string; emailSubscribed: boolean }
+}
+
+export async function fetchSubscribers(): Promise<SubscriberInfo[]> {
+  const data = await getJson<{ subscribers: SubscriberInfo[] }>('/api/subscribers')
+  return data?.subscribers ?? []
 }
 
 export interface SourceStatInfo {

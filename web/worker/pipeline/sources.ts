@@ -148,7 +148,12 @@ async function feed(
   const start = Date.now()
   try {
     const response = await fetchWithTimeout(url, {}, timeoutMs)
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    if (!response.ok) {
+      if (name === 'Reddit' && (response.status === 403 || response.status === 404)) {
+        throw new Error(`blocked upstream (HTTP ${response.status}); skipped`)
+      }
+      throw new Error(`HTTP ${response.status}`)
+    }
     const entries = entriesOf(await response.text())
     const items: RawItem[] = []
     for (const entry of entries) {

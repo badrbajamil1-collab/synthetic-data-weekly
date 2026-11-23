@@ -1,5 +1,5 @@
 import type { RawItem } from './sources.ts'
-import { ask, makeModel, parseJson, type LlmEnv } from './llm.ts'
+import { askWithFallback, parseJson, type LlmEnv } from './llm.ts'
 
 export interface Scored extends RawItem {
   score: number
@@ -26,9 +26,6 @@ export async function rankItems(items: RawItem[], env: LlmEnv, query = ''): Prom
   if (items.length === 0) {
     return { scored: [], failedBatches: 0, totalBatches: 0 }
   }
-  // Match Python's verified 8000-token budget: hidden reasoning on Nemotron
-  // exhausts 2000 tokens on 15-item batches and truncates JSON output.
-  const model = makeModel(env, 8000)
   const batches: RawItem[][] = []
   for (let i = 0; i < items.length; i += BATCH) batches.push(items.slice(i, i + BATCH))
 
@@ -40,7 +37,7 @@ export async function rankItems(items: RawItem[], env: LlmEnv, query = ''): Prom
   // reasoning model, and Workers cron runs have a 15-minute wall-clock limit,
   // so serialising waves of 3 does not fit. Free-model rate limits (20 req/min)
   // still leave this far below the cap.
-  const results = await Promise.all(batches.map((batch) => scoreBatch(model, batch, systemPrompt)))
+  const results = await Promise.all(batches.map((batch) => scoreBatch(env, batch, systemPrompt)))
   return {
     scored: results.flatMap((r) => r.rows),
     failedBatches: results.filter((r) => r.failed).length,
@@ -54,7 +51,7 @@ interface BatchOutcome {
 }
 
 async function scoreBatch(
-  model: ReturnType<typeof makeModel>,
+  env: LlmEnv,
   batch: RawItem[],
   systemPrompt: string,
 ): Promise<BatchOutcome> {
@@ -63,7 +60,12 @@ async function scoreBatch(
     .join('\n')
   let rows: Array<{ id: number; score?: number; well7_fit: number; reason: string }> | null = null
   try {
-    const raw = await ask(model, systemPrompt, `ITEMS:\n${list}`)
+    // Match Python's verified 8000-token budget: hidden reasoning on Nemotron
+    // exhausts 2000 tokens on 15-item batches and truncates JSON output.
+    const { content: raw } = await askWithFallback(env, systemPrompt, `ITEMS:\n${list}`, {
+      maxTokens: 8000,
+      temperature: 0,
+    })
     rows = parseJson<Array<{ id: number; score?: number; well7_fit: number; reason: string }>>(raw)
   } catch {
     rows = null

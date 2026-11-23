@@ -13,6 +13,7 @@
   },
   "vars": {
     "OPENROUTER_MODEL": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "OPENROUTER_FALLBACK_MODELS": "nvidia/nemotron-3.5-super-vl:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,google/gemma-4-31b-it:free",
     "ADMIN_EMAILS": "badrbajamil1@gmail.com,coolbadrtv1@gmail.com"
   },
   "d1_databases": [

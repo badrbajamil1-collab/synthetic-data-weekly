@@ -1,4 +1,4 @@
-import { ask, makeModel, parseJson, type LlmEnv } from './llm.ts'
+import { askWithFallback, parseJson, type LlmEnv } from './llm.ts'
 import { normalizeUrl, stripHtml, type RawItem } from './sources.ts'
 import type { Scored } from './rank.ts'
 
@@ -123,7 +123,6 @@ export async function summarise(
   // 2000 maxTokens, 180s timeout: see llm.ts. A smaller budget made this model
   // emit truncated JSON that parsed as nothing (the Python side learned the
   // same lesson; config.yaml says "700 was too low").
-  const model = makeModel(env, 2000, 0.2)
   const length = oneLine ? 'One sentence, under 200 characters.' : '2-3 sentences.'
   let rejected: string[] = []
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -131,7 +130,12 @@ export async function summarise(
       ? `\nYour previous draft used numbers not present in the TEXT: ${rejected.join(', ')}. Remove them.`
       : ''
     try {
-      const raw = await ask(model, SYSTEM, `TEXT:\n${text}\n\nTITLE: ${item.title}\nLENGTH: ${length}${repair}`)
+      const { content: raw } = await askWithFallback(
+        env,
+        SYSTEM,
+        `TEXT:\n${text}\n\nTITLE: ${item.title}\nLENGTH: ${length}${repair}`,
+        { maxTokens: 2000, temperature: 0.2 },
+      )
       const parsed = parseJson<{ summary?: string }>(raw)
       const candidate = (parsed && !Array.isArray(parsed) ? parsed.summary : undefined)?.trim()
       if (!candidate) continue
@@ -150,12 +154,14 @@ export async function trend(picks: Array<{ title: string; summary: string }>, en
   const material = picks.map((p) => `- ${p.title}: ${p.summary}`).join('\n')
   const fallback = `This week's picks cover ${picks.length} items across papers, tools and reporting.`
   if (!material) return fallback
-  const model = makeModel(env, 2000, 0.2)
   const system = `Write ONE paragraph (3-4 sentences) describing what this week's picks say about
 synthetic data, using only the material. No invented numbers. Reply with ONLY JSON: {"trend": "..."}`
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const raw = await ask(model, system, `MATERIAL:\n${material}`)
+      const { content: raw } = await askWithFallback(env, system, `MATERIAL:\n${material}`, {
+        maxTokens: 2000,
+        temperature: 0.2,
+      })
       const parsed = parseJson<{ trend?: string }>(raw)
       const candidate = parsed && !Array.isArray(parsed) ? parsed.trend?.trim() : undefined
       if (candidate && unsupportedNumbers(candidate, material).length === 0) return candidate
