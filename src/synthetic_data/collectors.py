@@ -630,15 +630,19 @@ def _github_item(
     )
 
 
-def _github_token() -> Optional[str]:
-    """Return the GitHub token from the environment, if any.
+def _github_token(env_path: str = ".env", environ: Optional[dict] = None) -> Optional[str]:
+    """Return the GitHub token from the environment or ``.env``, if any.
 
-    ``GITHUB_TOKEN`` takes precedence over ``GH_TOKEN``. The value is never
-    logged.
+    ``os.environ`` takes precedence over ``.env``, and ``GITHUB_TOKEN`` takes
+    precedence over ``GH_TOKEN``. The value is never logged.
     """
-    token = os.environ.get("GITHUB_TOKEN")
+    source = os.environ if environ is None else environ
+    token = (source.get("GITHUB_TOKEN") or source.get("GH_TOKEN") or "").strip()
     if not token:
-        token = os.environ.get("GH_TOKEN")
+        from synthetic_data.llm import load_env
+
+        env = load_env(env_path, environ=source)
+        token = (env.get("GITHUB_TOKEN") or env.get("GH_TOKEN") or "").strip()
     return token or None
 
 

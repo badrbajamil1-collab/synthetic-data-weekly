@@ -15,8 +15,8 @@ this folder is the evidence.
 | `week-2026-11-01/` | First real week, end to end: source YAML → Markdown, HTML, PDF, run log | 1 + 3 |
 | `week-2026-11-05/` | First fully automatic week: 214 items → 6 picks, 1 tool, 3 worth a look; dry-run email | 4 + 5 |
 | `week-2026-11-06/` | First run with the all-fallback guard firing: model quota exhausted mid-run, so every summary is extractive; 0 dead links | 4 + 5 |
-| `week-2026-11-20/` | Current week: 4 picks, 1 tool, 1 worth-a-look, 6/6 links live, real `--test` send to Gmail (Primary Inbox), 30/30 verification checks | 4 + 5 + 6 |
-| `review/` | Build review page (progress + flow diagram + code verdict) and PDF page renders. The page is a 1 Nov snapshot; a banner on it lists what changed on 4 Nov. | — |
+| `week-2026-11-20/` | Current week: 4 picks, 1 tool, 1 worth-a-look, 6/6 links live, real `--test` send to Gmail (Primary Inbox), 30/30 verification checks | 4 + 5 |
+| `review/` | Build review page (`review.html` — updated 21 Nov to match `main` and `docs/one-page-note.md`). | — |
 
 ### `week-2026-11-01/`
 
@@ -36,7 +36,7 @@ this folder is the evidence.
 | `report.md` | The email body, spec format |
 | `report.html` | Same content, rendered |
 | `Synthetic_Data_Weekly_2026-11-05.pdf` | Three-page PDF, glossary first |
-| `email.eml` | Dry-run message: HTML body + plain text + PDF attachment, never sent |
+| `email.eml` | Dry-run message (git-ignored; regenerated locally by `--dry-run`) |
 | `run_log.json` | 219 found → 214 kept (5 already sent) → 10 read → 10 links → 0 dead |
 
 ---
@@ -51,14 +51,15 @@ this folder is the evidence.
 | 3 | Fetch, summarise, render | **done** — summaries written from fetched text, with a number guard and extractive fallback |
 | 4 | LangGraph pipeline | **done** — `collect → clean → rank → fetch → report → render → send`, one shared state |
 | 5 | Dry-run, schedule, email | **done** — SMTP keys are configured; a real `--test` send on 18 Nov landed in the Primary Inbox (no PDF attached, direct publisher links; `week-2026-11-20/run_log.json` lost its `email` block during a pre-fix `report_build.py` re-render, and `report_build.py` now preserves `email`) |
-| 6 | Two unattended Saturdays | **in progress** — `SyntheticDataWeekly` is registered for Saturday 08:00 in real-send mode; next run 2026-11-21. Watch two Saturdays before tuning |
+| 6 | Two unattended Saturdays | **in progress** — GitHub Actions (`.github/workflows/weekly-report.yml`) is scheduled live for Saturday `05:17 UTC` (`13:17 UTC+8`, next scheduled run `2026-11-28`); local `SyntheticDataWeekly` was removed to prevent duplicates. Watch two Saturdays before tuning |
 
 The honest summary: **the whole chain runs unattended, and real email delivery has been
 proved.** `python main.py --pipeline --dry-run` writes `email.eml`; a real `--test` send
-reached Gmail's Primary Inbox. The Saturday task is registered in real-send mode; the
-remaining work is to monitor two real Saturdays before tuning anything. Reddit is an optional
-upstream whose outage is now disclosed as a `[warn]` in the run log rather than failing
-the report; `verify_report.py` passes 30/30 with reddit at 0 items.
+reached Gmail's Primary Inbox. GitHub Actions is active in real-send mode (`SMTP_*` and
+`LLM_API_KEY` secrets configured) with the local Windows task removed so only one scheduler
+sends; the remaining work is to monitor two real Saturdays before tuning anything. Reddit is an
+optional upstream whose outage is now disclosed as a `[warn]` in the run log rather than
+failing the report; `verify_report.py` passes 30/30 with reddit at 0 items.
 
 The close-out work that made Phase 0–1 defensible is in git history: the baseline
 commit, then `fix: make dedupe, history and run-log counts real`, then the docs

@@ -209,6 +209,7 @@ def main(argv=None):
     pending = [i for i in range(len(items)) if i not in cached and i not in skip]
 
     stats = {"calls": 0, "retries": 0, "failed_calls": 0}
+    fallback_models = tuple(ranking.get("fallback_models") or ())
 
     def chat_fn(messages):
         stats["calls"] += 1
@@ -218,6 +219,7 @@ def main(argv=None):
                 api_key=api_key,
                 base_url=base_url,
                 model=model,
+                fallback_models=fallback_models,
                 temperature=float(ranking.get("temperature", 0.0)),
                 max_tokens=max_tokens,
                 reasoning_effort=ranking.get("reasoning_effort", "low"),

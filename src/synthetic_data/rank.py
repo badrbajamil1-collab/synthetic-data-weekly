@@ -19,7 +19,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Set
 
 from synthetic_data.links import story_key
 
-RUBRIC_VERSION = "2026-11-11.1"
+RUBRIC_VERSION = "2026-11-21.1"
 
 DUPLICATE_PENALTY = 3
 REASON_MAX = 160
@@ -100,6 +100,11 @@ datasets in this space.
     a weekly push is maintenance, not news, and scores 3-5 unless the text
     shows a real release. A genuinely new or heavily starred repo can score
     8-10.
+    Even a newly created repo with 0-2 stars should be capped at 6 unless it is
+    an official paper reproducibility repo, ships a verifiable benchmark or
+    dataset, or comes from an established research lab/org — do not trust
+    buzzword-only enterprise/compliance claims (HIPAA/GDPR/PCI-DSS) in a 0-star
+    README.
 
 Also rate well7_fit 1-10: how useful this is to Well7 Research Lab, a company
 selling privacy-first tabular and time-series synthetic data to regulated

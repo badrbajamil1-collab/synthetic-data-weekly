@@ -3,9 +3,9 @@
   "week_mode": "run_date",
   "week_start": "2026-11-14",
   "week_end": "2026-11-20",
-  "run_at": "2026-11-18T11:27:38+00:00",
-  "items_found": 155,
-  "items_after_dedupe": 155,
+  "run_at": "2026-11-20T08:24:18+00:00",
+  "items_found": 154,
+  "items_after_dedupe": 154,
   "duplicates_removed": 0,
   "already_sent": 0,
   "candidates_read": 7,
@@ -25,12 +25,22 @@
     "blog": 59,
     "reddit": 0,
     "hn": 15,
-    "github": 35
+    "github": 34
   },
   "why_it_matters": true,
   "links_checked": 6,
   "links_dead": 0,
   "history_recorded": false,
   "urls_recorded": 0,
-  "source_errors": []
+  "source_errors": [],
+  "source_warnings": {
+    "reddit": [
+      "reddit r/MachineLearning+LocalLLaMA+datascience: Client error '404 Not Found' for url 'https://www.reddit.com/r/MachineLearning+LocalLLaMA+datascience.rss'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404"
+    ],
+    "github": [
+      "github 'synthetic-data': 10 older repositories were not checked for a release (GitHub API rate limit)",
+      "github 'differential-privacy': 10 older repositories were not checked for a release (GitHub API rate limit)",
+      "github 'text data augmentation': Client error '403 rate limit exceeded' for url 'https://api.github.com/search/repositories?q=text+data+augmentation+created:%3E=2026-11-14&sort=created&order=desc&per_page=15'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403"
+    ]
+  }
 }

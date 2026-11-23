@@ -589,6 +589,33 @@ with tempfile.TemporaryDirectory() as _tmp:
     check("sender is the configured From", "weekly@example.com" in _msg["From"], str(_msg["From"]))
     check("message has a Message-ID", bool(_msg["Message-ID"]))
     check(
+        "Message-ID domain matches the sender domain",
+        str(_msg["Message-ID"]).endswith("@example.com>"),
+        str(_msg["Message-ID"]),
+    )
+    _msg_bare_sender = _mail.compose(
+        _mail_report,
+        _out,
+        recipients=["a@example.com"],
+        sender="sender@gmail.com",
+    )
+    check(
+        "Message-ID domain matches a bare sender address",
+        str(_msg_bare_sender["Message-ID"]).endswith("@gmail.com>"),
+        str(_msg_bare_sender["Message-ID"]),
+    )
+    _msg_no_domain = _mail.compose(
+        _mail_report,
+        _out,
+        recipients=["a@example.com"],
+        sender="localuser",
+    )
+    check(
+        "Message-ID falls back cleanly when sender has no domain",
+        bool(_msg_no_domain["Message-ID"]) and "@" in str(_msg_no_domain["Message-ID"]),
+        str(_msg_no_domain["Message-ID"]),
+    )
+    check(
         "default email is multipart/alternative with no attachment",
         _msg.get_content_type() == "multipart/alternative",
         _msg.get_content_type(),
@@ -2895,6 +2922,587 @@ try:
     check("publish main without --optional exits 1 when token is unset", _rc_strict == 1, str(_rc_strict))
 finally:
     _pub.llm.load_env = _orig_load_env
+
+# ---------------------------------------------------------------------------
+# Launch resilience & fallback regressions
+# ---------------------------------------------------------------------------
+print("\n[launch resilience & fallback regressions]")
+import smtplib as _smtplib
+from email.message import EmailMessage as _EmailMessage
+
+
+class _ResilientResponse:
+    def __init__(self, code, text="", content=None, headers=None, finish_reason="stop"):
+        self.status_code = code
+        self.text = text
+        self._content = content
+        if headers is not None:
+            self.headers = headers
+        self._finish_reason = finish_reason
+
+    def json(self):
+        return {
+            "choices": [
+                {
+                    "message": {"content": self._content if self._content is not None else self.text},
+                    "finish_reason": self._finish_reason,
+                }
+            ]
+        }
+
+
+class _ResilientClient:
+    def __init__(self, handler):
+        self.handler = handler
+        self.calls = []
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        snap = dict(json or {})
+        self.calls.append((snap.get("model"), snap))
+        return self.handler(len(self.calls) - 1, snap)
+
+
+# 1. llm.chat falls back on primary 429, 503, 404, and empty content
+for _fb_label, _fb_step in (
+    ("429", lambda _i, s: _ResilientResponse(429, "rate limit") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+    ("503", lambda _i, s: _ResilientResponse(503, "unavailable") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+    ("404", lambda _i, s: _ResilientResponse(404, "not found") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+    ("empty-content", lambda _i, s: _ResilientResponse(200, "", content="", finish_reason="length") if s["model"] == "m/primary:free" else _ResilientResponse(200, '{"ok": true}')),
+):
+    _fb_c = _ResilientClient(_fb_step)
+    _fb_out, _ = _llm.chat(
+        [{"role": "user", "content": "hi"}],
+        api_key="k",
+        model="m/primary:free",
+        fallback_models=("m/secondary:free",),
+        attempts=1,
+        client=_fb_c,
+        sleep=lambda _s: None,
+    )
+    check(
+        f"llm.chat falls back to second model on primary {_fb_label}",
+        _fb_out == '{"ok": true}' and [m for m, _ in _fb_c.calls] == ["m/primary:free", "m/secondary:free"],
+        str(_fb_c.calls),
+    )
+
+# 2. llm.chat gives each fallback model a fresh payload after 400 strips on primary
+def _fresh_payload_handler(_i, snap):
+    if snap["model"] == "m/p:free":
+        if "response_format" in snap or "reasoning" in snap:
+            return _ResilientResponse(400, "unsupported field")
+        return _ResilientResponse(503, "down")
+    return _ResilientResponse(200, '{"fresh": true}')
+
+_fresh_c = _ResilientClient(_fresh_payload_handler)
+_fresh_out, _ = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m/p:free",
+    fallback_models=("m/fb:free",),
+    json_mode=True,
+    reasoning_effort="low",
+    attempts=1,
+    client=_fresh_c,
+    sleep=lambda _s: None,
+)
+_fb_payload = _fresh_c.calls[-1][1]
+check(
+    "llm.chat builds a fresh payload for fallback models after 400 field strips",
+    _fresh_out == '{"fresh": true}'
+    and _fb_payload.get("model") == "m/fb:free"
+    and "response_format" in _fb_payload
+    and "reasoning" in _fb_payload,
+    str(_fresh_c.calls),
+)
+
+# 3. llm.chat fails fast on HTTP 401/403 without trying fallbacks
+for _auth_code in (401, 403):
+    _auth_c = _ResilientClient(lambda _i, _s, c=_auth_code: _ResilientResponse(c, "unauthorized"))
+    _auth_err = None
+    try:
+        _llm.chat(
+            [{"role": "user", "content": "hi"}],
+            api_key="bad",
+            model="m/p:free",
+            fallback_models=("m/fb1:free", "m/fb2:free"),
+            attempts=2,
+            client=_auth_c,
+            sleep=lambda _s: None,
+        )
+    except _llm.LLMError as _exc:
+        _auth_err = str(_exc)
+    check(
+        f"llm.chat fails fast on HTTP {_auth_code} without invoking fallbacks",
+        _auth_err is not None and f"HTTP {_auth_code}" in _auth_err and len(_auth_c.calls) == 1,
+        f"calls={len(_auth_c.calls)} err={_auth_err}",
+    )
+
+# 4. llm.chat skips remaining :free models after free-models-per-day, but tries paid fallback
+_quota_c = _ResilientClient(
+    lambda _i, snap: (
+        _ResilientResponse(429, "free-models-per-day limit exceeded")
+        if snap["model"].endswith(":free")
+        else _ResilientResponse(200, '{"paid": true}')
+    )
+)
+_quota_out, _ = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m/primary:free",
+    fallback_models=("m/other-free:free", "m/paid-fallback"),
+    attempts=1,
+    client=_quota_c,
+    sleep=lambda _s: None,
+)
+check(
+    "llm.chat skips remaining :free fallbacks on free-models-per-day but calls paid fallback",
+    _quota_out == '{"paid": true}' and [m for m, _ in _quota_c.calls] == ["m/primary:free", "m/paid-fallback"],
+    str([m for m, _ in _quota_c.calls]),
+)
+
+# 5. llm.chat honours numeric Retry-After header (capped at 30s)
+_ra_sleeps = []
+_ra_c = _ResilientClient(
+    lambda i, _s: (
+        _ResilientResponse(429, "slow down", headers={"Retry-After": "12"})
+        if i == 0
+        else _ResilientResponse(429, "slow down", headers={"Retry-After": "120"})
+        if i == 1
+        else _ResilientResponse(200, '{"ok": true}')
+    )
+)
+_ra_out, _ra_retries = _llm.chat(
+    [{"role": "user", "content": "hi"}],
+    api_key="k",
+    model="m/p:free",
+    attempts=3,
+    client=_ra_c,
+    sleep=_ra_sleeps.append,
+)
+check(
+    "llm.chat honours numeric Retry-After header and caps delay at 30s",
+    _ra_out == '{"ok": true}' and _ra_retries == 2 and _ra_sleeps == [12.0, 30.0],
+    f"sleeps={_ra_sleeps} retries={_ra_retries}",
+)
+
+# 6. config.yaml defines non-empty fallback_models under ranking and summarising
+_cfg_fb = _yaml.safe_load(Path("config.yaml").read_text(encoding="utf-8"))
+check(
+    "config.yaml defines non-empty fallback_models for ranking and summarising",
+    bool((_cfg_fb.get("ranking") or {}).get("fallback_models"))
+    and bool((_cfg_fb.get("summarising") or {}).get("fallback_models")),
+    str({k: (_cfg_fb.get(k) or {}).get("fallback_models") for k in ("ranking", "summarising")}),
+)
+
+# 7. graph.rank_node writes ranked.json only when ranked_path is configured, and publish enriches from it
+_gr_dir = Path(tempfile.mkdtemp())
+_gr_ranked = _gr_dir / "ranked.json"
+_orig_ranked_path = _graph._RANKED_PATH
+try:
+    _gr_items = [
+        _item("Tabular Synthetic Data With DP", "https://arxiv.org/abs/2611.88001", published="2026-11-16T00:00:00Z", source="arxiv"),
+    ]
+    _graph.configure(
+        settings={"ranking": {"model": "test/rank-path", "cache": False, "prefilter": False, "editor_pass_size": 0, "batch_size": 15, "concurrency": 1, "min_scored_to_proceed": 1}},
+        chat_fn=lambda _m: _json.dumps({"scores": [{"id": 0, "score": 8, "well7_fit": 9, "reason": "Strong tabular DP fit."}]}),
+        ranked_path=None,
+    )
+    _graph.rank_node({"errors": [], "deduped_items": _gr_items, "run_date": "2026-11-19"}, None)
+    check("graph.rank_node leaves disk untouched when ranked_path is None", not _gr_ranked.exists())
+
+    _graph.configure(ranked_path=str(_gr_ranked))
+    _gr_res = _graph.rank_node({"errors": [], "deduped_items": _gr_items, "run_date": "2026-11-19"}, None)
+    check(
+        "graph.rank_node writes ranked.json when ranked_path is configured",
+        _gr_ranked.exists() and len(_json.loads(_gr_ranked.read_text(encoding="utf-8"))) == 1 and len(_gr_res["ranked_items"]) == 1,
+        str(_gr_ranked.exists()),
+    )
+
+    _gr_yaml = _gr_dir / "source.yaml"
+    _gr_yaml.write_text(_yaml.safe_dump({
+        "week_start": "2026-11-14",
+        "week_end": "2026-11-20",
+        "trend": "Tabular privacy.",
+        "top_picks": [
+            {
+                "title": "Tabular Synthetic Data With DP",
+                "url": "https://arxiv.org/abs/2611.88001",
+                "source": "arXiv",
+                "published": "2026-11-16",
+                "summary": "Privacy preserving tabular data.",
+            }
+        ],
+    }), encoding="utf-8")
+    _gr_payload = _pub.build_payload(_gr_yaml, ranked_path=_gr_ranked, include_pdf=False)
+    check(
+        "publish_to_cloudflare enriches missing fields from graph-written ranked.json",
+        _gr_payload["items"][0]["score"] == 8
+        and _gr_payload["items"][0]["well7_fit"] == 9
+        and _gr_payload["items"][0]["reason"] == "Strong tabular DP fit.",
+        str(_gr_payload["items"][0]),
+    )
+finally:
+    _graph.configure(ranked_path=_orig_ranked_path)
+
+# 8. emailer.send_message retries safe pre-send/4xx failures and refuses unsafe/permanent retries
+_smtp_msg = _EmailMessage()
+_smtp_msg["Subject"] = "Test"
+_smtp_msg["From"] = "s@example.com"
+_smtp_msg["To"] = "r@example.com"
+_smtp_msg.set_content("Body")
+_smtp_cfg_min = {"host": "smtp.example.com", "port": 587, "user": "u", "password": "p", "timeout": 10.0}
+
+class _RetryableFakeSMTP:
+    def __init__(self, action):
+        self.action = action
+        self.sent = None
+    def __enter__(self):
+        return self
+    def __exit__(self, *exc_info):
+        return False
+    def ehlo(self):
+        pass
+    def starttls(self, context=None):
+        pass
+    def login(self, user, password):
+        if self.action == "auth_err":
+            raise _smtplib.SMTPAuthenticationError(535, b"bad auth")
+        if self.action == "connect_oserror":
+            raise OSError("temporary socket drop")
+    def send_message(self, message):
+        if self.action == "421":
+            raise _smtplib.SMTPResponseException(421, b"try later")
+        if self.action == "550":
+            raise _smtplib.SMTPResponseException(550, b"rejected")
+        if self.action == "mid_data_drop":
+            raise OSError("reset after DATA started")
+        self.sent = message
+
+_pre_attempts = []
+_pre_sleeps = []
+def _pre_factory(host, port, timeout, ssl=False):
+    _pre_attempts.append(len(_pre_attempts))
+    if len(_pre_attempts) == 1:
+        raise OSError("transient connect error")
+    if len(_pre_attempts) == 2:
+        return _RetryableFakeSMTP("421")
+    return _RetryableFakeSMTP("ok")
+
+_mail.send_message(_smtp_msg, _smtp_cfg_min, smtp_factory=_pre_factory, attempts=3, base_delay=2.0, sleep=_pre_sleeps.append)
+check(
+    "emailer.send_message retries pre-send OSError and 421 temporary rejection",
+    len(_pre_attempts) == 3 and _pre_sleeps == [2.0, 4.0],
+    f"attempts={len(_pre_attempts)} sleeps={_pre_sleeps}",
+)
+
+for _no_retry_label, _no_retry_action in (
+    ("SMTPAuthenticationError 535", "auth_err"),
+    ("permanent SMTPResponseException 550", "550"),
+    ("mid-DATA OSError after send_message starts", "mid_data_drop"),
+):
+    _nr_calls = []
+    _nr_err = None
+    def _nr_factory(host, port, timeout, ssl=False, act=_no_retry_action, calls=_nr_calls):
+        calls.append(1)
+        return _RetryableFakeSMTP(act)
+    try:
+        _mail.send_message(_smtp_msg, _smtp_cfg_min, smtp_factory=_nr_factory, attempts=3, sleep=lambda _s: None)
+    except _mail.EmailError as _exc:
+        _nr_err = str(_exc)
+    check(
+        f"emailer.send_message does not retry {_no_retry_label}",
+        _nr_err is not None and len(_nr_calls) == 1,
+        f"calls={len(_nr_calls)} err={_nr_err}",
+    )
+
+# 9. publish_to_cloudflare.publish retries transient 503 and ConnectTimeout, fails fast on 403
+_pub_retry_calls = []
+_pub_retry_sleeps = []
+def _flaky_publish(endpoint, headers=None, json=None, timeout=None):
+    _pub_retry_calls.append(1)
+    if len(_pub_retry_calls) == 1:
+        raise _httpx.ConnectTimeout("timed out")
+    if len(_pub_retry_calls) == 2:
+        return _FakeResp(503, {"error": "unavailable"})
+    return _FakeResp(200, {"ok": True, "reportId": json["id"]})
+
+_pub_retry_res = _pub.publish(
+    _payload,
+    base_url="https://example.workers.dev",
+    token="tok123",
+    attempts=3,
+    base_delay=1.5,
+    post_fn=_flaky_publish,
+    sleep=_pub_retry_sleeps.append,
+)
+check(
+    "publish_to_cloudflare.publish retries ConnectTimeout and HTTP 503",
+    _pub_retry_res.get("ok") is True and len(_pub_retry_calls) == 3 and _pub_retry_sleeps == [1.5, 3.0],
+    f"calls={len(_pub_retry_calls)} sleeps={_pub_retry_sleeps}",
+)
+
+_pub_403_calls = []
+_pub_403_err = None
+def _forbid_publish(endpoint, headers=None, json=None, timeout=None):
+    _pub_403_calls.append(1)
+    return _FakeResp(403, {"error": "forbidden"})
+
+try:
+    _pub.publish(
+        _payload,
+        base_url="https://example.workers.dev",
+        token="bad",
+        attempts=3,
+        post_fn=_forbid_publish,
+        sleep=lambda _s: None,
+    )
+except RuntimeError as _exc:
+    _pub_403_err = str(_exc)
+check(
+    "publish_to_cloudflare.publish fails immediately on HTTP 403 in 1 attempt",
+    _pub_403_err is not None and "HTTP 403" in _pub_403_err and len(_pub_403_calls) == 1,
+    f"calls={len(_pub_403_calls)} err={_pub_403_err}",
+)
+
+print("\n[release_polish]")
+# 1. verify_report accepts flagged runs with partial source_errors or dropped links_dead
+_flagged_path = _write_verify_fixture(
+    _fixture_report,
+    {**_fixture_log, "links_dead": 2, "source_errors": ["arxiv: temporary 503"]},
+)
+_flagged_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_flagged_path)],
+    capture_output=True,
+    text=True,
+)
+check(
+    "verify_report accepts a flagged run with source_errors and dropped dead links",
+    _flagged_run.returncode == 0,
+    (_flagged_run.stdout + _flagged_run.stderr)[-500:],
+)
+
+# 2. verify_report rejects malformed source_errors or invalid links_dead
+_bad_src_path = _write_verify_fixture(_fixture_report, {**_fixture_log, "source_errors": "err"})
+_bad_src_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_bad_src_path)],
+    capture_output=True,
+    text=True,
+)
+_neg_dead_path = _write_verify_fixture(_fixture_report, {**_fixture_log, "links_dead": -1})
+_neg_dead_run = _subprocess.run(
+    [_sys.executable, "verify_report.py", str(_neg_dead_path)],
+    capture_output=True,
+    text=True,
+)
+check(
+    "verify_report rejects non-list source_errors and negative links_dead",
+    _bad_src_run.returncode != 0 and _neg_dead_run.returncode != 0,
+    f"bad_src={_bad_src_run.returncode} neg_dead={_neg_dead_run.returncode}",
+)
+
+# 3. rank rubric caps unsubstantiated 0-2 star new repos and bumps RUBRIC_VERSION
+check(
+    "rank rubric bumps version and caps unsubstantiated 0-2 star new repos",
+    _rank.RUBRIC_VERSION == "2026-11-21.1"
+    and "0-2 stars" in _rank._PROMPT_HEADER
+    and "capped at 6" in _rank._PROMPT_HEADER,
+    _rank.RUBRIC_VERSION,
+)
+
+# 4. collectors._github_token reads .env fallback and respects os.environ precedence
+from synthetic_data.collectors import _github_token as _gh_tok
+
+with tempfile.TemporaryDirectory() as _gh_tmp:
+    _gh_env_file = Path(_gh_tmp) / ".env"
+    _gh_env_file.write_text("GITHUB_TOKEN=ghp_from_dotenv\n", encoding="utf-8")
+    check(
+        "collectors._github_token reads GITHUB_TOKEN from .env when unset in environ",
+        _gh_tok(str(_gh_env_file), environ={}) == "ghp_from_dotenv",
+    )
+    check(
+        "collectors._github_token gives os.environ precedence over .env",
+        _gh_tok(str(_gh_env_file), environ={"GITHUB_TOKEN": "ghp_from_env"}) == "ghp_from_env",
+    )
+
+# 5. render_pdf singularizes 1 top pick / 1 new tool and builds valid PDF with KeepTogether bullets
+from synthetic_data.render_pdf import format_counts_line as _pdf_counts_line, render_pdf as _render_pdf_file
+
+_singular_report = {
+    **_fixture_report,
+    "tools": [{
+        "name": "ExampleTool",
+        "url": "https://example.com/tool",
+        "note": "One useful tool.",
+        "why_it_matters": "Helps Well7.",
+        "score": 8,
+    }],
+    "worth_a_look": [{
+        "title": "ExampleItem",
+        "url": "https://example.com/worth",
+        "note": "One worth a look item.",
+        "why_it_matters": "Also relevant.",
+        "score": 6,
+    }],
+}
+check(
+    "render_pdf singularizes 1 top pick and 1 new tool",
+    _pdf_counts_line(_singular_report) == "1 top pick · 1 new tool · 1 worth a look",
+    _pdf_counts_line(_singular_report),
+)
+with tempfile.TemporaryDirectory() as _pdf_tmp:
+    _pdf_out = Path(_pdf_tmp) / "test.pdf"
+    _render_pdf_file(_singular_report, str(_pdf_out))
+    _pdf_bytes = _pdf_out.read_bytes()
+    check(
+        "render_pdf builds valid PDF with KeepTogether tools and worth_a_look",
+        _pdf_bytes[:5] == b"%PDF-" and len(_pdf_bytes) > 4_000,
+        f"bytes={len(_pdf_bytes)}",
+    )
+
+# 6. GitHub Actions workflows validate SMTP_PORT, gate publish, and restore weekly cache mid-week
+_wf_weekly = _yaml.safe_load(Path(".github/workflows/weekly-report.yml").read_text(encoding="utf-8"))
+_wf_steps = {s.get("name"): s for s in _wf_weekly["jobs"]["run"]["steps"]}
+_wf_pipe = _wf_steps["Run the weekly pipeline"]
+_wf_pub = _wf_steps["Publish verified report to Cloudflare web archive"]
+_wf_keep = _yaml.safe_load(Path(".github/workflows/cache-keepalive.yml").read_text(encoding="utf-8"))
+_wf_keep_steps = _wf_keep["jobs"]["keepalive"]["steps"]
+check(
+    "weekly workflow checks SMTP_PORT and gates Cloudflare publish on actual send or manual flag",
+    'SMTP_PORT' in _wf_pipe.get("run", "")
+    and _wf_pipe.get("id") == "pipeline"
+    and "steps.pipeline.outputs.send == 'true'" in str(_wf_pub.get("if", "")),
+)
+check(
+    "cache-keepalive workflow restores weekly-cache- on Wednesday cron",
+    [{"cron": "17 5 * * 3"}] == _wf_keep[True]["schedule"]
+    and "weekly-cache-" in str(_wf_keep_steps[0]["with"].get("restore-keys", "")),
+)
+
+print("\n[web_subscribers]")
+# 1. fetch_web_subscribers returns [] immediately without token and makes zero network calls
+_sub_called = False
+def _forbid_sub_get(*_args, **_kwargs):
+    global _sub_called
+    _sub_called = True
+    raise AssertionError("network call should not occur without token")
+
+check(
+    "fetch_web_subscribers returns [] with no token and makes zero network calls",
+    _mail.fetch_web_subscribers({}, get_fn=_forbid_sub_get) == [] and not _sub_called,
+)
+
+# 2. fetch_web_subscribers queries /api/subscribers with Bearer token, formats username <email>, sanitizes, dedupes
+_sub_requests = []
+class _FakeSubResponse:
+    def __init__(self, status_code, payload=None):
+        self.status_code = status_code
+        self._payload = payload
+    def json(self):
+        return self._payload
+
+def _ok_sub_get(url, headers=None, timeout=None):
+    _sub_requests.append((url, headers, timeout))
+    return _FakeSubResponse(
+        200,
+        {
+            "subscribers": [
+                {"email": "Alice@example.com", "username": "Alice\r\nSmith"},
+                {"email": "bob@example.com", "username": "bob@example.com"},
+                {"email": "carol@example.com", "username": "carol@other.com"},
+                {"email": "alice@example.com", "username": "Duplicate Alice"},
+                {"email": "bad email@example.com", "username": "Bad"},
+                {"email": "notanemail", "username": "NoAt"},
+                {"email": "dan@example.com", "username": ""},
+            ]
+        },
+    )
+
+_subs = _mail.fetch_web_subscribers(
+    {"CF_PUBLISH_TOKEN": "tok-123", "CF_WORKER_URL": "https://example.workers.dev/"},
+    get_fn=_ok_sub_get,
+)
+check(
+    "fetch_web_subscribers sends Bearer auth, formats clean names, skips invalid, and dedupes",
+    len(_sub_requests) == 1
+    and _sub_requests[0][0] == "https://example.workers.dev/api/subscribers"
+    and _sub_requests[0][1]["Authorization"] == "Bearer tok-123"
+    and _subs == [
+        "Alice Smith <Alice@example.com>",
+        "bob@example.com",
+        "carol@example.com",
+        "dan@example.com",
+    ],
+    f"reqs={_sub_requests} subs={_subs}",
+)
+
+# 3. fetch_web_subscribers falls back gracefully on HTTP 500 or ConnectTimeout
+import httpx as _sub_httpx
+_sub_500 = _mail.fetch_web_subscribers(
+    {"CRON_RUN_TOKEN": "tok-123"},
+    get_fn=lambda *_a, **_kw: _FakeSubResponse(500, {}),
+)
+def _timeout_sub_get(*_a, **_kw):
+    raise _sub_httpx.ConnectTimeout("timed out")
+_sub_timeout = _mail.fetch_web_subscribers(
+    {"CRON_RUN_TOKEN": "tok-123"},
+    get_fn=_timeout_sub_get,
+)
+check(
+    "fetch_web_subscribers returns [] gracefully on HTTP 500 and ConnectTimeout",
+    _sub_500 == [] and _sub_timeout == [],
+    f"500={_sub_500} timeout={_sub_timeout}",
+)
+
+# 4. resolve_recipients merges config.yaml + web subscribers, dedupes case-insensitively, skips on test/to
+_merged_recips = _mail.resolve_recipients(
+    {"recipients": ["x@example.com", "Alice@Example.com"]},
+    {"CF_PUBLISH_TOKEN": "tok"},
+    subscribers_fn=lambda _env: ["Alice Smith <alice@example.com>", "New User <new@example.com>"],
+)
+check(
+    "resolve_recipients merges config.yaml and web subscribers while preserving config order/entry",
+    _merged_recips == ["x@example.com", "Alice@Example.com", "New User <new@example.com>"],
+    str(_merged_recips),
+)
+_test_recips = _mail.resolve_recipients(
+    {"recipients": ["x@example.com"]},
+    {"DRY_RUN_RECIPIENT": "me@example.com", "CF_PUBLISH_TOKEN": "tok"},
+    test=True,
+    subscribers_fn=lambda _env: ["Extra <extra@example.com>"],
+)
+_explicit_recips = _mail.resolve_recipients(
+    {"recipients": ["x@example.com"]},
+    {"CF_PUBLISH_TOKEN": "tok"},
+    to=["only@example.com"],
+    subscribers_fn=lambda _env: ["Extra <extra@example.com>"],
+)
+check(
+    "resolve_recipients ignores web subscribers on test=True and explicit to=[...]",
+    _test_recips == ["me@example.com"] and _explicit_recips == ["only@example.com"],
+    f"test={_test_recips} to={_explicit_recips}",
+)
+
+# 5. deliver dry_run merges subscribers_fn into email.eml To: header
+_sub_dir = Path(tempfile.mkdtemp()) / "week-sub"
+_sub_dir.mkdir(parents=True, exist_ok=True)
+(_sub_dir / "report.md").write_text("plain body\n", encoding="utf-8")
+(_sub_dir / "report.html").write_text("<p>html body</p>\n", encoding="utf-8")
+(_sub_dir / "source.yaml").write_text(_yaml.safe_dump(_mail_report), encoding="utf-8")
+(_sub_dir / "config.yaml").write_text("recipients:\n  - core@example.com\n", encoding="utf-8")
+_sub_deliv = _mail.deliver(
+    str(_sub_dir / "source.yaml"),
+    str(_sub_dir / "config.yaml"),
+    dry_run=True,
+    env={"MAIL_FROM": "Weekly <weekly@example.com>"},
+    subscribers_fn=lambda _env: ["Badr Bajamil <badr@example.com>"],
+)
+_sub_eml = Path(_sub_deliv["path"]).read_text(encoding="utf-8")
+check(
+    "emailer.deliver merges web subscribers into email.eml To header",
+    _sub_deliv["recipients"] == ["core@example.com", "Badr Bajamil <badr@example.com>"]
+    and "Badr Bajamil <badr@example.com>" in _sub_eml,
+    str(_sub_deliv["recipients"]),
+)
 
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")

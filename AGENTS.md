@@ -96,9 +96,10 @@ not a Pydantic model — LangGraph requires TypedDict). Nodes:
 
 `collect` applies `history.db` before ranking, writes `raw_items.json` and
 `raw_run_log.json` (the same artefacts as the Phase 1 CLI), and carries the
-`already_sent` count into the run log.
+`already_sent` count into the run log. `weekly_run` configures `ranked_path="ranked.json"`
+so `rank_node` also writes `ranked.json` for `publish_to_cloudflare.py` to enrich items.
 
-`fetch` calls `fetch_candidates.fetch` for the seven best in-window items, so summaries
+`fetch` calls `fetch_candidates.fetch` for the top 10 (`max_top_picks`) in-window items, so summaries
 are written from the real abstract or page text rather than the ranking snippet. A page
 that cannot be fetched keeps its snippet, and the report discloses that. `render` fills
 `report_markdown` / `report_html` in state from the files `report_build.py` wrote (the
@@ -125,7 +126,9 @@ The collect-only behaviour of `python main.py` is untouched and stays reproducib
 ### Phase 2 — ranking
 
 `rank_items.py` → `synthetic_data/rank.py` for logic, `synthetic_data/llm.py` for
-the only HTTP call to a model. Output is `ranked.json`; `score_cache.json` makes a
+the only HTTP call to a model (walking `ranking.fallback_models` / `summarising.fallback_models`
+when a candidate fails, returns empty reasoning-capped content, or hits rate limits, and
+skipping remaining `:free` models on `free-models-per-day`). Output is `ranked.json`; `score_cache.json` makes a
 rerun free and byte-identical.
 
 Three rules that are easy to break:
@@ -155,7 +158,7 @@ Three rules that are easy to break:
   never fails `verify_report.py`. Do not "fix" this back into a fatal source error.
 - **arXiv announces nothing Friday or Saturday**, so most weeks end with a date gap.
   Expected. Its `all:` search also matches loosely — expect off-topic papers in the raw list.
-- **GitHub search filters on creation and push dates**, not publication date, and
+- **GitHub search searches `created:` repos plus bounded release lookups for older repos** (not push dates alone), and
   returns repos that merely mention the query. Repos created inside the week are
   news on their own; older ones count only when a release shipped that week.
   Treat the ranking as noise.
@@ -186,7 +189,7 @@ Three rules that are easy to break:
   article links), but long-term production delivery should move to an authenticated
   company-domain sending service (SPF/DKIM/DMARC).
 - **Live Saturday delivery runs on GitHub Actions.** `.github/workflows/weekly-report.yml`
-  runs every Saturday at `05:00 UTC` (`08:00 UTC+3` / `13:00 UTC+8`) with `LLM_API_KEY`
+  runs every Saturday at `05:17 UTC` (`08:17 UTC+3` / `13:17 UTC+8`) with `LLM_API_KEY`
   and `SMTP_*` secrets configured on `badrbajamil1-collab/synthetic-data-weekly`. The
   local Windows task `SyntheticDataWeekly` was removed (`schedule_task.py --delete`) so
   only one scheduler sends (and delivery does not depend on this laptop being awake,

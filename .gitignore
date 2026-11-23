@@ -6,6 +6,7 @@ raw_items.json
 candidates.json
 raw_run_log.json
 history.db
+history.db.*
 ranked.json
 score_cache.json
 summary_cache.json
@@ -25,6 +26,7 @@ Thumbs.db
 
 # agent tooling — local, not part of the deliverable
 .agents/
+.codex/
 .superpowers/
 skills-lock.json
 .wrangler/

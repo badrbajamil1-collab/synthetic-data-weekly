@@ -1,7 +1,7 @@
 [project]
 name = "synthetic-data"
 version = "0.1.0"
-description = "Add your description here"
+description = "Weekly Synthetic Data Research Agent for Well7 Research Lab"
 readme = "README.md"
 authors = [
     { name = "Badr Bajamil", email = "badrbajamil1@gmail.com" }

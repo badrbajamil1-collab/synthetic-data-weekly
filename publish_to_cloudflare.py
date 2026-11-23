@@ -17,6 +17,7 @@ import argparse
 import base64
 import json
 import sys
+import time
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,6 +29,7 @@ from synthetic_data import llm, render
 from synthetic_data.links import normalize_url
 
 DEFAULT_WORKER_URL = "https://synthetic-data-web.coolbadrtv1.workers.dev"
+RETRY_STATUSES = frozenset({429, 500, 502, 503, 504})
 SECTIONS = (
     ("top_picks", "top", "title", "summary"),
     ("tools", "tool", "name", "note"),
@@ -161,13 +163,33 @@ def build_payload(
     return payload
 
 
+def _retry_delay(response, fallback: float, cap: float = 30.0) -> float:
+    """Honour a numeric Retry-After header when present, capped at `cap` seconds."""
+    headers = getattr(response, "headers", None)
+    if headers is not None and hasattr(headers, "get"):
+        raw = headers.get("Retry-After")
+        if raw is None:
+            raw = headers.get("retry-after")
+        if raw is not None:
+            try:
+                seconds = float(str(raw).strip())
+                if seconds > 0:
+                    return min(seconds, cap)
+            except (ValueError, TypeError):
+                pass
+    return fallback
+
+
 def publish(
     payload: Dict[str, Any],
     *,
     base_url: str,
     token: str,
     timeout: float = 45.0,
+    attempts: int = 3,
+    base_delay: float = 3.0,
     post_fn=None,
+    sleep=time.sleep,
 ) -> Dict[str, Any]:
     endpoint = base_url.rstrip("/") + "/api/reports/publish"
     headers = {
@@ -175,10 +197,21 @@ def publish(
         "Content-Type": "application/json",
     }
     sender = post_fn or httpx.post
-    response = sender(endpoint, headers=headers, json=payload, timeout=timeout)
-    if response.status_code != 200:
+    total_attempts = max(1, int(attempts))
+    for attempt in range(total_attempts):
+        try:
+            response = sender(endpoint, headers=headers, json=payload, timeout=timeout)
+        except httpx.HTTPError:
+            if attempt < total_attempts - 1:
+                sleep(base_delay * (attempt + 1))
+                continue
+            raise
+        if response.status_code == 200:
+            return response.json()
+        if response.status_code in RETRY_STATUSES and attempt < total_attempts - 1:
+            sleep(_retry_delay(response, base_delay * (attempt + 1)))
+            continue
         raise RuntimeError(f"publish failed (HTTP {response.status_code}): {response.text[:240]}")
-    return response.json()
 
 
 def main(argv: Optional[List[str]] = None) -> int:

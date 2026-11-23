@@ -18,8 +18,11 @@ fails, the report is not marked as sent and next week can retry it.
 """
 
 import json
+import re
 import smtplib
 import ssl
+import sys
+import time
 from datetime import datetime, timezone
 from email import policy
 from email.message import EmailMessage
@@ -27,12 +30,15 @@ from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence
 
+import httpx
 import yaml
 
 from synthetic_data import llm, memory, render
 
 DEFAULT_SENDER = "Synthetic Data Weekly <weekly@example.com>"
 DEFAULT_TIMEOUT = 60.0
+DEFAULT_WORKER_URL = "https://synthetic-data-web.coolbadrtv1.workers.dev"
+SUBSCRIBERS_TIMEOUT = 15.0
 _CONSUMER_MAIL_DOMAINS = frozenset({
     "gmail.com",
     "googlemail.com",
@@ -97,18 +103,107 @@ def resolve_sender(raw_sender: str, user: str, host: str = "") -> str:
     return formataddr((display_name, login)) if display_name else login
 
 
+def _clean_display_name(raw: str, email: str) -> str:
+    """Sanitize a subscriber display name for an email header."""
+    cleaned = re.sub(r"[\r\n\t\x00-\x1f\x7f]+", " ", str(raw or ""))
+    cleaned = cleaned.replace('"', "").replace("<", "").replace(">", "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()[:80]
+    if not cleaned or "@" in cleaned or cleaned.lower() == email.lower():
+        return ""
+    return cleaned
+
+
+def _format_subscriber(email: str, username: str = "") -> str:
+    """Format a subscriber as 'Username <email>' or 'email' when valid."""
+    addr = str(email or "").strip()
+    if not addr or "@" not in addr or re.search(r"[\s\x00-\x1f\x7f]", addr):
+        return ""
+    name = _clean_display_name(username, addr)
+    return formataddr((name, addr)) if name else addr
+
+
+def dedupe_recipients(addresses: Sequence[str]) -> List[str]:
+    """Deduplicate formatted recipient entries case-insensitively by email address."""
+    seen: set[str] = set()
+    out: List[str] = []
+    for raw in addresses:
+        entry = str(raw or "").strip()
+        if not entry:
+            continue
+        _, parsed_addr = parseaddr(entry)
+        key = (parsed_addr or entry).strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(entry)
+    return out
+
+
+def fetch_web_subscribers(
+    env: dict,
+    *,
+    timeout: float = SUBSCRIBERS_TIMEOUT,
+    get_fn=None,
+) -> List[str]:
+    """Fetch subscribed web accounts from the Cloudflare Worker.
+
+    Returns formatted 'Username <email>' entries when CF_PUBLISH_TOKEN or
+    CRON_RUN_TOKEN is set. Returns [] without hitting the network when no token
+    is configured, and falls back to [] with a warning on network/HTTP errors so
+    config.yaml recipients still receive the weekly email.
+    """
+    token = (env.get("CF_PUBLISH_TOKEN") or env.get("CRON_RUN_TOKEN") or "").strip()
+    if not token:
+        return []
+    base_url = (env.get("CF_WORKER_URL") or DEFAULT_WORKER_URL).strip()
+    endpoint = base_url.rstrip("/") + "/api/subscribers"
+    getter = get_fn or httpx.get
+    try:
+        response = getter(
+            endpoint,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=timeout,
+        )
+        if response.status_code != 200:
+            print(
+                f"WARN  web subscribers lookup returned HTTP {response.status_code}; using config.yaml recipients only",
+                file=sys.stderr,
+            )
+            return []
+        payload = response.json() or {}
+    except Exception as exc:  # noqa: BLE001 - never block weekly mail on web subscriber lookup
+        print(
+            f"WARN  web subscribers lookup failed ({type(exc).__name__}: {exc}); using config.yaml recipients only",
+            file=sys.stderr,
+        )
+        return []
+
+    rows = payload.get("subscribers") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return []
+    formatted = [
+        _format_subscriber(row.get("email") or "", row.get("username") or "")
+        for row in rows
+        if isinstance(row, dict)
+    ]
+    return dedupe_recipients([entry for entry in formatted if entry])
+
+
 def resolve_recipients(
     config: dict,
     env: dict,
     *,
     test: bool = False,
     to: Optional[Sequence[str]] = None,
+    extra_recipients: Optional[Sequence[str]] = None,
+    subscribers_fn=None,
 ) -> List[str]:
     """Recipients for this send.
 
     Order of precedence: explicit ``--to`` addresses, then ``DRY_RUN_RECIPIENT``
-    when ``--test`` is used, then the five recipients in ``config.yaml``. A test
-    send can never go to the whole list by accident.
+    when ``--test`` is used, then ``config.yaml`` merged with subscribed
+    Cloudflare web accounts (when a Worker token is configured). A test send can
+    never go to the whole list by accident.
     """
     if to:
         recipients = [str(address).strip() for address in to if str(address).strip()]
@@ -120,11 +215,17 @@ def resolve_recipients(
             )
         recipients = [target]
     else:
-        recipients = [
+        base = [
             str(address).strip()
             for address in (config.get("recipients") or [])
             if str(address).strip()
         ]
+        web = (
+            list(extra_recipients)
+            if extra_recipients is not None
+            else (subscribers_fn or fetch_web_subscribers)(env)
+        )
+        recipients = dedupe_recipients([*base, *web])
 
     if not recipients:
         raise EmailError(
@@ -175,15 +276,19 @@ def compose(
             "Run report_build.py first."
         )
 
+    effective_sender = sender or DEFAULT_SENDER
+    _, sender_addr = parseaddr(effective_sender)
+    msgid_domain = sender_addr.rsplit("@", 1)[1].strip() if "@" in sender_addr else ""
+
     message = EmailMessage(policy=policy.SMTP)
     message["Subject"] = render.subject_line(report)
-    message["From"] = sender or DEFAULT_SENDER
+    message["From"] = effective_sender
     message["To"] = ", ".join(recipients)
     clean_reply_to = (reply_to or "").strip()
     if clean_reply_to:
         message["Reply-To"] = clean_reply_to
     message["Date"] = formatdate(localtime=True)
-    message["Message-ID"] = make_msgid()
+    message["Message-ID"] = make_msgid(domain=msgid_domain or None)
     message["Auto-Submitted"] = "auto-generated"
 
     message.set_content(markdown_path.read_text(encoding="utf-8"), subtype="plain", charset="utf-8")
@@ -215,27 +320,58 @@ def _default_smtp_factory(host, port, timeout, ssl=False):
     return smtplib.SMTP(host, port, timeout=timeout)
 
 
-def send_message(message: EmailMessage, settings: dict, *, smtp_factory=None) -> None:
-    """Send one message: STARTTLS on 587 (and most ports), implicit TLS on 465."""
+def send_message(
+    message: EmailMessage,
+    settings: dict,
+    *,
+    smtp_factory=None,
+    attempts: int = 3,
+    base_delay: float = 5.0,
+    sleep=time.sleep,
+) -> None:
+    """Send one message: STARTTLS on 587 (and most ports), implicit TLS on 465.
+
+    Retries only when it is provably safe against sending duplicates:
+    pre-DATA connection/TLS/login failures and explicit temporary 4xx SMTP
+    rejections (e.g., 421/450/451). Auth failures (535), permanent 5xx
+    rejections, and mid-DATA network drops fail immediately without retrying.
+    """
     factory = smtp_factory or _default_smtp_factory
     use_ssl = int(settings["port"]) == 465
-    try:
-        with factory(
-            settings["host"],
-            int(settings["port"]),
-            float(settings.get("timeout") or DEFAULT_TIMEOUT),
-            ssl=use_ssl,
-        ) as smtp:
-            if not use_ssl:
-                smtp.ehlo()
-                smtp.starttls(context=ssl.create_default_context())
-                smtp.ehlo()
-            smtp.login(settings["user"], settings["password"])
-            smtp.send_message(message)
-    except EmailError:
-        raise
-    except (smtplib.SMTPException, OSError) as exc:
-        raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
+    total_attempts = max(1, int(attempts))
+
+    for attempt in range(total_attempts):
+        sending_started = False
+        try:
+            with factory(
+                settings["host"],
+                int(settings["port"]),
+                float(settings.get("timeout") or DEFAULT_TIMEOUT),
+                ssl=use_ssl,
+            ) as smtp:
+                if not use_ssl:
+                    smtp.ehlo()
+                    smtp.starttls(context=ssl.create_default_context())
+                    smtp.ehlo()
+                smtp.login(settings["user"], settings["password"])
+                sending_started = True
+                smtp.send_message(message)
+                return
+        except EmailError:
+            raise
+        except smtplib.SMTPAuthenticationError as exc:
+            raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
+        except smtplib.SMTPResponseException as exc:
+            code = int(getattr(exc, "smtp_code", 0) or 0)
+            if 400 <= code < 500 and attempt < total_attempts - 1:
+                sleep(base_delay * (attempt + 1))
+                continue
+            raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
+        except (smtplib.SMTPException, OSError) as exc:
+            if not sending_started and attempt < total_attempts - 1:
+                sleep(base_delay * (attempt + 1))
+                continue
+            raise EmailError(f"SMTP send failed: {type(exc).__name__}: {exc}") from exc
 
 
 def _update_run_log(out_dir: Path, summary: dict) -> None:
@@ -280,12 +416,17 @@ def deliver(
     env: Optional[dict] = None,
     smtp_factory=None,
     db_path: Optional[str] = None,
+    extra_recipients: Optional[Sequence[str]] = None,
+    subscribers_fn=None,
 ) -> dict:
     """Compose the email for one week, then either write it or send it.
 
-    ``dry_run`` writes ``email.eml`` and never touches the network or
-    ``history.db``. A ``test`` send goes to one address and never records
-    history either, so the real weekly send is unaffected.
+    ``config.yaml`` recipients are merged with subscribed Cloudflare web
+    accounts when ``CF_PUBLISH_TOKEN`` / ``CRON_RUN_TOKEN`` is set (falling back
+    to ``config.yaml`` if the Worker is unreachable). ``dry_run`` writes
+    ``email.eml`` and never touches the network or ``history.db``. A ``test``
+    send goes to one address and never records history either, so the real
+    weekly send is unaffected.
     """
     report_file = Path(report_path)
     report = _load_yaml(report_file)
@@ -293,7 +434,14 @@ def deliver(
     out_dir = report_file.parent
 
     env = llm.load_env() if env is None else env
-    recipients = resolve_recipients(config, env, test=test, to=to)
+    recipients = resolve_recipients(
+        config,
+        env,
+        test=test,
+        to=to,
+        extra_recipients=extra_recipients,
+        subscribers_fn=subscribers_fn,
+    )
     sender = resolve_sender(
         env.get("MAIL_FROM") or "",
         env.get("SMTP_USER") or "",

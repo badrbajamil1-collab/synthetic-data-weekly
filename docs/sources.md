@@ -64,8 +64,10 @@ or `subreddits` key, not this list directly.
   invisible to it, which is why the keyword list is broad rather than exact.
 - arXiv announces nothing on Friday or Saturday, so most weeks end with a date gap.
   That is expected, not a collector failure.
-- GitHub search filters on creation and push dates, not publication date, and returns
-  repos that merely mention a query term. Its ranking is noise; treat it as a
-  discovery net.
-- Reddit allows roughly one request per minute per IP. The collector backs off
-  15/30/45 s rather than failing, so a second full run inside a minute takes ~90 s.
+- GitHub search queries `created:` repos plus bounded release checks for older repos
+  (not push dates alone), and returns repos that merely mention a query term. Its
+  ranking is noise; treat it as a discovery net.
+- Reddit allows roughly one request per minute per IP (backing off 15/30/45 s when
+  reachable). As of 2026-11-18 both the multi-subreddit `.rss` feed and JSON API are
+  blocked (`404`/`403`), so `fetch_reddit` degrades cleanly to a non-fatal `[warn]`
+  and contributes 0 items without failing the week.

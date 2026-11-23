@@ -260,6 +260,10 @@ def main(argv=None) -> int:
             print(f"FAIL  {exc}", file=sys.stderr)
             return 1
 
+        fallback_models = tuple(
+            settings.get("fallback_models") or ranking.get("fallback_models") or ()
+        )
+
         def chat_fn(messages):
             # Count the attempt before the call: a quota rejection still cost a
             # request, and hiding it makes an outage look like a quiet success.
@@ -270,6 +274,7 @@ def main(argv=None) -> int:
                 api_key=api_key,
                 base_url=base_url,
                 model=model,
+                fallback_models=fallback_models,
                 temperature=float(settings.get("temperature", 0.2)),
                 max_tokens=int(settings.get("max_tokens", 2000)),
                 reasoning_effort=settings.get("reasoning_effort", "low"),
