@@ -78,12 +78,12 @@ export function PipelineStepper({
           : ''
 
   return (
-    <div className="rounded-2xl border border-border bg-white px-5 py-4 sm:px-6">
+    <div className="rounded-2xl border border-border bg-[#fffdf9] px-5 py-4 shadow-[0_6px_18px_rgba(14,62,64,0.05)] sm:px-6">
       <p className="sr-only" role="status" aria-live="polite">
         {liveStatusText}
       </p>
 
-      <ol className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
+      <ol className="grid grid-cols-2 gap-x-3 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
         {NODE_STEPS.map((step, index) => {
           const done = completedNodes.includes(step.id)
           const active = status === 'running' && activeNode === step.id && !done
@@ -93,15 +93,15 @@ export function PipelineStepper({
             <li
               key={step.id}
               aria-current={active ? 'step' : undefined}
-              className="flex items-center justify-between gap-2 border-b border-border/60 pb-2 sm:border-b-0 sm:pb-0"
+              className="flex flex-col items-start gap-1 border-b border-border/70 pb-2 sm:border-b-0 sm:pb-0 lg:border-r lg:border-border/70 lg:pr-3 lg:last:border-r-0 lg:last:pr-0"
             >
               <div className="flex min-w-0 items-center gap-2">
                 <span
                   className={cn(
-                    'grid size-5 shrink-0 place-items-center rounded-full font-mono text-[11px] font-medium transition-colors',
-                    done && 'bg-emerald-700 text-white',
-                    active && 'bg-primary text-white',
-                    !done && !active && 'border border-slate-300 text-muted-foreground',
+                    'grid size-5 shrink-0 place-items-center rounded-full font-mono text-[11px] font-semibold transition-colors',
+                    done && 'bg-[#0e6245] text-white',
+                    active && 'bg-[#b46319] text-[#fffdf9]',
+                    !done && !active && 'border border-input bg-secondary text-muted-foreground',
                   )}
                 >
                   {done ? (
@@ -121,7 +121,7 @@ export function PipelineStepper({
                 <span
                   className={cn(
                     'truncate text-xs',
-                    done || active ? 'font-semibold text-ink' : 'text-muted-foreground',
+                    done || active ? 'font-bold text-ink' : 'font-semibold text-muted-foreground',
                   )}
                 >
                   {step.label}
@@ -129,7 +129,7 @@ export function PipelineStepper({
               </div>
 
               {metric && (
-                <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+                <span className="pl-7 font-mono text-[11px] text-muted-foreground tabular-nums">
                   {metric}
                 </span>
               )}
@@ -139,14 +139,14 @@ export function PipelineStepper({
       </ol>
 
       {sourceStats.length > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border/70 pt-3 font-mono text-xs text-muted-foreground">
-          <span className="font-sans text-xs font-semibold text-muted-foreground">Sources</span>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-border pt-3 font-mono text-xs text-muted-foreground">
+          <span className="font-sans text-xs font-bold text-muted-foreground">Sources</span>
           {sourceStats.map((source) => (
             <span
               key={source.name}
               className={cn(
                 'tabular-nums',
-                source.error ? 'text-amber-800' : source.count > 0 ? 'text-ink' : 'text-muted-foreground',
+                source.error ? 'text-[#b46319]' : source.count > 0 ? 'text-ink' : 'text-muted-foreground',
               )}
             >
               {source.name}{' '}

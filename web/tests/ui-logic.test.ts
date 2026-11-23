@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { formatDate, parseUtcTimestamp, splitTrendSentences } from '../src/lib/report.ts'
+import { countReadInItems, estimateBriefMinutes, estimateItemMinutes } from '../src/lib/ritual.ts'
 import { normalizePath } from '../src/lib/router.ts'
 import { describeChipState, matchesFollows, sameFollow } from '../src/lib/topics.ts'
 
@@ -55,4 +56,19 @@ test('normalizePath: removes trailing slashes while preserving root', () => {
   assert.equal(normalizePath('/'), '/')
   assert.equal(normalizePath('/archive/'), '/archive')
   assert.equal(normalizePath('/brief/week-2026-11-20///'), '/brief/week-2026-11-20')
+})
+
+test('ritual reading helpers: estimate item & brief minutes and count read items', () => {
+  const shortItem = { id: 'a', summary: 'Short note about synthetic benchmarks.', reason: '' }
+  const longItem = {
+    id: 'b',
+    summary: new Array(45).fill('word').join(' '),
+    reason: 'Important privacy evaluation benchmark.',
+  }
+  assert.equal(estimateItemMinutes(shortItem), 1)
+  assert.equal(estimateItemMinutes(longItem), 2)
+  assert.equal(estimateBriefMinutes([]), 0)
+  assert.equal(estimateBriefMinutes([shortItem]), 2)
+  assert.equal(estimateBriefMinutes([shortItem, longItem]), 3)
+  assert.equal(countReadInItems(new Set(['a', 'missing']), [shortItem, longItem]), 1)
 })

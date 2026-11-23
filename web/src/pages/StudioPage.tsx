@@ -380,10 +380,10 @@ export function StudioPage({
   }, [displayItems, keywordFilter])
 
   return (
-    <section className="mx-auto max-w-7xl px-5 pb-20 pt-10 sm:px-8 sm:pt-14">
+    <section className="mx-auto max-w-7xl px-5 pb-20 pt-10 sm:px-8 sm:pt-12">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-3xl font-medium tracking-[-0.03em] text-ink sm:text-4xl">
+          <h1 className="font-display text-3xl font-medium tracking-[-0.02em] text-primary sm:text-4xl">
             Live topic search
           </h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -395,15 +395,15 @@ export function StudioPage({
           <div
             role="group"
             aria-label="Search mode"
-            className="flex items-center gap-1 rounded-xl border border-border bg-white p-1"
+            className="flex items-center gap-1 rounded-full border border-input bg-[#fffdf9] p-1"
           >
             <button
               type="button"
               aria-pressed={mode === 'query'}
               onClick={() => setMode('query')}
               className={cn(
-                'touch-target min-h-8 cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                mode === 'query' ? 'bg-primary text-white' : 'text-muted-foreground hover:text-ink',
+                'touch-target min-h-8 cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                mode === 'query' ? 'bg-primary text-[#faf4ec]' : 'text-muted-foreground hover:text-primary',
               )}
             >
               Topic search
@@ -413,8 +413,8 @@ export function StudioPage({
               aria-pressed={mode === 'weekly'}
               onClick={() => setMode('weekly')}
               className={cn(
-                'touch-target min-h-8 cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                mode === 'weekly' ? 'bg-ink text-white' : 'text-muted-foreground hover:text-ink',
+                'touch-target min-h-8 cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                mode === 'weekly' ? 'bg-primary text-[#faf4ec]' : 'text-muted-foreground hover:text-primary',
               )}
             >
               Publish weekly brief
@@ -451,9 +451,9 @@ export function StudioPage({
               placeholder={
                 mode === 'weekly'
                   ? 'Full weekly brief across all synthetic-data sources (optional focus topic)…'
-                  : 'Search a topic (e.g. tabular differential privacy, clinical EHR, time series)…'
+                  : 'Search a topic (e.g. DP, clinical EHR, time series)…'
               }
-              className="h-12 w-full rounded-xl border border-input bg-white pl-11 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="h-12 w-full rounded-xl border border-input bg-[#fffdf9] pl-11 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             />
           </div>
 
@@ -463,7 +463,7 @@ export function StudioPage({
               size="lg"
               variant="outline"
               onClick={stopRun}
-              className="h-12 rounded-xl border-destructive/40 px-6 text-destructive hover:border-destructive hover:bg-destructive/5 hover:text-destructive"
+              className="h-12 border-destructive/40 px-6 text-destructive hover:border-destructive hover:bg-destructive/5 hover:text-destructive"
             >
               <Square className="size-3.5 fill-current" aria-hidden="true" />
               Stop search
@@ -472,8 +472,8 @@ export function StudioPage({
             <Button
               type="submit"
               size="lg"
-              variant="ink"
-              className="h-12 rounded-xl px-6"
+              variant="amber"
+              className="h-12 px-6"
             >
               <Play className="size-3.5 fill-current" aria-hidden="true" />
               {signedIn
@@ -486,9 +486,9 @@ export function StudioPage({
         </form>
 
         {/* Structured Focus & Scope Controls */}
-        <div className="mt-4 space-y-3 rounded-2xl border border-border/80 bg-white/80 p-4 text-xs">
+        <div className="mt-4 space-y-3 rounded-2xl border border-border bg-[#fffdf9]/85 p-4 text-xs shadow-[0_6px_18px_rgba(14,62,64,0.04)]">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-semibold text-muted-foreground">Presets</span>
+            <span className="font-bold text-muted-foreground">Presets</span>
             <div role="group" aria-label="Preset topics" className="flex flex-wrap items-center gap-1.5">
               {PRESET_QUERIES.map((preset) => {
                 const active = query.trim().toLowerCase() === preset.query.toLowerCase()
@@ -503,10 +503,10 @@ export function StudioPage({
                       queryInputRef.current?.focus()
                     }}
                     className={cn(
-                      'touch-target min-h-8 cursor-pointer rounded-full border px-3 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
+                      'touch-target min-h-8 cursor-pointer rounded-full border px-3 py-1 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
                       active
-                        ? 'border-primary/50 bg-primary/10 font-semibold text-primary'
-                        : 'border-border bg-white text-ink hover:border-primary/40 hover:text-primary',
+                        ? 'border-primary bg-primary text-[#faf4ec]'
+                        : 'border-input bg-[#fffdf9] text-ink hover:border-primary hover:text-primary',
                     )}
                   >
                     {preset.label}
@@ -516,13 +516,13 @@ export function StudioPage({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 border-t border-border/60 pt-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2.5 border-t border-border pt-3">
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-muted-foreground">Window</span>
+              <span className="font-bold text-muted-foreground">Window</span>
               <div
                 role="group"
                 aria-label="Time window"
-                className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-background p-0.5 font-mono text-xs"
+                className="inline-flex items-center gap-0.5 rounded-full border border-input bg-[#fffdf9] p-0.5 font-mono text-xs"
               >
                 {WINDOW_OPTIONS.map((opt) => (
                   <button
@@ -531,10 +531,10 @@ export function StudioPage({
                     aria-pressed={days === opt.days}
                     onClick={() => setDays(opt.days)}
                     className={cn(
-                      'touch-target min-h-8 cursor-pointer rounded-md px-2.5 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      'touch-target min-h-8 cursor-pointer rounded-full px-3 py-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       days === opt.days
-                        ? 'bg-white font-semibold text-ink shadow-2xs'
-                        : 'text-muted-foreground hover:text-ink',
+                        ? 'bg-primary font-semibold text-[#faf4ec]'
+                        : 'text-muted-foreground hover:text-primary',
                     )}
                   >
                     {opt.label}
@@ -544,7 +544,7 @@ export function StudioPage({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-semibold text-muted-foreground">Sources</span>
+              <span className="font-bold text-muted-foreground">Sources</span>
               <div role="group" aria-label="Research sources" className="flex flex-wrap items-center gap-1.5">
                 {SOURCE_OPTIONS.map((source) => {
                   const checked = selectedSources.includes(source.id)
@@ -555,10 +555,10 @@ export function StudioPage({
                       aria-pressed={checked}
                       onClick={() => toggleSourceFamily(source.id)}
                       className={cn(
-                        'touch-target min-h-8 cursor-pointer rounded-lg border px-2.5 py-1 font-mono text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                        'touch-target min-h-8 cursor-pointer rounded-full border px-3 py-1 font-mono text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                         checked
-                          ? 'border-primary/45 bg-primary/10 font-medium text-primary'
-                          : 'border-border bg-white text-muted-foreground hover:border-slate-400 hover:text-ink',
+                          ? 'border-primary bg-primary font-medium text-[#faf4ec]'
+                          : 'border-input bg-[#fffdf9] text-muted-foreground hover:border-primary hover:text-primary',
                       )}
                     >
                       {source.label}
@@ -599,14 +599,14 @@ export function StudioPage({
       )}
 
       {warnings.length > 0 && (
-        <div role="status" className="mt-4 rounded-xl border border-amber-300 bg-amber-50/80 px-4 py-2.5 text-xs text-amber-950">
+        <div role="status" className="mt-4 rounded-xl border border-[#e5bc84] bg-[#fdf3e2] px-4 py-2.5 text-xs text-[#6e3c0a]">
           <span className="font-semibold">Note: </span>
           {warnings.join(' — ')}
         </div>
       )}
 
       {reportId && (
-        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-600/30 bg-emerald-50 px-5 py-3.5 text-sm text-emerald-950">
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[#a3d9be] bg-[#e7f5ee] px-5 py-3.5 text-sm text-[#0e6245]">
           <span>
             Published weekly brief <strong>{reportId}</strong> to the archive.
           </span>
@@ -630,7 +630,7 @@ export function StudioPage({
           {filteredItems.length > 0 ? (
             <div className="space-y-3.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-display text-2xl font-medium text-ink">
+                <h2 className="font-display text-2xl font-medium text-primary">
                   Results ({filteredItems.length})
                 </h2>
                 {keywordFilter && (
@@ -695,8 +695,8 @@ export function StudioPage({
               })}
             </div>
           ) : displayItems.length > 0 && keywordFilter ? (
-            <div className="rounded-2xl border border-dashed border-border bg-white/80 px-6 py-12 text-center">
-              <h2 className="font-display text-xl font-medium text-ink">
+            <div className="rounded-2xl border border-dashed border-input bg-[#fffdf9]/90 px-6 py-12 text-center shadow-[0_6px_18px_rgba(14,62,64,0.05)]">
+              <h2 className="font-display text-xl font-medium text-primary">
                 No results match &ldquo;{keywordFilter}&rdquo;
               </h2>
               <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
@@ -707,8 +707,8 @@ export function StudioPage({
               </Button>
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-border bg-white/80 px-6 py-14 text-center">
-              <h2 className="font-display text-2xl font-medium text-ink">
+            <div className="rounded-2xl border border-dashed border-input bg-[#fffdf9]/90 px-6 py-14 text-center shadow-[0_6px_18px_rgba(14,62,64,0.05)]">
+              <h2 className="font-display text-2xl font-medium text-primary">
                 {status === 'running'
                   ? 'Searching live sources…'
                   : 'Search any topic or select a recent search'}
@@ -724,7 +724,7 @@ export function StudioPage({
 
         {/* Recent Searches */}
         <aside aria-label="Recent searches">
-          <h2 className="text-sm font-semibold text-ink">
+          <h2 className="text-sm font-bold text-primary">
             Recent searches
           </h2>
           {sessions.length === 0 ? (
@@ -732,7 +732,7 @@ export function StudioPage({
               No recent searches yet.
             </p>
           ) : (
-            <ul className="mt-3 divide-y divide-border/70 rounded-2xl border border-border bg-white">
+            <ul className="mt-3 divide-y divide-border rounded-2xl border border-border bg-[#fffdf9] shadow-[0_6px_18px_rgba(14,62,64,0.05)]">
               {sessions.map((session) => {
                 const selected = session.id === activeSessionId
                 const loadingThis = session.id === loadingSessionId
@@ -753,8 +753,8 @@ export function StudioPage({
                       className={cn(
                         'touch-target w-full cursor-pointer px-4 py-3 text-left transition-colors first:rounded-t-2xl last:rounded-b-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                         selected
-                          ? 'bg-primary/8'
-                          : 'hover:bg-secondary/50',
+                          ? 'bg-[#e1f0ee]'
+                          : 'hover:bg-secondary/75',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">

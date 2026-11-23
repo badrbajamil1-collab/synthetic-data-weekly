@@ -85,10 +85,10 @@ export function TopicPanel({ id, follows, counts, onToggle }: TopicPanelProps) {
   }
 
   return (
-    <section id={id} aria-labelledby="topic-panel-heading" className="rounded-2xl border border-border bg-white p-5 sm:p-6">
+    <section id={id} aria-labelledby="topic-panel-heading" className="rounded-2xl border border-border bg-[#fffdf9] p-5 shadow-[0_6px_18px_rgba(14,62,64,0.05)] sm:p-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <h2 id="topic-panel-heading" className="font-display text-xl font-medium tracking-[-0.02em] text-ink">
+          <h2 id="topic-panel-heading" className="font-display text-xl font-semibold tracking-[-0.02em] text-primary">
             Topics &amp; sources
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -113,7 +113,7 @@ export function TopicPanel({ id, follows, counts, onToggle }: TopicPanelProps) {
             onChange={(event) => setCustomTopic(event.target.value)}
             placeholder="Add custom topic (e.g. EHR, SQL)…"
             maxLength={80}
-            className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-background/60 px-3 text-sm text-ink placeholder:text-muted-foreground focus-visible:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-56 sm:flex-none"
+            className="h-10 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm text-ink placeholder:text-muted-foreground focus-visible:bg-[#fffdf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:w-56 sm:flex-none"
           />
           <Button type="submit" size="sm" variant="outline" disabled={!customTopic.trim()} className="h-10 shrink-0 rounded-xl px-3.5">
             <Plus className="size-3.5" aria-hidden="true" />
@@ -130,7 +130,7 @@ export function TopicPanel({ id, follows, counts, onToggle }: TopicPanelProps) {
           ] as const
         ).map(({ kind, title, rows }) => (
           <div key={kind}>
-            <h3 className="text-xs font-semibold text-muted-foreground">
+            <h3 className="text-xs font-bold text-muted-foreground">
               {title}
             </h3>
             <div className="mt-2.5 flex flex-wrap gap-2">
@@ -145,22 +145,27 @@ export function TopicPanel({ id, follows, counts, onToggle }: TopicPanelProps) {
                     aria-label={followed ? `Stop following ${row.label}` : `Follow ${row.label} in your feed`}
                     onClick={() => void onToggle(row.kind, stored?.value ?? row.label, !followed)}
                     className={cn(
-                      'touch-target inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      'touch-target inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                       followed
-                        ? 'border-primary/50 bg-primary/10 text-primary'
-                        : 'border-border bg-white text-ink hover:border-primary/40 hover:text-primary',
+                        ? 'border-primary bg-primary text-[#faf4ec]'
+                        : 'border-input bg-[#fffdf9] text-ink hover:border-primary hover:text-primary',
                     )}
                   >
                     <span>{row.label}</span>
                     {row.count > 0 && (
-                      <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                      <span
+                        className={cn(
+                          'font-mono text-[11px] tabular-nums',
+                          followed ? 'text-[#faf4ec]/80' : 'text-muted-foreground',
+                        )}
+                      >
                         {row.count}
                       </span>
                     )}
                     <Star
                       className={cn(
                         'size-3.5 shrink-0',
-                        followed ? 'fill-current text-amber-600' : 'text-slate-600',
+                        followed ? 'fill-current text-[#f0c281]' : 'text-muted-foreground',
                       )}
                       aria-hidden="true"
                     />

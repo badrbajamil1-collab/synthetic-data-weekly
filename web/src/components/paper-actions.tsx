@@ -14,7 +14,7 @@ export function PaperActions({ readLater, important, onToggle, disabled }: Paper
     <div className="flex flex-wrap gap-2">
       <Button
         size="sm"
-        variant={readLater ? 'ink' : 'outline'}
+        variant={readLater ? 'default' : 'outline'}
         aria-pressed={readLater}
         disabled={disabled}
         onClick={() => onToggle('read_later')}
@@ -24,7 +24,7 @@ export function PaperActions({ readLater, important, onToggle, disabled }: Paper
       </Button>
       <Button
         size="sm"
-        variant={important ? 'ink' : 'outline'}
+        variant={important ? 'amber' : 'outline'}
         aria-pressed={important}
         disabled={disabled}
         onClick={() => onToggle('important')}

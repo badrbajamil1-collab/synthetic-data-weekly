@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { X } from 'lucide-react'
+import { ArrowDownToLine, X } from 'lucide-react'
 
 import { BrandMark } from '@/components/brand-mark'
 import { Link } from '@/components/link'
@@ -18,6 +18,7 @@ interface MobileNavDrawerProps {
   links: DrawerLink[]
   isActive: (path: string) => boolean
   signedIn: boolean
+  latestPdfUrl?: string | null
   onSignUp: () => void
   onSignIn: () => void
   triggerRef: React.RefObject<HTMLButtonElement | null>
@@ -34,6 +35,7 @@ export function MobileNavDrawer({
   links,
   isActive,
   signedIn,
+  latestPdfUrl,
   onSignUp,
   onSignIn,
   triggerRef,
@@ -111,7 +113,7 @@ export function MobileNavDrawer({
             className="flex items-center gap-2.5 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <BrandMark className="size-8 shrink-0" />
-            <span className="font-display text-base font-medium text-ink" translate="no">
+            <span className="font-display text-base font-semibold text-primary" translate="no">
               Well7 Research Lab
             </span>
           </Link>
@@ -120,7 +122,7 @@ export function MobileNavDrawer({
             type="button"
             aria-label="Close navigation menu"
             onClick={() => dismiss(true)}
-            className="grid size-11 cursor-pointer place-items-center rounded-full border border-border bg-white text-ink transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="grid size-11 cursor-pointer place-items-center rounded-full border border-input bg-[#fffdf9] text-primary transition-colors hover:border-primary hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="size-5" aria-hidden="true" />
           </button>
@@ -134,8 +136,8 @@ export function MobileNavDrawer({
             className={cn(
               'flex min-h-11 items-center justify-between rounded-xl px-3.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               isActive('/')
-                ? 'border border-primary/30 bg-primary/10 font-semibold text-primary'
-                : 'text-ink hover:bg-secondary/70',
+                ? 'bg-[#e1f0ee] font-semibold text-primary'
+                : 'text-ink hover:bg-secondary',
             )}
           >
             Home
@@ -151,42 +153,60 @@ export function MobileNavDrawer({
                 className={cn(
                   'flex min-h-11 items-center gap-2 rounded-xl px-3.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active
-                    ? 'border border-primary/30 bg-primary/10 font-semibold text-primary'
-                    : 'text-ink hover:bg-secondary/70',
+                    ? 'bg-[#e1f0ee] font-semibold text-primary'
+                    : 'text-ink hover:bg-secondary',
                 )}
               >
                 {link.highlight && (
-                  <span className="size-2 rounded-full bg-primary" aria-hidden="true" />
+                  <span className="size-2 rounded-full bg-[#b46319]" aria-hidden="true" />
                 )}
                 {link.label}
               </Link>
             )
           })}
 
-          {!signedIn && (
+          {(latestPdfUrl || !signedIn) && (
             <div className="mt-auto flex flex-col gap-2.5 border-t border-border pt-4">
-              <Button
-                size="lg"
-                variant="ink"
-                className="w-full"
-                onClick={() => {
-                  dismiss(false)
-                  onSignIn()
-                }}
-              >
-                Sign in
-              </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full"
-                onClick={() => {
-                  dismiss(false)
-                  onSignUp()
-                }}
-              >
-                Sign up
-              </Button>
+              {latestPdfUrl && (
+                <Button size="lg" variant="outline" className="w-full" asChild>
+                  <a
+                    href={latestPdfUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => dismiss(false)}
+                  >
+                    <ArrowDownToLine className="size-4" aria-hidden="true" />
+                    Download PDF
+                    <span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                </Button>
+              )}
+              {!signedIn && (
+                <>
+                  <Button
+                    size="lg"
+                    variant="default"
+                    className="w-full"
+                    onClick={() => {
+                      dismiss(false)
+                      onSignIn()
+                    }}
+                  >
+                    Sign in
+                  </Button>
+                  <Button
+                    size="lg"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      dismiss(false)
+                      onSignUp()
+                    }}
+                  >
+                    Sign up
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </nav>

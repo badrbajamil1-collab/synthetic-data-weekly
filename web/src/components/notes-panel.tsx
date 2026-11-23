@@ -95,11 +95,11 @@ export function NotesPanel() {
             }
           }}
           placeholder="A paper someone mentioned, a tool release to check next week…"
-          className="mt-1.5 w-full resize-y rounded-xl border border-input bg-white px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-1.5 w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted-foreground focus-visible:bg-[#fffdf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
         <div className="mt-2 flex items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">Private to you. ⌘/Ctrl + Enter saves.</span>
-          <Button variant="ink" size="sm" onClick={() => void submit()} disabled={!draft.trim() || saving}>
+          <Button variant="default" size="sm" onClick={() => void submit()} disabled={!draft.trim() || saving}>
             {saving ? 'Adding…' : 'Add note'}
           </Button>
         </div>
@@ -129,7 +129,7 @@ export function NotesPanel() {
             const snippet = note.body.length > 36 ? `${note.body.slice(0, 36)}…` : note.body
             const isDeleting = deletingId === note.id
             return (
-              <li key={note.id} className="flex items-start justify-between gap-4 rounded-2xl border border-border bg-white px-4 py-3">
+              <li key={note.id} className="flex items-start justify-between gap-4 rounded-2xl border border-border bg-background px-4 py-3">
                 <div className="min-w-0">
                   <p className="whitespace-pre-wrap break-words text-sm leading-6 text-ink">{note.body}</p>
                   <p className="mt-1 text-xs text-muted-foreground">{formatDate(note.created_at, 'short')}</p>

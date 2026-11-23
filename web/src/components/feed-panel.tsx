@@ -42,8 +42,8 @@ interface FeedSidebarProps {
 export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCounts, onView }: FeedSidebarProps) {
   return (
     <aside aria-label="Feed filters and weeks" className="lg:sticky lg:top-24 lg:self-start">
-      <div className="rounded-2xl border border-border bg-white p-5">
-        <h2 className="font-display text-lg font-medium tracking-[-0.02em] text-ink">Saved filter</h2>
+      <div className="rounded-2xl border border-border bg-[#fffdf9] p-5 shadow-[0_6px_18px_rgba(14,62,64,0.05)]">
+        <h2 className="font-display text-lg font-semibold tracking-[-0.02em] text-primary">Saved filter</h2>
 
         <div role="group" aria-label="Filter by saved status" className="mt-3 flex flex-wrap gap-2">
           {(Object.keys(VIEW_LABELS) as FeedView[]).map((key) => {
@@ -55,17 +55,17 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
                 aria-pressed={active}
                 onClick={() => onView(key)}
                 className={cn(
-                  'touch-target inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'touch-target inline-flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   active
-                    ? 'border-primary/50 bg-primary/10 font-semibold text-primary'
-                    : 'border-border bg-white text-ink hover:border-primary/40 hover:text-primary',
+                    ? 'border-primary bg-primary text-[#faf4ec]'
+                    : 'border-input bg-[#fffdf9] text-ink hover:border-primary hover:text-primary',
                 )}
               >
                 <span>{VIEW_LABELS[key]}</span>
                 <span
                   className={cn(
                     'rounded-full px-1.5 py-px font-mono text-[11px] leading-4 tabular-nums',
-                    active ? 'bg-primary text-white' : 'bg-secondary text-muted-foreground',
+                    active ? 'bg-[#fffdf9]/20 text-[#faf4ec]' : 'bg-secondary text-muted-foreground',
                   )}
                 >
                   {viewCounts[key]}
@@ -75,7 +75,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
           })}
         </div>
 
-        <h3 className="mt-7 text-xs font-semibold text-muted-foreground">Weeks</h3>
+        <h3 className="mt-7 text-xs font-bold text-muted-foreground">Weeks</h3>
         <ul className="mt-2.5 flex flex-wrap gap-2">
           {reports.slice(0, MAX_SIDEBAR_WEEKS).map((report) => {
             const active = report.id === selectedId
@@ -86,10 +86,10 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
                   aria-pressed={active}
                   onClick={() => onSelectWeek(report.id)}
                   className={cn(
-                    'touch-target inline-flex min-h-9 cursor-pointer items-center rounded-full border px-3.5 py-1.5 text-xs whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                    'touch-target inline-flex min-h-9 cursor-pointer items-center rounded-full border px-3.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     active
-                      ? 'border-primary/50 bg-primary/10 font-semibold text-primary'
-                      : 'border-border bg-white text-ink hover:border-primary/40 hover:text-primary',
+                      ? 'border-primary bg-primary font-semibold text-[#faf4ec]'
+                      : 'border-input bg-[#fffdf9] text-ink hover:border-primary hover:text-primary',
                   )}
                 >
                   Week of {formatDate(report.week_end, 'short')}
@@ -102,7 +102,7 @@ export function FeedSidebar({ reports, selectedId, onSelectWeek, view, viewCount
         {reports.length > MAX_SIDEBAR_WEEKS && (
           <Link
             to="/archive"
-            className="mt-4 inline-block rounded-sm text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="mt-4 inline-block rounded-sm text-xs font-bold text-[#b46319] underline-offset-4 hover:text-[#965011] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             All {reports.length} weeks in the archive
           </Link>
@@ -155,8 +155,8 @@ export function FeedFilterBar({
           spellCheck={false}
           enterKeyHint="search"
           onChange={(event) => onQuery(event.target.value)}
-          placeholder="Filter items in this brief (e.g. privacy, tabular)…"
-          className="h-11 w-full rounded-xl border border-input bg-white pl-10 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          placeholder="Filter this brief (privacy, tabular)…"
+          className="h-11 w-full rounded-xl border border-input bg-[#fffdf9] pl-10 pr-4 text-sm text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
 
@@ -178,7 +178,7 @@ export function FeedFilterBar({
           <div
             role="group"
             aria-label="Sort order"
-            className="inline-flex items-center rounded-full border border-border bg-white p-0.5 text-xs"
+            className="inline-flex items-center rounded-full border border-input bg-[#fffdf9] p-0.5 text-xs"
           >
             {(
               [
@@ -192,10 +192,10 @@ export function FeedFilterBar({
                 aria-pressed={sortOrder === opt.value}
                 onClick={() => onSortOrder(opt.value)}
                 className={cn(
-                  'touch-target min-h-8 cursor-pointer rounded-full px-3 py-1 font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'touch-target min-h-8 cursor-pointer rounded-full px-3 py-1 font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   sortOrder === opt.value
-                    ? 'bg-ink text-white'
-                    : 'text-muted-foreground hover:text-ink',
+                    ? 'bg-primary text-[#faf4ec]'
+                    : 'text-muted-foreground hover:text-primary',
                 )}
               >
                 {opt.label}
@@ -247,7 +247,7 @@ export function KeywordStrip({ counts, active, onToggle, follows, onFollow }: Ke
           <button
             type="button"
             onClick={() => onToggle(active)}
-            className="touch-target inline-flex min-h-8 cursor-pointer items-center rounded-md px-2 text-xs font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="touch-target inline-flex min-h-8 cursor-pointer items-center rounded-md px-2 text-xs font-bold text-[#b46319] hover:text-[#965011] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             Clear &ldquo;{active}&rdquo; filter
           </button>
@@ -274,7 +274,7 @@ export function KeywordStrip({ counts, active, onToggle, follows, onFollow }: Ke
             type="button"
             aria-expanded={showAll}
             onClick={() => setShowAll((prev) => !prev)}
-            className="touch-target inline-flex min-h-8 cursor-pointer items-center rounded-full border border-dashed border-border bg-transparent px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="touch-target inline-flex min-h-8 cursor-pointer items-center rounded-full border border-dashed border-input bg-transparent px-3 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {showAll
               ? 'Show fewer topics'
@@ -298,6 +298,8 @@ interface FeedListProps {
   /** When provided, topic chips carry follow stars. */
   follows?: TopicFollow[]
   onFollow?: (kind: TopicKind, label: string, next: boolean) => void
+  initialExpandedId?: string | null
+  onInspect?: (itemId: string) => void
 }
 
 export function FeedList({
@@ -311,18 +313,24 @@ export function FeedList({
   onToggle,
   follows,
   onFollow,
+  initialExpandedId,
+  onInspect,
 }: FeedListProps) {
   return (
     <div className="space-y-3.5">
       {items.map((item, index) => {
         const state = saved.get(item.id)
         const topics = topicsFor(item)
+        const isDefaultExpanded = initialExpandedId === item.id
         return (
           <ReportItemRow
-            key={item.id}
+            key={`${item.id}:${isDefaultExpanded ? 'open' : 'closed'}`}
             item={item}
             rank={index + 1}
             headingLevel={headingLevel}
+            defaultExpanded={isDefaultExpanded}
+            highlighted={isDefaultExpanded}
+            onInspect={onInspect}
             tags={topics.length > 0 ? topics.map((label) => (
               <FilterChip
                 key={label}

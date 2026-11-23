@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { UserButton, useAuth, useClerk } from '@clerk/react'
-import { CircleAlert, Menu } from 'lucide-react'
+import { ArrowDownToLine, CircleAlert, Menu } from 'lucide-react'
 
 import { BrandMark } from '@/components/brand-mark'
 import { Link } from '@/components/link'
@@ -21,7 +21,7 @@ import {
 } from '@/lib/api'
 import { useRoute } from '@/lib/router'
 import { sameFollow, sortFollows, type TopicFollow, type TopicKind } from '@/lib/topics'
-import { invalidateReportsCache } from '@/lib/use-report'
+import { invalidateReportsCache, useReports } from '@/lib/use-report'
 import { ArchivePage } from '@/pages/ArchivePage'
 import { BriefPage } from '@/pages/BriefPage'
 import { FeedPage } from '@/pages/FeedPage'
@@ -51,18 +51,18 @@ function NavLink({ to, active, highlight, className, children, onClick }: NavLin
       aria-current={active ? 'page' : undefined}
       onClick={onClick}
       className={cn(
-        'relative inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'relative inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active
-          ? 'bg-primary/10 font-semibold text-primary after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:rounded-full after:bg-primary'
+          ? 'font-semibold text-primary after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[#b46319]'
           : highlight
             ? 'font-medium text-ink hover:bg-secondary hover:text-primary'
-            : 'text-muted-foreground hover:bg-secondary/70 hover:text-ink',
+            : 'text-muted-foreground hover:bg-secondary/70 hover:text-primary',
         className,
       )}
     >
       {highlight && (
         <span
-          className="size-1.5 rounded-full bg-primary"
+          className="size-1.5 rounded-full bg-[#b46319]"
           aria-hidden="true"
         />
       )}
@@ -355,18 +355,23 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePop)
   }, [])
 
+  const { reports } = useReports()
+  const latestReport = reports[0] ?? null
+  const latestPdfUrl = latestReport?.has_pdf ? `/api/reports/${latestReport.id}/pdf` : null
+  const archiveLabel = reports.length > 0 ? `Archive (${reports.length})` : 'Archive'
+
   const navLinks: Array<{ to: string; label: string; highlight?: boolean }> = signedIn
     ? [
         { to: '/studio', label: 'Live Search', highlight: true },
-        { to: '/feed', label: 'Feed' },
-        { to: '/brief', label: 'Brief' },
+        { to: '/feed', label: 'Your Feed' },
+        { to: '/brief', label: 'Weekly Brief' },
         { to: '/library', label: 'Library' },
-        { to: '/archive', label: 'Archive' },
+        { to: '/archive', label: archiveLabel },
       ]
     : [
         { to: '/studio', label: 'Live Search', highlight: true },
-        { to: '/brief', label: 'Brief' },
-        { to: '/archive', label: 'Archive' },
+        { to: '/brief', label: 'Weekly Brief' },
+        { to: '/archive', label: archiveLabel },
       ]
 
   const isKnownRoute =
@@ -379,28 +384,28 @@ export default function App() {
     route === '/archive'
 
   return (
-    <div className="flex min-h-screen flex-col overflow-x-clip bg-background text-ink">
+    <div className="flex min-h-screen flex-col overflow-x-clip bg-transparent text-ink">
       <div role="status" aria-live="polite" className="sr-only">
         {routeAnnouncement}
       </div>
 
       <a
         href="#top"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-5 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-ink focus:shadow-md focus:ring-2 focus:ring-ring"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-5 focus:top-3 focus:z-[60] focus:rounded-lg focus:bg-[#fffdf9] focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-ink focus:shadow-md focus:ring-2 focus:ring-ring"
       >
         Skip to main content
       </a>
 
-      <header className="sticky top-0 z-50 border-b border-border/80 bg-white/95 text-ink backdrop-blur-md">
-        <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between px-5 sm:px-8">
+      <header className="sticky top-0 z-50 border-b border-border bg-[#faf4ec]/92 text-ink backdrop-blur-md">
+        <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between gap-4 px-5 sm:px-8">
           <Link
             to="/"
             aria-label="Well7 Research Lab — Home"
             className="flex items-center gap-2.5 rounded-md transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-3"
           >
-            <BrandMark className="size-9 shrink-0" />
+            <BrandMark className="size-8 shrink-0" />
             <span className="whitespace-nowrap">
-              <span className="block font-display text-base font-medium leading-tight text-ink sm:text-lg" translate="no">
+              <span className="block font-display text-lg font-semibold leading-tight text-primary" translate="no">
                 Well7 Research Lab
               </span>
               <span className="hidden text-xs text-muted-foreground sm:block">Synthetic Data Weekly</span>
@@ -413,7 +418,16 @@ export default function App() {
                 {link.label}
               </NavLink>
             ))}
-            <div className="ml-3 flex items-center gap-2 border-l border-border/80 pl-3">
+            <div className="ml-3 flex items-center gap-2 border-l border-border pl-3">
+              {latestPdfUrl && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={latestPdfUrl} target="_blank" rel="noreferrer">
+                    <ArrowDownToLine className="size-3.5" aria-hidden="true" />
+                    Download PDF
+                    <span className="sr-only"> (opens in a new tab)</span>
+                  </a>
+                </Button>
+              )}
               {signedIn ? (
                 <UserButton />
               ) : (
@@ -427,7 +441,7 @@ export default function App() {
                   </Button>
                   <Button
                     size="sm"
-                    variant="ink"
+                    variant="default"
                     onClick={() => clerk.openSignIn()}
                   >
                     Sign in
@@ -446,7 +460,7 @@ export default function App() {
               aria-controls="mobile-navigation"
               aria-label={menuOpen ? 'Close navigation menu' : 'Open navigation menu'}
               onClick={() => setMenuOpen((open) => !open)}
-              className="grid size-11 cursor-pointer place-items-center rounded-full border border-border bg-white text-ink transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="grid size-11 cursor-pointer place-items-center rounded-full border border-input bg-[#fffdf9] text-primary transition-colors hover:border-primary hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Menu className="size-5" aria-hidden="true" />
             </button>
@@ -460,6 +474,7 @@ export default function App() {
         links={navLinks}
         isActive={active}
         signedIn={signedIn}
+        latestPdfUrl={latestPdfUrl}
         onSignUp={() => clerk.openSignUp()}
         onSignIn={() => clerk.openSignIn()}
         triggerRef={menuButtonRef}
@@ -549,11 +564,11 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-border/80 bg-white">
+      <footer className="border-t border-border bg-[#fffdf9]/70">
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-7 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <div className="flex items-center gap-2.5">
             <BrandMark className="size-6 shrink-0" />
-            <span className="font-medium text-ink" translate="no">Well7 Research Lab</span>
+            <span className="font-display font-semibold text-primary" translate="no">Well7 Research Lab</span>
           </div>
           <p>Synthetic Data Weekly &amp; Live Topic Search.</p>
         </div>

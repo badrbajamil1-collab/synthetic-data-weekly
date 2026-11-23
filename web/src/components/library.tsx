@@ -90,7 +90,7 @@ function NoteEditor({
           }
         }}
         placeholder="Why it matters to you, what to check next…"
-        className="mt-1.5 w-full resize-y rounded-xl border border-input bg-white px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mt-1.5 w-full resize-y rounded-xl border border-input bg-background px-3 py-2 text-sm leading-6 text-ink placeholder:text-muted-foreground focus-visible:bg-[#fffdf9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
     </div>
   )
@@ -98,36 +98,36 @@ function NoteEditor({
 
 function Entry({ entry, onToggle, onNote }: { entry: LibraryEntry; onToggle: LibraryProps['onToggle']; onNote: LibraryProps['onNote'] }) {
   return (
-    <article className="border-t border-border py-6 first:border-t-0 first:pt-0">
+    <article className="mb-4 rounded-2xl border border-border bg-[#fffdf9] p-5 shadow-[0_6px_18px_rgba(14,62,64,0.05)] last:mb-0 sm:p-6">
       <div className="flex flex-wrap items-center gap-2.5 text-xs text-muted-foreground">
         <Badge variant="secondary">{sourceLabel(entry.source)}</Badge>
         <span>Week ending {formatDate(entry.week_end, 'long')}</span>
         {entry.important === 1 && (
-          <span className="inline-flex items-center gap-1 font-medium text-primary">
+          <span className="inline-flex items-center gap-1 font-semibold text-[#b46319]">
             <Star className="size-3.5 fill-current" aria-hidden="true" />
             Important
           </span>
         )}
         {entry.read_later === 1 && (
-          <span className="inline-flex items-center gap-1 font-medium text-primary">
+          <span className="inline-flex items-center gap-1 font-semibold text-primary">
             <BookmarkCheck className="size-3.5" aria-hidden="true" />
             Read later
           </span>
         )}
       </div>
-      <h2 className="mt-2 break-words text-balance font-display text-xl font-medium leading-snug text-ink">
+      <h2 className="mt-2.5 break-words text-balance font-display text-xl font-semibold leading-snug text-primary">
         <a
           href={entry.url}
           target="_blank"
           rel="noreferrer"
-          className="rounded-sm hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="rounded-sm decoration-[#b46319]/60 underline-offset-4 hover:text-[#b46319] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           {entry.title}
           <ArrowUpRight className="mb-1 ml-1 inline size-4" aria-hidden="true" />
           <span className="sr-only"> (opens in a new tab)</span>
         </a>
       </h2>
-      {entry.summary && <p className="mt-2 max-w-[72ch] text-[15px] leading-7 text-muted-foreground">{entry.summary}</p>}
+      {entry.summary && <p className="mt-2 max-w-[72ch] text-[15px] leading-7 text-ink/85">{entry.summary}</p>}
       <div className="mt-4">
         <PaperActions
           readLater={entry.read_later === 1}
@@ -166,8 +166,8 @@ export function Library({ entries, onToggle, onNote, loading, error, reload }: L
 
   if (entries.length === 0 && !error) {
     return (
-      <div className="rounded-3xl border border-dashed border-border bg-white/80 px-6 py-12 text-center">
-        <h2 className="font-display text-2xl font-medium text-ink">Nothing saved yet.</h2>
+      <div className="rounded-3xl border border-dashed border-input bg-[#fffdf9]/90 px-6 py-12 text-center shadow-[0_6px_18px_rgba(14,62,64,0.05)]">
+        <h2 className="font-display text-2xl font-medium text-primary">Nothing saved yet.</h2>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
           Use Read later or Mark important on any paper and it will appear here, private to you.
         </p>
@@ -201,7 +201,7 @@ export function Library({ entries, onToggle, onNote, loading, error, reload }: L
           {lists.map((list) => (
             <TabsTrigger key={list.value} value={list.value}>
               {list.label}
-              <span className="ml-1.5 rounded-full bg-black/8 px-1.5 py-0.5 font-mono text-[11px] leading-none tabular-nums group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white">
+              <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 font-mono text-[11px] leading-none text-muted-foreground tabular-nums group-data-[state=active]:bg-white/20 group-data-[state=active]:text-[#faf4ec]">
                 {list.items.length}
               </span>
             </TabsTrigger>
@@ -220,7 +220,9 @@ export function Library({ entries, onToggle, onNote, loading, error, reload }: L
           </TabsContent>
         ))}
         <TabsContent value="upcoming">
-          <NotesPanel />
+          <div className="rounded-2xl border border-border bg-[#fffdf9] p-5 shadow-[0_6px_18px_rgba(14,62,64,0.05)] sm:p-6">
+            <NotesPanel />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

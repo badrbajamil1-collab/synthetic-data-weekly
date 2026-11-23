@@ -96,16 +96,18 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
 
   if (!signedIn) {
     return (
-      <section className="mx-auto max-w-3xl px-5 pb-20 pt-10 text-center sm:px-8 sm:pt-16">
-        <h1 className="text-balance font-display text-4xl font-medium tracking-[-0.03em] text-ink">
-          Follow the topics you care about.
-        </h1>
-        <p className="mx-auto mt-3 max-w-md text-muted-foreground">
-          Sign in to star topics and sources for a personalized weekly view — your follows stay private to your account.
-        </p>
-        <Button className="mt-8" variant="ink" size="lg" onClick={onSignIn}>
-          Sign in
-        </Button>
+      <section className="mx-auto max-w-3xl px-5 pb-20 pt-12 sm:px-8 sm:pt-16">
+        <div className="rounded-3xl border border-dashed border-input bg-[#fffdf9] px-6 py-12 text-center shadow-[0_6px_18px_rgba(14,62,64,0.05)] sm:px-10">
+          <h1 className="text-balance font-display text-3xl font-medium tracking-[-0.02em] text-primary sm:text-4xl">
+            Follow the topics you care about.
+          </h1>
+          <p className="mx-auto mt-3 max-w-md text-muted-foreground">
+            Sign in to star topics and sources for a personalized weekly view — your follows stay private to your account.
+          </p>
+          <Button className="mt-8" variant="default" size="lg" onClick={onSignIn}>
+            Sign in
+          </Button>
+        </div>
       </section>
     )
   }
@@ -135,8 +137,8 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
           )}
 
           {!reportsLoading && !reportsError && reports.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-12 text-center">
-              <h1 className="font-display text-3xl font-medium text-ink">Your feed is ready.</h1>
+            <div className="rounded-2xl border border-dashed border-input bg-[#fffdf9]/90 px-6 py-12 text-center shadow-[0_6px_18px_rgba(14,62,64,0.05)]">
+              <h1 className="font-display text-3xl font-medium text-primary">Your feed is ready.</h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 No weekly brief has been published yet. Once a report runs, your feed will appear here.
               </p>
@@ -163,7 +165,7 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
             <>
               <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
-                  <h1 className="max-w-3xl text-balance font-display text-3xl font-medium leading-tight tracking-[-0.03em] text-ink sm:text-4xl">
+                  <h1 className="max-w-3xl text-balance font-display text-3xl font-medium leading-tight tracking-[-0.02em] text-primary sm:text-4xl">
                     {briefTitle(report.subject)}
                   </h1>
                   <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
@@ -181,18 +183,18 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
               </div>
 
               {follows.length === 0 ? (
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/25 bg-primary/5 px-4 py-3.5 text-sm text-ink">
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e5bc84] bg-[#fdf3e2]/70 px-4 py-3.5 text-sm text-ink">
                   <span>Star any topic or source to narrow your feed automatically each week.</span>
                   <a
                     href="#manage-topics"
-                    className="rounded-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="rounded-sm font-bold text-[#b46319] underline-offset-4 hover:text-[#965011] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     Choose topics below
                   </a>
                 </div>
               ) : (
                 <div className="mt-6 flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold text-muted-foreground">Following</span>
+                  <span className="text-xs font-bold text-muted-foreground">Following</span>
                   {follows.map((follow) => {
                     const display = follow.kind === 'source' ? sourceLabel(follow.value) : follow.value
                     return (
@@ -201,7 +203,7 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                         type="button"
                         aria-label={`Stop following ${display}`}
                         onClick={() => onFollow(follow.kind, follow.value, false)}
-                        className="touch-target inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-primary/45 bg-primary/10 px-3 py-1 text-xs font-semibold text-[#0c5f59] transition-colors hover:border-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="touch-target inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border border-primary bg-primary px-3 py-1 text-xs font-semibold text-[#faf4ec] transition-colors hover:bg-[#092b2d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <span>{follow.kind === 'source' ? `${display} (source)` : display}</span>
                         <X className="size-3.5" aria-hidden="true" />
@@ -257,7 +259,7 @@ export function FeedPage({ signedIn, follows, onFollow, onSignIn, library }: Fee
                       onFollow={onFollow}
                     />
                   ) : (
-                    <div className="rounded-2xl border border-dashed border-border bg-white/70 px-6 py-12 text-center">
+                    <div className="rounded-2xl border border-dashed border-input bg-[#fffdf9]/90 px-6 py-12 text-center shadow-[0_6px_18px_rgba(14,62,64,0.05)]">
                       <p className="font-medium text-ink">
                         {follows.length > 0 ? 'Nothing followed matches these filters this week.' : 'Nothing matches these filters.'}
                       </p>

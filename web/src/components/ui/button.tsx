@@ -9,11 +9,12 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground shadow-xs hover:bg-[#115e59] motion-safe:hover:-translate-y-px',
-        secondary: 'bg-secondary text-ink hover:bg-[#e2e8f0]',
-        ink: 'bg-ink text-white shadow-xs hover:bg-ink/90 motion-safe:hover:-translate-y-px',
-        outline: 'border border-border bg-white text-ink hover:border-primary/50 hover:text-primary',
-        ghost: 'text-muted-foreground hover:bg-secondary hover:text-ink',
+        default: 'bg-primary text-[#faf4ec] shadow-xs hover:bg-[#092b2d] motion-safe:hover:-translate-y-px',
+        amber: 'bg-[#b46319] text-[#fffdf9] shadow-xs hover:bg-[#965011] motion-safe:hover:-translate-y-px',
+        secondary: 'bg-secondary text-ink hover:bg-[#ebdecb]',
+        ink: 'bg-primary text-[#faf4ec] shadow-xs hover:bg-[#092b2d] motion-safe:hover:-translate-y-px',
+        outline: 'border border-[#cebda5] bg-[#fffdf9] text-primary hover:border-primary hover:bg-secondary',
+        ghost: 'text-muted-foreground hover:bg-secondary hover:text-primary',
       },
       size: {
         default: 'min-h-10 px-5 py-2',

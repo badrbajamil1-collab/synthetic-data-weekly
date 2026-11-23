@@ -29,10 +29,10 @@ export function FilterChip({
       <span
         className={cn(
           'inline-flex items-stretch rounded-full border text-xs font-medium transition-colors',
-          state.tone === 'both' && 'border-primary/50 bg-primary/10',
-          state.tone === 'active' && 'border-primary/50 bg-primary/10',
-          state.tone === 'followed' && 'border-amber-400/80 bg-amber-50/60',
-          state.tone === 'idle' && 'border-border bg-white hover:border-primary/40',
+          state.tone === 'both' && 'border-primary/50 bg-[#e1f0ee]',
+          state.tone === 'active' && 'border-primary/50 bg-[#e1f0ee]',
+          state.tone === 'followed' && 'border-[#e5bc84] bg-[#fdf3e2]/80',
+          state.tone === 'idle' && 'border-input bg-[#fffdf9] hover:border-primary',
         )}
       >
         <button
@@ -51,8 +51,10 @@ export function FilterChip({
           {count !== undefined && (
             <span
               className={cn(
-                'font-mono text-[11px] tabular-nums',
-                active ? 'font-semibold text-primary' : 'text-muted-foreground',
+                'rounded-full px-1.5 py-px font-mono text-[11px] tabular-nums',
+                active
+                  ? 'bg-primary font-semibold text-[#faf4ec]'
+                  : 'bg-secondary text-muted-foreground',
               )}
             >
               {count}
@@ -72,10 +74,10 @@ export function FilterChip({
           }}
           className={cn(
             'touch-target relative inline-flex min-h-8 min-w-8 cursor-pointer items-center justify-center rounded-r-full border-l px-2.5 transition-colors focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            active ? 'border-primary/25' : followed ? 'border-amber-300/80' : 'border-border',
+            active ? 'border-primary/20' : followed ? 'border-[#e5bc84]' : 'border-border',
             followed
-              ? 'text-amber-700 hover:text-amber-800'
-              : 'text-slate-600 hover:text-amber-700',
+              ? 'text-[#b46319] hover:text-[#965011]'
+              : 'text-muted-foreground hover:text-[#b46319]',
           )}
         >
           <Star
@@ -95,8 +97,8 @@ export function FilterChip({
       className={cn(
         'touch-target inline-flex min-h-8 cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
         active
-          ? 'border-primary/50 bg-primary/10 font-semibold text-primary'
-          : 'border-border bg-white text-ink hover:border-primary/40 hover:text-primary',
+          ? 'border-primary bg-primary font-semibold text-[#faf4ec]'
+          : 'border-input bg-[#fffdf9] text-ink hover:border-primary hover:text-primary',
       )}
     >
       <span>{label}</span>
@@ -104,13 +106,13 @@ export function FilterChip({
         <span
           className={cn(
             'font-mono text-[11px] tabular-nums',
-            active ? 'font-semibold text-primary' : 'text-muted-foreground',
+            active ? 'font-semibold text-[#faf4ec]/90' : 'text-muted-foreground',
           )}
         >
           {count}
         </span>
       )}
-      {active && removable && <X className="size-3 text-primary" aria-hidden="true" />}
+      {active && removable && <X className="size-3 text-[#faf4ec]" aria-hidden="true" />}
     </button>
   )
 }

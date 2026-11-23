@@ -2,52 +2,52 @@
 @import "@clerk/ui/themes/shadcn.css";
 
 @theme inline {
-  --color-background: #f8fafc;
-  --color-foreground: #0f172a;
-  --color-paper: #f8fafc;
-  --color-ink: #0f172a;
-  --color-primary: #0f766e;
-  --color-primary-foreground: #ffffff;
-  --color-signal: #0f766e;
-  --color-secondary: #eef2f6;
-  --color-secondary-foreground: #334155;
-  --color-muted: #eef2f6;
-  --color-muted-foreground: #475569;
-  --color-border: #e2e8f0;
-  --color-input: #cbd5e1;
-  --color-ring: #0f766e;
-  --color-destructive: #be123c;
-  --color-warm: #b45309;
-  --color-mint: #0f766e;
-  --font-display: "IBM Plex Serif", "Georgia", serif;
-  --font-body: "IBM Plex Sans", "Helvetica Neue", sans-serif;
-  --font-sans: "IBM Plex Sans", "Helvetica Neue", sans-serif;
-  --font-mono: "IBM Plex Mono", "Consolas", monospace;
+  --color-background: #faf4ec;
+  --color-foreground: #162627;
+  --color-paper: #faf4ec;
+  --color-ink: #162627;
+  --color-primary: #0e3e40;
+  --color-primary-foreground: #faf4ec;
+  --color-signal: #0e3e40;
+  --color-secondary: #f6ede0;
+  --color-secondary-foreground: #162627;
+  --color-muted: #f3e9db;
+  --color-muted-foreground: #4a5b5b;
+  --color-border: #e3d6c4;
+  --color-input: #cebda5;
+  --color-ring: #b46319;
+  --color-destructive: #b42318;
+  --color-warm: #b46319;
+  --color-mint: #0e3e40;
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
 /*
  * Bare shadcn design tokens for Clerk modal compatibility.
  */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --popover: #ffffff;
-  --popover-foreground: #0f172a;
-  --primary: #0f766e;
-  --primary-foreground: #ffffff;
-  --secondary: #eef2f6;
-  --secondary-foreground: #334155;
-  --muted: #eef2f6;
-  --muted-foreground: #475569;
-  --accent: #eef2f6;
-  --accent-foreground: #0f172a;
-  --destructive: #be123c;
+  --background: #faf4ec;
+  --foreground: #162627;
+  --card: #fffdf9;
+  --card-foreground: #162627;
+  --popover: #fffdf9;
+  --popover-foreground: #162627;
+  --primary: #0e3e40;
+  --primary-foreground: #faf4ec;
+  --secondary: #f6ede0;
+  --secondary-foreground: #162627;
+  --muted: #f3e9db;
+  --muted-foreground: #4a5b5b;
+  --accent: #f6ede0;
+  --accent-foreground: #162627;
+  --destructive: #b42318;
   --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #cbd5e1;
-  --ring: #0f766e;
+  --border: #e3d6c4;
+  --input: #cebda5;
+  --ring: #b46319;
 }
 
 :root {
@@ -55,8 +55,8 @@
   interpolate-size: allow-keywords;
   background: var(--color-background);
   color: var(--color-foreground);
-  caret-color: var(--color-primary);
-  scrollbar-color: #cbd5e1 transparent;
+  caret-color: #b46319;
+  scrollbar-color: #cebda5 transparent;
   font-family: var(--font-body);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -79,7 +79,8 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--color-background);
+  background: linear-gradient(180deg, #faf4ec 0%, #efe3d2 100%);
+  background-attachment: fixed;
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -91,8 +92,8 @@ a {
 }
 
 ::selection {
-  background: #ccfbf1;
-  color: #0f172a;
+  background: #0e3e40;
+  color: #faf4ec;
 }
 
 #root {
@@ -123,7 +124,8 @@ a {
 }
 
 .mobile-drawer::backdrop {
-  background: rgba(15, 23, 42, 0.45);
+  background: rgba(14, 62, 64, 0.42);
+  backdrop-filter: blur(4px);
 }
 
 .mobile-drawer-sheet {
@@ -134,10 +136,10 @@ a {
   height: 100svh;
   display: flex;
   flex-direction: column;
-  background: #ffffff;
+  background: #fffdf9;
   color: var(--color-ink);
   border-inline-start: 1px solid var(--color-border);
-  box-shadow: -12px 0 32px -12px rgba(15, 23, 42, 0.2);
+  box-shadow: -12px 0 32px -12px rgba(14, 62, 64, 0.2);
   overflow-y: auto;
 }
 
