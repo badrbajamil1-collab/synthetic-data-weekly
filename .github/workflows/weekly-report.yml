@@ -83,6 +83,8 @@ jobs:
           MAIL_FROM: ${{ secrets.MAIL_FROM }}
           REPLY_TO: ${{ secrets.REPLY_TO }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CF_PUBLISH_TOKEN: ${{ secrets.CF_PUBLISH_TOKEN }}
+          CF_WORKER_URL: ${{ vars.CF_WORKER_URL }}
         run: |
           # A real send needs all four SMTP credentials. Anything missing
           # falls back to --dry-run, which keeps the Saturday run green.

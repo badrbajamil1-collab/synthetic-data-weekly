@@ -3378,6 +3378,132 @@ check(
     and "weekly-cache-" in str(_wf_keep_steps[0]["with"].get("restore-keys", "")),
 )
 
+print("\n[web_subscribers]")
+# 1. fetch_web_subscribers returns [] immediately without token and makes zero network calls
+_sub_called = False
+def _forbid_sub_get(*_args, **_kwargs):
+    global _sub_called
+    _sub_called = True
+    raise AssertionError("network call should not occur without token")
+
+check(
+    "fetch_web_subscribers returns [] with no token and makes zero network calls",
+    _mail.fetch_web_subscribers({}, get_fn=_forbid_sub_get) == [] and not _sub_called,
+)
+
+# 2. fetch_web_subscribers queries /api/subscribers with Bearer token, formats username <email>, sanitizes, dedupes
+_sub_requests = []
+class _FakeSubResponse:
+    def __init__(self, status_code, payload=None):
+        self.status_code = status_code
+        self._payload = payload
+    def json(self):
+        return self._payload
+
+def _ok_sub_get(url, headers=None, timeout=None):
+    _sub_requests.append((url, headers, timeout))
+    return _FakeSubResponse(
+        200,
+        {
+            "subscribers": [
+                {"email": "Alice@example.com", "username": "Alice\r\nSmith"},
+                {"email": "bob@example.com", "username": "bob@example.com"},
+                {"email": "carol@example.com", "username": "carol@other.com"},
+                {"email": "alice@example.com", "username": "Duplicate Alice"},
+                {"email": "bad email@example.com", "username": "Bad"},
+                {"email": "notanemail", "username": "NoAt"},
+                {"email": "dan@example.com", "username": ""},
+            ]
+        },
+    )
+
+_subs = _mail.fetch_web_subscribers(
+    {"CF_PUBLISH_TOKEN": "tok-123", "CF_WORKER_URL": "https://example.workers.dev/"},
+    get_fn=_ok_sub_get,
+)
+check(
+    "fetch_web_subscribers sends Bearer auth, formats clean names, skips invalid, and dedupes",
+    len(_sub_requests) == 1
+    and _sub_requests[0][0] == "https://example.workers.dev/api/subscribers"
+    and _sub_requests[0][1]["Authorization"] == "Bearer tok-123"
+    and _subs == [
+        "Alice Smith <Alice@example.com>",
+        "bob@example.com",
+        "carol@example.com",
+        "dan@example.com",
+    ],
+    f"reqs={_sub_requests} subs={_subs}",
+)
+
+# 3. fetch_web_subscribers falls back gracefully on HTTP 500 or ConnectTimeout
+import httpx as _sub_httpx
+_sub_500 = _mail.fetch_web_subscribers(
+    {"CRON_RUN_TOKEN": "tok-123"},
+    get_fn=lambda *_a, **_kw: _FakeSubResponse(500, {}),
+)
+def _timeout_sub_get(*_a, **_kw):
+    raise _sub_httpx.ConnectTimeout("timed out")
+_sub_timeout = _mail.fetch_web_subscribers(
+    {"CRON_RUN_TOKEN": "tok-123"},
+    get_fn=_timeout_sub_get,
+)
+check(
+    "fetch_web_subscribers returns [] gracefully on HTTP 500 and ConnectTimeout",
+    _sub_500 == [] and _sub_timeout == [],
+    f"500={_sub_500} timeout={_sub_timeout}",
+)
+
+# 4. resolve_recipients merges config.yaml + web subscribers, dedupes case-insensitively, skips on test/to
+_merged_recips = _mail.resolve_recipients(
+    {"recipients": ["x@example.com", "Alice@Example.com"]},
+    {"CF_PUBLISH_TOKEN": "tok"},
+    subscribers_fn=lambda _env: ["Alice Smith <alice@example.com>", "New User <new@example.com>"],
+)
+check(
+    "resolve_recipients merges config.yaml and web subscribers while preserving config order/entry",
+    _merged_recips == ["x@example.com", "Alice@Example.com", "New User <new@example.com>"],
+    str(_merged_recips),
+)
+_test_recips = _mail.resolve_recipients(
+    {"recipients": ["x@example.com"]},
+    {"DRY_RUN_RECIPIENT": "me@example.com", "CF_PUBLISH_TOKEN": "tok"},
+    test=True,
+    subscribers_fn=lambda _env: ["Extra <extra@example.com>"],
+)
+_explicit_recips = _mail.resolve_recipients(
+    {"recipients": ["x@example.com"]},
+    {"CF_PUBLISH_TOKEN": "tok"},
+    to=["only@example.com"],
+    subscribers_fn=lambda _env: ["Extra <extra@example.com>"],
+)
+check(
+    "resolve_recipients ignores web subscribers on test=True and explicit to=[...]",
+    _test_recips == ["me@example.com"] and _explicit_recips == ["only@example.com"],
+    f"test={_test_recips} to={_explicit_recips}",
+)
+
+# 5. deliver dry_run merges subscribers_fn into email.eml To: header
+_sub_dir = Path(tempfile.mkdtemp()) / "week-sub"
+_sub_dir.mkdir(parents=True, exist_ok=True)
+(_sub_dir / "report.md").write_text("plain body\n", encoding="utf-8")
+(_sub_dir / "report.html").write_text("<p>html body</p>\n", encoding="utf-8")
+(_sub_dir / "source.yaml").write_text(_yaml.safe_dump(_mail_report), encoding="utf-8")
+(_sub_dir / "config.yaml").write_text("recipients:\n  - core@example.com\n", encoding="utf-8")
+_sub_deliv = _mail.deliver(
+    str(_sub_dir / "source.yaml"),
+    str(_sub_dir / "config.yaml"),
+    dry_run=True,
+    env={"MAIL_FROM": "Weekly <weekly@example.com>"},
+    subscribers_fn=lambda _env: ["Badr Bajamil <badr@example.com>"],
+)
+_sub_eml = Path(_sub_deliv["path"]).read_text(encoding="utf-8")
+check(
+    "emailer.deliver merges web subscribers into email.eml To header",
+    _sub_deliv["recipients"] == ["core@example.com", "Badr Bajamil <badr@example.com>"]
+    and "Badr Bajamil <badr@example.com>" in _sub_eml,
+    str(_sub_deliv["recipients"]),
+)
+
 if failures:
     print(f"\n{len(failures)} FAILURE(S)")
     raise SystemExit(1)
